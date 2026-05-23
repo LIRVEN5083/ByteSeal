@@ -69,13 +69,7 @@ struct Vertex {
     }
 };
 
-//vec2 - position;
-//vec3 - color;
-const std::vector<Vertex> vertices = {
-    {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-    {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
-    {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}
-};
+extern const std::vector<Vertex> vertices;
 
 struct QueueFamilyIndices {
     std::optional<uint32_t> graphicsFamily;
