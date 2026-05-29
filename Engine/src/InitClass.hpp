@@ -6,8 +6,12 @@
 #include <GLFW/glfw3.h>
 #define GLFW_EXPOSE_NATIVE_WIN32
 #include <GLFW/glfw3native.h>
+#define GLM_FORCE_RADIANS
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 #include "GLSL_files/load_GLSL.hpp"
+#include <chrono>
 #include <iostream>
 #include <stdexcept>
 #include <cstdlib>
@@ -21,12 +25,14 @@
 #include <array>
 #include <glm/glm.hpp>
 
+// In fact this is count of Bufferization
 const int MAX_FRAMES_IN_FLIGHT = 2;
 
 const std::vector<const char*> validationLayers = {
     "VK_LAYER_KHRONOS_validation"
 };
 
+//#define NDEBUG
 #ifdef NDEBUG
 constexpr bool enableValidationLayers = false;
 #else
@@ -70,6 +76,13 @@ struct Vertex {
 };
 
 extern const std::vector<Vertex> vertices;
+extern const std::vector<uint16_t> indices;
+
+struct UniformBufferObject {
+    glm::mat4 model;
+    glm::mat4 view;
+    glm::mat4 proj;
+};
 
 struct QueueFamilyIndices {
     std::optional<uint32_t> graphicsFamily;
@@ -111,8 +124,10 @@ private:
     VkRenderPass renderPass = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
     VkPipeline graphicsPipeline = VK_NULL_HANDLE;
-    std::vector<VkFramebuffer> swapChainFramebuffers; //Буфер фоточек
-    std::vector<VkImageView> swapChainImageViews; // ЖАРЕНЫЕ, ГОТОВЫЕ фото
+
+    // Размер этих броу равен размеру буферизации нашего "пРиЛОженИя", т.е MAX_FRAMES_IN_FLIGHT
+    std::vector<VkFramebuffer> swapChainFramebuffers; // Буфер фоточек
+    std::vector<VkImageView> swapChainImageViews; // Уникальная обёртка на каждый кадр
 
     VkCommandPool commandPool;
     std::vector<VkCommandBuffer> commandBuffers;
@@ -125,8 +140,41 @@ private:
 
     VkBuffer vertexBuffer;
     VkDeviceMemory vertexBufferMemory;
+    VkBuffer indexBuffer;
+    VkDeviceMemory indexBufferMemory;
+
+    // UBO - Uniform Buffer Object
+    VkDescriptorSetLayout descriptorSetLayout;
+
+    std::vector<VkBuffer> uniformBuffers;
+    std::vector<VkDeviceMemory> uniformBuffersMemory;
+
+    // Connect UBO with desccriptors
+    VkDescriptorPool descriptorPool;
+    std::vector<VkDescriptorSet> descriptorSets;
+
+    // В uniformBuffersMapped лежит именно массив указателей(по одному для каждого кадра в обработке),
+    // которые ведут в «виртуальную» на процессор видеопамять.
+    // Это нужно что-бы быстро на лету кидать в видеокарту новые данные о камере и получить адресса в памяти к источнику быстрых вычесленний
+    std::vector<void*> uniformBuffersMapped;
 
     void initVulkan();
+
+    void createDescriptorSets();
+
+    void createDescriptorPool();
+
+    void updateUniformBuffer(uint32_t currentImage);
+
+    void createUniformBuffers();
+
+    void createDescriptorSetLayout();
+
+    void createIndexBuffer();
+
+    void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
+
+    void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory);
 
     void createVertexBuffer();
 
