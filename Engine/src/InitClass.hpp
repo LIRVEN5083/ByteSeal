@@ -1,29 +1,31 @@
 #ifndef _INIT_CLASS_HPP
 #define _INIT_CLASS_HPP
 
-#define VK_USE_PLATFORM_WIN32_KHR
 #define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
+#define VK_USE_PLATFORM_WIN32_KHR
 #define GLFW_EXPOSE_NATIVE_WIN32
-#include <GLFW/glfw3native.h>
 #define GLM_FORCE_RADIANS
+
+#include <GLFW/glfw3.h>
+#include <GLFW/glfw3native.h>
+
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-#include "GLSL_files/load_GLSL.hpp"
-#include <chrono>
-#include <iostream>
-#include <stdexcept>
 #include <cstdlib>
 #include <cstring>
+#include <cstdint>
+#include <limits>
+#include <chrono>
+#include <stdexcept>
+#include <algorithm>
+
+#include <array>
 #include <optional>
 #include <vector>
 #include <set>
-#include <cstdint>
-#include <limits>
-#include <algorithm>
-#include <array>
-#include <glm/glm.hpp>
+
+#include "GLSL_files/load_GLSL.hpp"
 
 // In fact this is count of Bufferization
 const int MAX_FRAMES_IN_FLIGHT = 2;

@@ -1,5 +1,8 @@
 #include "InitClass.hpp"
 
+#define STB_IMAGE_IMPLEMENTATION // Полноценное включение stb_image.h
+#include <stb_image.h>
+
 QueueFamilyIndices HelloTriangleApplication::findQueueFamilies(VkPhysicalDevice device) {
     QueueFamilyIndices indices;
 
