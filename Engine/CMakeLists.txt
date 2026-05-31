@@ -11,8 +11,6 @@ find_package(Vulkan REQUIRED)
 
 add_executable(${PROJECT_NAME} 
     src/main.cpp
-
-    src/GLSL_files/load_GLSL.hpp
     src/GLSL_files/load_GLSL.cpp
     src/InitClass.cpp
 )
@@ -21,6 +19,22 @@ target_include_directories(${PROJECT_NAME} PUBLIC
      ${Vulkan_INCLUDE_DIRS}
       ${CMAKE_CURRENT_SOURCE_DIR}/src/external/stb-master
 )
+
+target_compile_definitions(${PROJECT_NAME} PRIVATE GLFW_INCLUDE_VULKAN)
+
+if(WIN32)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE
+    VK_USE_PLATFORM_WIN32_KHR
+    GLFW_EXPOSE_NATIVE_WIN32
+    )
+elseif(UNIX AND NOT APPLE)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE
+    VK_USE_PLATFORM_XLIB_KHR
+    VK_USE_PLATFORM_WAYLAND_KHR
+    GLFW_EXPOSE_NATIVE_X11
+    GLFW_EXPOSE_NATIVE_WAYLAND
+    )
+endif()
 
 set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "Build examples" FORCE)
 set(GLFW_BUILD_TESTS OFF CACHE BOOL "Build tests" FORCE)
