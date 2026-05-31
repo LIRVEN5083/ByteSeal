@@ -160,11 +160,18 @@ private:
     // Это нужно что-бы быстро на лету кидать в видеокарту новые данные о камере и получить адресса в памяти к источнику быстрых вычесленний
     std::vector<void*> uniformBuffersMapped;
 
-    // Our texture
+    // Our texture in memory
     VkImage textureImage;
     VkDeviceMemory textureImageMemory;
 
+    // Texture image
+    VkImageView textureImageView;
+
     void initVulkan();
+
+    VkImageView createImageView(VkImage image, VkFormat format);
+
+    void createTextureImageView();
 
     void copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height);
 

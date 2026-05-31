@@ -241,7 +241,11 @@ void HelloTriangleApplication::initVulkan(){
     createGraphicsPipeline();
     createFramebuffers();
     createCommandPool();
+
     createTextureImage();
+    createTextureImageView();
+    createTextureSampler();
+
     createVertexBuffer();
     createIndexBuffer();
     createUniformBuffers();
@@ -249,6 +253,30 @@ void HelloTriangleApplication::initVulkan(){
     createDescriptorSets();
     createCommandBuffers();
     createSyncObjects();
+}
+
+VkImageView HelloTriangleApplication::createImageView(VkImage image, VkFormat format){
+    VkImageViewCreateInfo viewInfo{};
+    viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    viewInfo.image = image;
+    viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    viewInfo.format = format;
+    viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    viewInfo.subresourceRange.baseMipLevel = 0;
+    viewInfo.subresourceRange.levelCount = 1;
+    viewInfo.subresourceRange.baseArrayLayer = 0;
+    viewInfo.subresourceRange.layerCount = 1;
+
+    VkImageView imageView;
+    if (vkCreateImageView(device, &viewInfo, nullptr, &imageView) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create image view!");
+    }
+
+    return imageView;
+}
+
+void HelloTriangleApplication::createTextureImageView(){
+    textureImageView = createImageView(textureImage, VK_FORMAT_R8G8B8A8_SRGB);
 }
 
 void HelloTriangleApplication::copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height){
@@ -1106,6 +1134,11 @@ void HelloTriangleApplication::createSwapChain(){
 void HelloTriangleApplication::createImageViews(){
     swapChainImageViews.resize(swapChainImages.size());
 
+    for (uint32_t i = 0; i < swapChainImages.size(); i++) {
+        swapChainImageViews[i] = createImageView(swapChainImages[i], swapChainImageFormat);
+    }
+
+    /*
     for (size_t i = 0; i < swapChainImages.size(); i++) {
         VkImageViewCreateInfo createInfo{};
         createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -1128,9 +1161,9 @@ void HelloTriangleApplication::createImageViews(){
         if (vkCreateImageView(device, &createInfo, NULL, &swapChainImageViews[i]) != VK_SUCCESS) {
             throw std::runtime_error("failed to create image views!");
         }
-    }
-
     
+    }
+    */
 }
 
 VkResult  HelloTriangleApplication::CreateDebugUtilsMessengerEXT(
@@ -1245,6 +1278,8 @@ void HelloTriangleApplication::mainLoop(){
 
 void HelloTriangleApplication::cleanup(){
     cleanupSwapChain();
+
+    vkDestroyImageView(device, textureImageView, NULL);
 
     vkDestroyImage(device, textureImage, NULL);
     vkFreeMemory(device, textureImageMemory, NULL);
