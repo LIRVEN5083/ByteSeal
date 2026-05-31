@@ -1,9 +1,6 @@
 #ifndef _INIT_CLASS_HPP
 #define _INIT_CLASS_HPP
 
-#define GLFW_INCLUDE_VULKAN
-#define VK_USE_PLATFORM_WIN32_KHR
-#define GLFW_EXPOSE_NATIVE_WIN32
 #define GLM_FORCE_RADIANS
 
 #include <GLFW/glfw3.h>
