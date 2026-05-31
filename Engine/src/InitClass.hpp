@@ -163,8 +163,11 @@ private:
 
     // Texture image
     VkImageView textureImageView;
+    VkSampler textureSampler;
 
     void initVulkan();
+
+    void createTextureSampler();
 
     VkImageView createImageView(VkImage image, VkFormat format);
 
