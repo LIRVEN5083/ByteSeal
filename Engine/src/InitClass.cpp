@@ -1,4 +1,5 @@
 #include "InitClass.hpp"
+#include <stdexcept>
 
 #define STB_IMAGE_IMPLEMENTATION // Полноценное включение stb_image.h
 #include <stb_image.h>
@@ -171,6 +172,12 @@ uint32_t HelloTriangleApplication::findMemoryType(uint32_t typeFilter, VkMemoryP
     throw std::runtime_error("failed to find suitable memory type!");
 }
 
+void HelloTriangleApplication::VolkInit(){
+    if(volkInitialize() != VK_SUCCESS){
+        throw std::runtime_error("Not supported Vulkan!");
+    }
+}
+
 bool HelloTriangleApplication::checkValidationLayerSupport() {
     uint32_t layerCount;
     vkEnumerateInstanceLayerProperties(&layerCount, NULL);
@@ -232,6 +239,7 @@ HelloTriangleApplication::HelloTriangleApplication(GLFWwindow* window, uint32_t 
 }
 
 void HelloTriangleApplication::initVulkan(){
+    VolkInit();
     createInstance();
     setupDebugMessenger();
     createSurface();
@@ -783,7 +791,7 @@ void HelloTriangleApplication::drawFrame(){
         return;
     }
     else if(result != VK_SUCCESS) {
-        std::runtime_error("failed to acquire swap chain image");
+        throw std::runtime_error("failed to acquire swap chain image");
     }
 
     updateUniformBuffer(currentFrame);
@@ -1319,6 +1327,8 @@ void HelloTriangleApplication::createLogicalDevice(){
         throw std::runtime_error("failed to create logical device!");
     }
 
+    volkLoadDevice(device);
+
     vkGetDeviceQueue(device, indices.graphicsFamily.value(), 0, &graphicsQueue);
     vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);
 }
@@ -1422,8 +1432,8 @@ void HelloTriangleApplication::createInstance(){
     }
 
     //Final result
-    VkResult result = vkCreateInstance(&createInfo, NULL, &instance);
-    if (result != VK_SUCCESS) {
+    if (vkCreateInstance(&createInfo, NULL, &instance) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create instance");
     }
+    volkLoadInstance(instance); 
 }

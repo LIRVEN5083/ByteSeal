@@ -7,22 +7,23 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-find_package(Vulkan REQUIRED)
-find_package(Threads REQUIRED)
-
+add_subdirectory(src/external/vulkan/Vulkan-Headers-main)
 
 add_executable(${PROJECT_NAME} 
     src/main.cpp
     src/GLSL_files/load_GLSL.cpp
     src/InitClass.cpp
+    src/external/volk-master/volk.c
 )
 
 target_include_directories(${PROJECT_NAME} PUBLIC
-     ${Vulkan_INCLUDE_DIRS}
-      ${CMAKE_CURRENT_SOURCE_DIR}/src/external/stb-master
+     ${CMAKE_CURRENT_SOURCE_DIR}/src/external/vulkan/Vulkan-Headers-main/include
+     ${CMAKE_CURRENT_SOURCE_DIR}/src/external/volk-master
+     ${CMAKE_CURRENT_SOURCE_DIR}/src/external/stb-master
+     ${CMAKE_CURRENT_SOURCE_DIR}/src/external/glm-master
 )
 
-target_compile_definitions(${PROJECT_NAME} PRIVATE GLFW_INCLUDE_VULKAN)
+target_compile_definitions(${PROJECT_NAME} PRIVATE GLFW_INCLUDE_NONE)
 
 if(WIN32)
     target_compile_definitions(${PROJECT_NAME} PRIVATE
@@ -47,5 +48,4 @@ add_subdirectory(src/external/glfw)
 
 target_link_libraries(${PROJECT_NAME} 
     glfw
-    Vulkan::Vulkan
 )

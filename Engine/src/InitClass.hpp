@@ -4,6 +4,8 @@
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 
+#include <volk.h>
+
 #include <GLFW/glfw3.h>
 #include <GLFW/glfw3native.h>
 
@@ -268,6 +270,8 @@ private:
 
     std::vector<const char*> getRequiredExtensions();
 
+    void VolkInit();
+    
     bool checkValidationLayerSupport();
 
     static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
