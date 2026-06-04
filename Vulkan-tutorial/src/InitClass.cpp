@@ -323,9 +323,7 @@ void HelloTriangleApplication::MadeMove(GLFWwindow* window, glm::vec3& Wfront, g
         valueY += 1.0f * moveStep;
     }
     if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_REPEAT) {
-        if (valueY > 0.5f) {
-            valueY -= 1 * moveStep;
-        }
+        valueY -= 1.0f * moveStep;
     }
 
 }
