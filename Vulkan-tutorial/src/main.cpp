@@ -16,7 +16,7 @@ float valueX = 0.0f;
 float valueY = 1.5f;
 
 //Delta time
-float speed = 5;
+float speed = 10.0f;
 
 int times = 0;
 
