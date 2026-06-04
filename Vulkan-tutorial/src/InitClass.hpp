@@ -27,7 +27,7 @@
 
 #include "GLSL_files/load_GLSL.hpp"
 
-// In fact this is count of Bufferization
+// In fact this is count +1 of Bufferization 
 const int MAX_FRAMES_IN_FLIGHT = 2;
 
 const std::vector<const char*> validationLayers = {
@@ -166,7 +166,7 @@ private:
     std::vector<void*> uniformBuffersMapped;
 
     // Our texture in memory
-    VkImage textureImage;
+    VkImage textureImage; // КАРТИНКА
     VkDeviceMemory textureImageMemory;
 
     // Texture image
@@ -177,6 +177,8 @@ private:
     VkImage depthImage;
     VkDeviceMemory depthImageMemory;
     VkImageView depthImageView;
+
+    void checkKeys();
 
     void initVulkan();
 
@@ -307,7 +309,5 @@ private:
     VkShaderModule createShaderModule(const std::vector<char>& code);
 
 };
-
-
 
 #endif

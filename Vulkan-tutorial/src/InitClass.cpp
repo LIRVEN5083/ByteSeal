@@ -262,6 +262,12 @@ HelloTriangleApplication::HelloTriangleApplication(GLFWwindow* window, uint32_t 
     this->y = y;
 }
 
+void HelloTriangleApplication::checkKeys(){
+    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
+        glfwSetWindowShouldClose(window, true);
+    }
+}
+
 void HelloTriangleApplication::initVulkan(){
     VolkInit();
     createInstance();
@@ -1424,6 +1430,7 @@ void HelloTriangleApplication::mainLoop(){
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
         drawFrame();
+        checkKeys();
     }
 
     vkDeviceWaitIdle(device);
