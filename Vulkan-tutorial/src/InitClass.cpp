@@ -1,4 +1,5 @@
 #include "InitClass.hpp"
+#include <chrono>
 #include <stdexcept>
 
 #define STB_IMAGE_IMPLEMENTATION // Полноценное включение stb_image.h
@@ -8,6 +9,7 @@
 #include "external/tiny_obj_loader.h"
 
 auto lastFrameTime = std::chrono::high_resolution_clock::now();
+auto startTime = std::chrono::high_resolution_clock::now();
 
 QueueFamilyIndices HelloTriangleApplication::findQueueFamilies(VkPhysicalDevice device) {
     QueueFamilyIndices indices;
@@ -661,9 +663,10 @@ void HelloTriangleApplication::updateUniformBuffer(uint32_t currentImage){
     auto currentTime = std::chrono::high_resolution_clock::now();
     auto deltaTime = std::chrono::duration_cast<std::chrono::duration<float>>(currentTime - lastFrameTime).count();
     lastFrameTime = currentTime;
+    auto time = std::chrono::duration_cast<std::chrono::duration<float>>(currentTime - startTime).count();
 
     float moveStep = deltaTime * speed;
-
+    
     glm::vec3 up = {0.0f, 1.0f, 0.0f};
 
     glm::vec3 front;
@@ -687,7 +690,7 @@ void HelloTriangleApplication::updateUniformBuffer(uint32_t currentImage){
     glm::vec3 target = eye + front;
 
     UniformBufferObject ubo{};
-    ubo.model = glm::rotate(glm::mat4(1.0f), glm::radians(180.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    ubo.model = glm::rotate(glm::mat4(1.0f), time* glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 
     //ubo.view = glm::lookAt(glm::vec3(0.0f, 0.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
     ubo.view = glm::lookAt(eye, target, up);
@@ -1138,8 +1141,8 @@ void HelloTriangleApplication::createGraphicsPipeline(){
     rasterizer.rasterizerDiscardEnable = VK_FALSE;
     rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
     rasterizer.lineWidth = 1.0f;
-    rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
-    rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    rasterizer.cullMode =  VK_CULL_MODE_NONE; // Ебанное заднее отсечение
+    rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE; //if VK_FRONT_FACE_CLOCKWISE то нихуя нету
     rasterizer.depthBiasEnable = VK_FALSE;
     rasterizer.depthBiasConstantFactor = 0.0f; // Optional
     rasterizer.depthBiasClamp = 0.0f; // Optional
