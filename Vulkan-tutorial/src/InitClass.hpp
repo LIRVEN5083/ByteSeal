@@ -6,8 +6,7 @@
 
 #include <volk.h>
 
-#include <GLFW/glfw3.h>
-#include <GLFW/glfw3native.h>
+#include "movement.hpp"
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -16,7 +15,6 @@
 #include <cstring>
 #include <cstdint>
 #include <limits>
-#include <chrono>
 #include <stdexcept>
 #include <algorithm>
 
@@ -182,6 +180,8 @@ private:
 
     void initVulkan();
 
+    void MadeMove(GLFWwindow* window, glm::vec3& Wfront, glm::vec3& right, float& moveStep);
+
     void createDepthResources();
 
     void createTextureSampler();
@@ -206,7 +206,7 @@ private:
 
     void createDescriptorPool();
 
-    void updateUniformBuffer(uint32_t currentImage);
+    void updateUniformBuffer(uint32_t currentImage); // HERE
 
     void createUniformBuffers();
 

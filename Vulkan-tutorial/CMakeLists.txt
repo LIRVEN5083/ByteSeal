@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.10 FATAL_ERROR)
 set(PROJECT_NAME ByteSeal)
 project (${PROJECT_NAME})
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -13,7 +13,10 @@ add_executable(${PROJECT_NAME}
     src/main.cpp
     src/GLSL_files/load_GLSL.cpp
     src/InitClass.cpp
+    src/movement.cpp
+
     src/external/volk-master/volk.c
+    src/external/tiny_obj_loader.h
 )
 
 target_include_directories(${PROJECT_NAME} PUBLIC

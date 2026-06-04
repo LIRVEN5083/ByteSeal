@@ -1,8 +1,24 @@
 #include "InitClass.hpp"
 
 GLFWwindow* window;
-uint32_t WindowSizeX = 500;
-uint32_t WindowSizeY = 500;
+uint32_t WindowSizeX = 1920;
+uint32_t WindowSizeY = 1080;
+
+//Mouse Position
+float lastX = float(WindowSizeX) / 2.0f;
+float lastY = float(WindowSizeY) / 2.0f;
+float yaw = -90.0f;
+float pitch = 0.0f;
+
+//Camera position
+float valueZ = 5.0f;
+float valueX = 0.0f;
+float valueY = 1.5f;
+
+//Delta time
+float speed = 5;
+
+int times = 0;
 
 const std::vector<Vertex> vertices = {
     {{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
@@ -10,10 +26,10 @@ const std::vector<Vertex> vertices = {
     {{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
     {{-0.5f, 0.5f, 0.0f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}},
 
-    {{-0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
-    {{0.5f, -0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
-    {{0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
-    {{-0.5f, 0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}}
+    {{ 1.0f, -0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}}, 
+    {{ 2.0f, -0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}}, 
+    {{ 2.0f,  0.5f, -0.5f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}}, 
+    {{ 1.0f,  0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}} 
 };
 
 const std::vector<uint16_t> indices = {

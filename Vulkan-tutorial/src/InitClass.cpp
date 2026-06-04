@@ -4,6 +4,11 @@
 #define STB_IMAGE_IMPLEMENTATION // Полноценное включение stb_image.h
 #include <stb_image.h>
 
+#define TINYOBJLOADER_IMPLEMENTATION // Полноценное включение tinyobjloader
+#include "external/tiny_obj_loader.h"
+
+auto lastFrameTime = std::chrono::high_resolution_clock::now();
+
 QueueFamilyIndices HelloTriangleApplication::findQueueFamilies(VkPhysicalDevice device) {
     QueueFamilyIndices indices;
 
@@ -293,6 +298,36 @@ void HelloTriangleApplication::initVulkan(){
     createDescriptorSets();
     createCommandBuffers();
     createSyncObjects();
+}
+
+void HelloTriangleApplication::MadeMove(GLFWwindow* window, glm::vec3& Wfront, glm::vec3& right, float& moveStep){
+    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_W) == GLFW_REPEAT) {
+        valueX += Wfront.x * moveStep;
+        valueZ += Wfront.z * moveStep;
+    }
+    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_S) == GLFW_REPEAT) {
+        valueX -= Wfront.x * moveStep;
+        valueZ -= Wfront.z * moveStep;
+    }
+
+    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_A) == GLFW_REPEAT) {
+        valueX -= right.x * moveStep;
+        valueZ -= right.z * moveStep;
+    }
+    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_D) == GLFW_REPEAT) {
+        valueX += right.x * moveStep;
+        valueZ += right.z * moveStep;
+    }
+
+    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_REPEAT) {
+        valueY += 1.0f * moveStep;
+    }
+    if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_REPEAT) {
+        if (valueY > 0.5f) {
+            valueY -= 1 * moveStep;
+        }
+    }
+
 }
 
 void HelloTriangleApplication::createDepthResources(){
@@ -625,18 +660,41 @@ void HelloTriangleApplication::createDescriptorPool(){
 }
 
 void HelloTriangleApplication::updateUniformBuffer(uint32_t currentImage){
-    static auto startTime = std::chrono::high_resolution_clock::now();
     auto currentTime = std::chrono::high_resolution_clock::now();
+    auto deltaTime = std::chrono::duration_cast<std::chrono::duration<float>>(currentTime - lastFrameTime).count();
+    lastFrameTime = currentTime;
 
-    float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+    float moveStep = deltaTime * speed;
+
+    glm::vec3 up = {0.0f, 1.0f, 0.0f};
+
+    glm::vec3 front;
+    front.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
+    front.y = sin(glm::radians(pitch));
+    front.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+    front = glm::normalize(front);
+
+    glm::vec3 Wfront;
+    Wfront.x = cos(glm::radians(yaw));
+    Wfront.y = 0;
+    Wfront.z = sin(glm::radians(yaw));
+
+    glm::vec3 right = glm::normalize(glm::cross(Wfront, up));
+
+    // WASD moves
+    MadeMove(window, Wfront, right, moveStep);
+
+    //Camera
+    glm::vec3 eye = { valueX, valueY, valueZ };
+    glm::vec3 target = eye + front;
 
     UniformBufferObject ubo{};
-    ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    ubo.model = glm::rotate(glm::mat4(1.0f), glm::radians(180.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 
     //ubo.view = glm::lookAt(glm::vec3(0.0f, 0.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-    ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    ubo.view = glm::lookAt(eye, target, up);
 
-    ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 10.0f);
+    ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 100.0f);
     ubo.proj[1][1] *= -1;
 
     // Передаём наш Uniform матрицы в уже готовые адресса памяти в видеокарте
@@ -1427,7 +1485,10 @@ void HelloTriangleApplication::createLogicalDevice(){
 }
 
 void HelloTriangleApplication::mainLoop(){
+    glfwSetKeyCallback(window, RegSpeed);
+    glfwSetCursorPosCallback(window, mouse_callback);
     while (!glfwWindowShouldClose(window)) {
+        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
         glfwPollEvents();
         drawFrame();
         checkKeys();
