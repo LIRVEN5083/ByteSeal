@@ -180,9 +180,11 @@ private:
 
     void initVulkan();
 
+    void createDepthResources();
+
     void createTextureSampler();
 
-    VkImageView createImageView(VkImage image, VkFormat format);
+    VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags);
 
     void createTextureImageView();
 
@@ -288,6 +290,12 @@ private:
 
     bool checkDeviceExtensionSupport(VkPhysicalDevice device);
 
+    VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
+
+    VkFormat findDepthFormat();
+
+    bool hasStencilComponent(VkFormat format);
+
     SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device); // Проверка если вообще устройство которое поддерживает базовые (Границы экрана, Формат цвета, режим вывода)
 
     VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats); // Заполняем формат
@@ -299,5 +307,7 @@ private:
     VkShaderModule createShaderModule(const std::vector<char>& code);
 
 };
+
+
 
 #endif
