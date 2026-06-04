@@ -4,22 +4,30 @@ GLFWwindow* window;
 uint32_t WindowSizeX = 1920;
 uint32_t WindowSizeY = 1080;
 
-//Mouse Position
+// 3D Model
+const uint32_t WIDTH = 800;
+const uint32_t HEIGHT = 600;
+
+const std::string MODEL_PATH = "../../../models/viking_room.obj";
+const std::string TEXTURE_PATH = "../../../textures/viking_room.png";
+
+// Mouse Position
 float lastX = float(WindowSizeX) / 2.0f;
 float lastY = float(WindowSizeY) / 2.0f;
-float yaw = -90.0f;
+float yaw = -180.0f;
 float pitch = 0.0f;
 
-//Camera position
-float valueZ = 5.0f;
-float valueX = 0.0f;
-float valueY = 1.5f;
+// Camera position
+float valueZ = 0.0f;
+float valueX = 5.0f;
+float valueY = 0.0f;
 
-//Delta time
-float speed = 10.0f;
+// Delta time
+float speed = 4.0f;
 
 int times = 0;
 
+/*
 const std::vector<Vertex> vertices = {
     // === КУБ 1 (Центр: 0, 0, 0) ===
     // Передняя грань (Z = 0.5)
@@ -104,6 +112,7 @@ const std::vector<uint16_t> indices = {
     40, 41, 42, 42, 43, 40, // Правая
     44, 45, 46, 46, 47, 44  // Левая
 };
+*/
 
 int main() {
     HelloTriangleApplication app(window, WindowSizeX, WindowSizeY);

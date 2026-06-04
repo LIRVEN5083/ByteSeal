@@ -293,6 +293,7 @@ void HelloTriangleApplication::initVulkan(){
     createTextureImage();
     createTextureImageView();
     createTextureSampler();
+    loadModel();
     createVertexBuffer();
     createIndexBuffer();
     createUniformBuffers();
@@ -302,30 +303,71 @@ void HelloTriangleApplication::initVulkan(){
     createSyncObjects();
 }
 
+void HelloTriangleApplication::loadModel(){
+    tinyobj::attrib_t attrib;
+    std::vector<tinyobj::shape_t> shapes;
+    std::vector<tinyobj::material_t> materials;
+    std::string warn;
+    std::string err;
+    tinyobj::ObjReaderConfig reader_config;
+
+    if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, MODEL_PATH.c_str(), nullptr, &reader_config)) {
+        throw std::runtime_error(warn + " " + err);
+    }
+
+    std::unordered_map<Vertex, uint32_t> uniqueVertices{};
+
+    for (const auto& shape : shapes) {
+        for (const auto& index : shape.mesh.indices) {
+            Vertex vertex{};
+
+            vertex.pos = {
+                attrib.vertices[3 * index.vertex_index + 0],
+                attrib.vertices[3 * index.vertex_index + 1],
+                attrib.vertices[3 * index.vertex_index + 2]
+            };
+
+            vertex.texCoord = {
+                attrib.texcoords[2 * index.texcoord_index + 0],
+                1.0f - attrib.texcoords[2 * index.texcoord_index + 1]
+            };
+
+            vertex.color = { 1.0f, 1.0f, 1.0f };
+
+            if (uniqueVertices.count(vertex) == 0) {
+                uniqueVertices[vertex] = static_cast<uint32_t>(vertices.size());
+                vertices.push_back(vertex);
+            }
+
+            indices.push_back(uniqueVertices[vertex]);
+        }
+    }
+}
+
 void HelloTriangleApplication::MadeMove(GLFWwindow* window, glm::vec3& Wfront, glm::vec3& right, float& moveStep){
     if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_W) == GLFW_REPEAT) {
+        valueY += Wfront.y * moveStep;
         valueX += Wfront.x * moveStep;
-        valueZ += Wfront.z * moveStep;
     }
     if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_S) == GLFW_REPEAT) {
+        valueY -= Wfront.y * moveStep;
         valueX -= Wfront.x * moveStep;
-        valueZ -= Wfront.z * moveStep;
     }
 
     if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_A) == GLFW_REPEAT) {
+        valueY -= right.y * moveStep;
         valueX -= right.x * moveStep;
-        valueZ -= right.z * moveStep;
     }
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_D) == GLFW_REPEAT) {
+        valueY += right.y * moveStep;
         valueX += right.x * moveStep;
-        valueZ += right.z * moveStep;
     }
 
     if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_REPEAT) {
-        valueY += 1.0f * moveStep;
+        valueZ += 1.0f * moveStep;
     }
     if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_REPEAT) {
-        valueY -= 1.0f * moveStep;
+        valueZ -= 1.0f * moveStep;
     }
 
 }
@@ -526,7 +568,7 @@ VkCommandBuffer HelloTriangleApplication::beginSingleTimeCommands(){
 
 void HelloTriangleApplication::createTextureImage(){
     int texWidth, texHeight, texChannels;
-    stbi_uc* pixels = stbi_load("../../../textures/texture.jpg", &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+    stbi_uc* pixels = stbi_load(TEXTURE_PATH.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
     VkDeviceSize imageSize = texWidth * texHeight * 4;
 
     if (!pixels) {
@@ -667,18 +709,30 @@ void HelloTriangleApplication::updateUniformBuffer(uint32_t currentImage){
 
     float moveStep = deltaTime * speed;
     
-    glm::vec3 up = {0.0f, 1.0f, 0.0f};
+    glm::vec3 up = {0.0f, 0.0f, 1.0f};
 
     glm::vec3 front;
+    /*
     front.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
     front.y = sin(glm::radians(pitch));
     front.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+    */
+
+    front.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
+    front.y = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+    front.z = sin(glm::radians(pitch));
     front = glm::normalize(front);
 
     glm::vec3 Wfront;
+    /*
     Wfront.x = cos(glm::radians(yaw));
     Wfront.y = 0;
     Wfront.z = sin(glm::radians(yaw));
+    */
+
+    Wfront.x = cos(glm::radians(yaw));
+    Wfront.y = sin(glm::radians(yaw));
+    Wfront.z = 0;
 
     glm::vec3 right = glm::normalize(glm::cross(Wfront, up));
 
@@ -690,7 +744,8 @@ void HelloTriangleApplication::updateUniformBuffer(uint32_t currentImage){
     glm::vec3 target = eye + front;
 
     UniformBufferObject ubo{};
-    ubo.model = glm::rotate(glm::mat4(1.0f), time* glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    //ubo.model = glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+    ubo.model = glm::mat4(1.0f);
 
     //ubo.view = glm::lookAt(glm::vec3(0.0f, 0.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
     ubo.view = glm::lookAt(eye, target, up);
@@ -991,7 +1046,7 @@ void HelloTriangleApplication::recordCommandBuffer(VkCommandBuffer commandBuffer
     VkBuffer vertexBuffers[] = { vertexBuffer };
     VkDeviceSize offsets[] = { 0 };
     vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-    vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT16);
+    vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 
     // Прибиваем UBO к дескрипторам нашего кадра
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[currentFrame], 0, nullptr);

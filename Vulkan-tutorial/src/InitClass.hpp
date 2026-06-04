@@ -3,6 +3,7 @@
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
+#define GLM_ENABLE_EXPERIMENTAL
 
 #include <volk.h>
 
@@ -10,6 +11,7 @@
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtx/hash.hpp>
 
 #include <cstdlib>
 #include <cstring>
@@ -22,8 +24,16 @@
 #include <optional>
 #include <vector>
 #include <set>
+#include <unordered_map>
 
 #include "GLSL_files/load_GLSL.hpp"
+
+extern const uint32_t WIDTH;
+extern const uint32_t HEIGHT;
+
+extern const std::string MODEL_PATH;
+extern const std::string TEXTURE_PATH;
+
 
 // In fact this is count +1 of Bufferization 
 const int MAX_FRAMES_IN_FLIGHT = 2;
@@ -78,7 +88,23 @@ struct Vertex {
 
         return attributeDescriptions;
     }
+
+    bool operator==(const Vertex& other) const {
+        // this->pos — это pos ТЕКУЩЕЙ вершины, которую проверяет таблица
+        // other.pos — это pos ДРУГОЙ вершины, с которой её сравнивают
+        return pos == other.pos && color == other.color && texCoord == other.texCoord;
+    }
 };
+
+namespace std {
+    template<> struct hash<Vertex> {
+        size_t operator()(Vertex const& vertex) const {
+            return ((hash<glm::vec3>()(vertex.pos) ^
+                (hash<glm::vec3>()(vertex.color) << 1)) >> 1) ^
+                (hash<glm::vec2>()(vertex.texCoord) << 1);
+        }
+    };
+}
 
 extern const std::vector<Vertex> vertices;
 extern const std::vector<uint16_t> indices;
@@ -143,6 +169,10 @@ private:
 
     bool framebufferResized = false;
 
+    // OUR loaded 3D model!!!
+    std::vector<Vertex> vertices;
+    std::vector<uint32_t> indices;
+
     VkBuffer vertexBuffer;
     VkDeviceMemory vertexBufferMemory;
     VkBuffer indexBuffer;
@@ -179,6 +209,8 @@ private:
     void checkKeys();
 
     void initVulkan();
+
+    void loadModel();
 
     void MadeMove(GLFWwindow* window, glm::vec3& Wfront, glm::vec3& right, float& moveStep);
 
