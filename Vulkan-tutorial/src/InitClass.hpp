@@ -194,6 +194,8 @@ private:
     std::vector<void*> uniformBuffersMapped;
 
     // Our texture in memory
+    // mipLevels - для хранения количества уровней изображений в два раза меньше исходного
+    uint32_t mipLevels;
     VkImage textureImage; // КАРТИНКА
     VkDeviceMemory textureImageMemory;
 
@@ -210,6 +212,8 @@ private:
 
     void initVulkan();
 
+    void generateMipmaps(VkImage image, VkFormat imageFormat, int32_t texWidth, int32_t texHeight, uint32_t mipLevels);
+
     void loadModel();
 
     void MadeMove(GLFWwindow* window, glm::vec3& Wfront, glm::vec3& right, float& moveStep);
@@ -218,13 +222,13 @@ private:
 
     void createTextureSampler();
 
-    VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags);
+    VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags, uint32_t mipLevels);
 
     void createTextureImageView();
 
     void copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height);
 
-    void transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout);
+    void transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout, uint32_t mipLevels);
 
     void endSingleTimeCommands(VkCommandBuffer commandBuffer);
 
@@ -232,7 +236,7 @@ private:
 
     void createTextureImage();
 
-    void createImage(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory);
+    void createImage(uint32_t width, uint32_t height, uint32_t mipLevels, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory);
 
     void createDescriptorSets();
 
