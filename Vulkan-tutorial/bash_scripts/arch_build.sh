@@ -1,5 +1,7 @@
 set -e
 
+cd ..
+
 rm -rf out
 
 CC=clang CXX=clang++ cmake -B out/build/Debug -G "Ninja"
