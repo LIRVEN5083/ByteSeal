@@ -208,9 +208,20 @@ private:
     VkDeviceMemory depthImageMemory;
     VkImageView depthImageView;
 
+    // Количество поддерживаемого MSAA ну типо 1X, 2X, 4X, 8X
+    VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
+
+
+    VkImage colorImage;
+    VkDeviceMemory colorImageMemory;
+    VkImageView colorImageView;
+
     void checkKeys();
 
     void initVulkan();
+
+    // For MSAA
+    void createColorResources();
 
     void generateMipmaps(VkImage image, VkFormat imageFormat, int32_t texWidth, int32_t texHeight, uint32_t mipLevels);
 
@@ -236,7 +247,8 @@ private:
 
     void createTextureImage();
 
-    void createImage(uint32_t width, uint32_t height, uint32_t mipLevels, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory);
+    void createImage(uint32_t width, uint32_t height, uint32_t mipLevels, VkSampleCountFlagBits numSamples, VkFormat format,
+        VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory);
 
     void createDescriptorSets();
 
@@ -343,6 +355,8 @@ private:
     VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities); // Заполняем границы экрана
 
     VkShaderModule createShaderModule(const std::vector<char>& code);
+
+    VkSampleCountFlagBits getMaxUsableSampleCount();
 
 };
 
