@@ -9,8 +9,14 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(Vulkan REQUIRED)
 
-set(SDL3_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/external/SDL3/include")
-set(SDL3_LIBRARY "${CMAKE_CURRENT_SOURCE_DIR}/src/external/SDL3/lib/x64/SDL3.lib")
+if(WIN32)
+    set(SDL3_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/external/SDL3/include")
+    set(SDL3_LINK_TARGET "${CMAKE_CURRENT_SOURCE_DIR}/src/external/SDL3/lib/x64/SDL3.lib")
+else()
+    find_package(SDL3 REQUIRED CONFIG)
+    set(SDL3_INCLUDE_DIR "") 
+    set(SDL3_LINK_TARGET SDL3::SDL3-shared)
+endif()
 
 add_executable(${PROJECT_NAME}
     src/Vulkan/main.cpp
@@ -77,7 +83,7 @@ endif()
 target_link_libraries(${PROJECT_NAME} 
     Vulkan::Vulkan
     Vulkan::Headers
-    ${SDL3_LIBRARY} 
+    ${SDL3_LINK_TARGET} 
 )
 
 if(WIN32)
@@ -93,7 +99,10 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     target_compile_options(${PROJECT_NAME} PRIVATE -Wno-nullability-completeness)
 endif()
 
-# Принудительно включаем поддержку UTF-8 для компилятора на Windows
-if(MSVC OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+if(MSVC)
+    # Если компилятор родной MSVC от Microsoft (или Clang-CL в режиме MSVC)
     target_compile_options(${PROJECT_NAME} PRIVATE "/utf-8")
+elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+    # Если сборка идет через чистый Clang или GCC
+    target_compile_options(${PROJECT_NAME} PRIVATE "-finput-charset=utf-8" "-fexec-charset=utf-8")
 endif()
