@@ -5,6 +5,7 @@
 
 #include <vk_initializers.h>
 #include <vk_types.h>
+#include <vk_images.h>
 
 #include "VkBootstrap.h"
 
@@ -57,6 +58,12 @@ void VulkanEngine::cleanup()
 {
     if (_isInitialized) {
 
+        vkDeviceWaitIdle(_device);
+
+        for (int i = 0; i < FRAME_OVERLAP; i++) {
+            vkDestroyCommandPool(_device, _frames[i]._commandPool, nullptr);
+        }
+
         // Да, я даже тут буду как не самый умный человек писать комментарии
         // Уничтожение swapChain
         destroy_swapchain();
@@ -83,7 +90,53 @@ void VulkanEngine::cleanup()
 
 void VulkanEngine::draw()
 {
-    // Ниче не надо
+    // Ждём когда GPU прекратит рендерить прошлую картинку в течении 1 сек.
+    VK_CHECK(vkWaitForFences(_device, 1, &get_current_frame()._renderFence, true, 1000000000));
+    // Возвращаем все Fences в исходное состояние
+    VK_CHECK(vkResetFences(_device, 1, &get_current_frame()._renderFence));
+
+    // О май гад это же ImageIndex из Vk-tutorial
+    uint32_t swapchainImageIndex;
+    // Запрашиваем картинку из 
+    VK_CHECK(vkAcquireNextImageKHR(_device, _swapchain, 1000000000, get_current_frame()._swapchainSemaphore, nullptr, &swapchainImageIndex));
+
+    // Просто запишешь это в красивую структуру. Это временная запись commandBuffer 
+    VkCommandBuffer cmd = get_current_frame()._mainCommandBuffer;
+
+    // Мы теперь можем очищать командный буфер, чтобы опять его перезаписать
+    VK_CHECK(vkResetCommandBuffer(cmd, 0));
+
+    // Передаём данные о структуре записи
+    VkCommandBufferBeginInfo cmdBeginInfo = vkinit::command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+
+    // Открываем на запись. Теперь в наш удобненький cmd можно слать команды
+    VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
+
+
+
+
+
+    // Переключаем swapChain в режим записи
+    vkutil::transition_image(cmd, _swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+
+    // Делаем чистый цвет. Который будет мерцать: 120 frame period.
+    VkClearColorValue clearValue;
+    float flash = std::abs(std::sin(_frameNumber / 120.f));
+    clearValue = { { 0.0f, 0.0f, flash, 1.0f } };
+
+    // Зона покрытием окраски. VK_IMAGE_ASPECT_COLOR_BIT - говорит что красим ВСЁ. ЕСЛИ ЧТО этот флаг это Aspect
+    VkImageSubresourceRange clearRange = vkinit::image_subresource_range(VK_IMAGE_ASPECT_COLOR_BIT);
+
+    // Записываем в коммандный буфер данные о покраске
+    vkCmdClearColorImage(cmd, _swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_GENERAL, &clearValue, 1, &clearRange);
+
+    // make the swapchain image into presentable mode.
+    // «Presentable mode» (режим показа на экране) — это состояние,
+    // в котором картинка физически готова к тому, чтобы операционная система вывела её на наш монитор.
+    vkutil::transition_image(cmd, _swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+
+    // Закрываем запись в коммандный буффер
+    VK_CHECK(vkEndCommandBuffer(cmd));
 }
 
 void VulkanEngine::run()
@@ -164,9 +217,14 @@ void VulkanEngine::init_vulkan(){
     vkb::DeviceBuilder deviceBuilder{ physicalDevice };
     vkb::Device vkbDevice = deviceBuilder.build().value();
 
-    // И переменную из Vkboot-strap тупа присваиваем реальной переменной Vulkan. Чудо аллаха не иначе
+    // И переменную из VkBoot-strap тупа присваиваем реальной переменной Vulkan. Чудо аллаха не иначе
     _device = vkbDevice.device;
     _chosenGPU = physicalDevice.physical_device;
+
+    // Слава святому VkBoot-strap, мы можем на уже созданую логическую GPU просто получить значения ДЛЯ ГРАФИЧЕСКОЙ ОЧЕРЕДИ!
+    _graphicsQueue = vkbDevice.get_queue(vkb::QueueType::graphics).value();
+    // А так же слава богу легко получить значение для ГРАФИЧЕСКОЙ СЕМЬИ!
+    _graphicsQueueFamily = vkbDevice.get_queue_index(vkb::QueueType::graphics).value();
 }
 
 void VulkanEngine::init_swapchain(){
@@ -174,11 +232,77 @@ void VulkanEngine::init_swapchain(){
 }
 
 void VulkanEngine::init_commands(){
+    // Создаём commandPool
+    /* Смотри сюда. Тут как сделано в Vk - tutorial нам говорят 1 командный пул на много командных буферов
+    *  Но если делать vkResetCommandPool то это достаточно медленная операция по поиску адресов в GPU и их удаления
+    *  А вот автор Vk - guide нам говорит: Делаем на каждый буфер по 1 пулу. И теперь мы можем очищая пул СРАЗУ
+    *  уничтожать все ему присущие командные буферы при этом оставляя по очерёдный командный буфер
+    */
+    /* Старый код который мы красиво снизу сократим
+    VkCommandPoolCreateInfo commandPoolInfo = {};
+    commandPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    commandPoolInfo.pNext = nullptr;
+    commandPoolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    commandPoolInfo.queueFamilyIndex = _graphicsQueueFamily;
+    */
 
+    // Красивая реализация из файла vk_initializers.h
+    VkCommandPoolCreateInfo commandPoolInfo = vkinit::command_pool_create_info(_graphicsQueueFamily, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
+
+    // А вот тут прикол короче. На количество графических буферов мы делаем такое-же количество командных буфер, 
+    // а так как 1 command buffer = 1 command pool
+    // То делаем каждому command buffer его собственный command pool
+    for (int i = 0; i < FRAME_OVERLAP; i++) {
+
+        VK_CHECK(vkCreateCommandPool(_device, &commandPoolInfo, nullptr, &_frames[i]._commandPool));
+
+        /* Старый код
+        // allocate the default command buffer that we will use for rendering
+        VkCommandBufferAllocateInfo cmdAllocInfo = {};
+        cmdAllocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        // pNext - это современный костыль, который нужен чтобы
+        // присобачить новую фичу не переписывая весь код
+        cmdAllocInfo.pNext = nullptr;
+        cmdAllocInfo.commandPool = _frames[i]._commandPool;
+        cmdAllocInfo.commandBufferCount = 1;
+        cmdAllocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        */
+
+        // Ну очень эллегантная реализация в ввиде функции из файла vk_initializers.h
+        VkCommandBufferAllocateInfo cmdAllocInfo = vkinit::command_buffer_allocate_info(_frames[i]._commandPool, 1);
+
+        VK_CHECK(vkAllocateCommandBuffers(_device, &cmdAllocInfo, &_frames[i]._mainCommandBuffer));
+    }
 }
 
 void VulkanEngine::init_sync_structures(){
+    //create syncronization structures
+    //one fence to control when the gpu has finished rendering the frame,
+    //and 2 semaphores to syncronize rendering with swapchain
+    //we want the fence to start signalled so we can wait on it on the first frame
+    VkFenceCreateInfo fenceCreateInfo = vkinit::fence_create_info(VK_FENCE_CREATE_SIGNALED_BIT);
+    // Флага для Semaphore не существует так-что просто 0
+    VkSemaphoreCreateInfo semaphoreCreateInfo = vkinit::semaphore_create_info(0);
 
+    for (int i = 0; i < FRAME_OVERLAP; i++) {
+        // Нам нужен лишь один fence потому-что всего два коммандных буфера 0, 1, 0, 1 
+        VK_CHECK(vkCreateFence(_device, &fenceCreateInfo, nullptr, &_frames[i]._renderFence));
+
+        /*
+                [ CPU ] --- (vkQueueSubmit) ---> Отправляет команды на GPU
+                                            |
+                                            v
+        [ Этап А ] ---(vkAcquireNextImage)---> [ _swapchainSemaphore ] (Зеленый свет: картинка свободна!)
+                                            |
+                                            v
+        [ Этап Б ] ======= РЕНДЕРИНГ (Очередь GPU рисует кадр) =======
+                                            |
+                                            v
+        [ Этап В ] <---(vkQueuePresent)------- [ _renderSemaphore ] (Зеленый свет: всё нарисовано!)
+        */
+        VK_CHECK(vkCreateSemaphore(_device, &semaphoreCreateInfo, nullptr, &_frames[i]._swapchainSemaphore));
+        VK_CHECK(vkCreateSemaphore(_device, &semaphoreCreateInfo, nullptr, &_frames[i]._renderSemaphore));
+    }
 }
 
 void VulkanEngine::create_swapchain(uint32_t width, uint32_t height){
