@@ -26,10 +26,18 @@ namespace vkinit {
     // Поставить флаг на Aspect
     VkImageSubresourceRange image_subresource_range(VkImageAspectFlags aspectMask);
 
+    // Обёртка на один Semaphore, но используем мы её дважды. Первый Semaphore: кого ждать. Второй Semaphore: кому давать сигнал.
     VkSemaphoreSubmitInfo semaphore_submit_info(VkPipelineStageFlags2 stageMask, VkSemaphore semaphore);
 
+    // Упаковываем на отправку командный буфер
     VkCommandBufferSubmitInfo command_buffer_submit_info(VkCommandBuffer cmd);
-
+    
+    // Передаём два созданых Semaphore и commandBuffer в структуру, а потом структуру отправим в функцию Vulkan 
     VkSubmitInfo2 submit_info(VkCommandBufferSubmitInfo* cmd, VkSemaphoreSubmitInfo* signalSemaphoreInfo,
         VkSemaphoreSubmitInfo* waitSemaphoreInfo);
+
+    //
+    VkImageCreateInfo image_create_info(VkFormat format, VkImageUsageFlags usageFlags, VkExtent3D extent);
+
+    VkImageViewCreateInfo imageview_create_info(VkFormat format, VkImage image, VkImageAspectFlags aspectFlags);
 }

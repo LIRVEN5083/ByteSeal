@@ -3,6 +3,9 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
 
+#define VMA_IMPLEMENTATION
+#include "vk_mem_alloc.h"
+
 #include <vk_initializers.h>
 #include <vk_types.h>
 #include <vk_images.h>
@@ -75,6 +78,9 @@ void VulkanEngine::cleanup()
             vkDestroySemaphore(_device, _renderSemaphores[i], nullptr);
         }
 
+        //flush the global deletion queue
+        _mainDeletionQueue.flush();
+
         // Да, я даже тут буду как не самый умный человек писать комментарии
         // Уничтожение swapChain
         destroy_swapchain();
@@ -105,8 +111,12 @@ void VulkanEngine::draw()
     
     // Ждём когда GPU прекратит рендерить прошлую картинку в течении 1 сек.
     VK_CHECK(vkWaitForFences(_device, 1, &get_current_frame()._renderFence, true, 1000000000));
+
+    get_current_frame()._deletionQueue.flush();
+
     // Возвращаем все Fences в исходное состояние
     VK_CHECK(vkResetFences(_device, 1, &get_current_frame()._renderFence));
+
 
     // О май гад это же ImageIndex из Vk-tutorial
     uint32_t swapchainImageIndex;
@@ -122,27 +132,34 @@ void VulkanEngine::draw()
     // Передаём данные о структуре записи
     VkCommandBufferBeginInfo cmdBeginInfo = vkinit::command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
+    // Разрешение нашей картинки с которой мы будем работать
+    _drawExtent.width = _drawImage.imageExtent.width;
+    _drawExtent.height = _drawImage.imageExtent.height;
+
     // Открываем на запись. Теперь в наш удобненький cmd можно слать команды
     VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
 
-    // Переключаем swapChain в режим записи
-    vkutil::transition_image(cmd, _swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+    // Переключаем холст на запись
+    vkutil::transition_image(cmd, _drawImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 
-    // Делаем чистый цвет. Который будет мерцать: 120 frame period.
-    VkClearColorValue clearValue;
-    float flash = std::abs(std::sin(_frameNumber / 120.f));
-    clearValue = { { flash, 0.0f, 0.0f, 1.0f } };
+    // Рисуем в холст
+    draw_background(cmd);
 
-    // Зона покрытием окраски. VK_IMAGE_ASPECT_COLOR_BIT - говорит что красим ВСЁ. ЕСЛИ ЧТО этот флаг это Aspect
-    VkImageSubresourceRange clearRange = vkinit::image_subresource_range(VK_IMAGE_ASPECT_COLOR_BIT);
+    // Моя в сотый РАЗ любимаЯ настройка типов данных для различных операций с нмим
+    // Мы переводим ебанный холст swapChain и холст "обыкновенный" в режимы: получателя, отправителя
+    // Потому-что блядское апаратное копирование GPU очень нежное и ему нужно указать всё до последней детали 
+    vkutil::transition_image(cmd, _drawImage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    vkutil::transition_image(cmd, _swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
-    // Записываем в коммандный буфер данные о покраске
-    vkCmdClearColorImage(cmd, _swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_GENERAL, &clearValue, 1, &clearRange);
+    // УРАА блядское копирование, можно теперь танцевать и радоваться
+    vkutil::copy_image_to_image(cmd, _drawImage.image, _swapchainImages[swapchainImageIndex], _drawExtent, _swapchainExtent);
 
     // make the swapchain image into presentable mode.
     // «Presentable mode» (режим показа на экране) — это состояние,
     // в котором картинка физически готова к тому, чтобы операционная система вывела её на наш монитор.
-    vkutil::transition_image(cmd, _swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+
+    vkutil::transition_image(cmd, _swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+
 
     // Закрываем запись в коммандный буффер
     VK_CHECK(vkEndCommandBuffer(cmd));
@@ -180,6 +197,20 @@ void VulkanEngine::draw()
 
     // Это сранный счётчик для чередование на четное/нечетное ну типо вот эта херня: 0, 1, 0, 1
     _frameNumber++;
+}
+
+void VulkanEngine::draw_background(VkCommandBuffer cmd)
+{
+    // Делаем чистый цвет. Который будет мерцать: 120 frame period.
+    VkClearColorValue clearValue;
+    float flash = std::abs(std::sin(_frameNumber / 120.f));
+    clearValue = { { 0.0f, 0.0f, flash, 1.0f } };
+
+    // Зона покрытием окраски. VK_IMAGE_ASPECT_COLOR_BIT - говорит что красим ВСЁ. ЕСЛИ ЧТО этот флаг это Aspect
+    VkImageSubresourceRange clearRange = vkinit::image_subresource_range(VK_IMAGE_ASPECT_COLOR_BIT);
+
+    // Записываем в коммандный буфер данные о покраске
+    vkCmdClearColorImage(cmd, _drawImage.image, VK_IMAGE_LAYOUT_GENERAL, &clearValue, 1, &clearRange);
 }
 
 void VulkanEngine::run()
@@ -268,10 +299,60 @@ void VulkanEngine::init_vulkan(){
     _graphicsQueue = vkbDevice.get_queue(vkb::QueueType::graphics).value();
     // А так же слава богу легко получить значение для ГРАФИЧЕСКОЙ СЕМЬИ!
     _graphicsQueueFamily = vkbDevice.get_queue_index(vkb::QueueType::graphics).value();
+
+    // ИНИЦИАЛИЗАЦИЯ мулти тул АллоКАТАРА который сразу запросит куча памяти у GPU
+    VmaAllocatorCreateInfo allocatorInfo = {};
+    allocatorInfo.physicalDevice = _chosenGPU;
+    allocatorInfo.device = _device;
+    allocatorInfo.instance = _instance;
+    // Ну типо сказанно что этот флаг может нам позволить получать адресса GPU
+    allocatorInfo.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
+    vmaCreateAllocator(&allocatorInfo, &_allocator);
+
+    _mainDeletionQueue.push_function([&]() {
+        vmaDestroyAllocator(_allocator);
+        });
 }
 
 void VulkanEngine::init_swapchain(){
     create_swapchain(_windowExtent.width, _windowExtent.height);
+    //draw image size will match the window
+    VkExtent3D drawImageExtent = {
+        _windowExtent.width,
+        _windowExtent.height,
+        1
+    };
+
+    //hardcoding the draw format to 32 bit float
+    _drawImage.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
+    _drawImage.imageExtent = drawImageExtent;
+
+    VkImageUsageFlags drawImageUsages{};
+    drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    drawImageUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
+    drawImageUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
+    VkImageCreateInfo rimg_info = vkinit::image_create_info(_drawImage.imageFormat, drawImageUsages, drawImageExtent);
+
+    //for the draw image, we want to allocate it from gpu local memory
+    VmaAllocationCreateInfo rimg_allocinfo = {};
+    rimg_allocinfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+    rimg_allocinfo.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+    //allocate and create the image
+    vmaCreateImage(_allocator, &rimg_info, &rimg_allocinfo, &_drawImage.image, &_drawImage.allocation, nullptr);
+
+    //build a image-view for the draw image to use for rendering
+    VkImageViewCreateInfo rview_info = vkinit::imageview_create_info(_drawImage.imageFormat, _drawImage.image, VK_IMAGE_ASPECT_COLOR_BIT);
+
+    VK_CHECK(vkCreateImageView(_device, &rview_info, nullptr, &_drawImage.imageView));
+
+    //add to deletion queues
+    _mainDeletionQueue.push_function([=]() {
+        vkDestroyImageView(_device, _drawImage.imageView, nullptr);
+        vmaDestroyImage(_allocator, _drawImage.image, _drawImage.allocation);
+        });
 }
 
 void VulkanEngine::init_commands(){
