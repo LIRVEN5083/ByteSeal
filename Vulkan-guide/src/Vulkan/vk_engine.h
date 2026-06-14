@@ -7,8 +7,6 @@ constexpr unsigned int FRAME_OVERLAP = 2;
 
 // Пул и буфер на каждый кадр
 struct FrameData {
-	// Semaphore - синхронизатор для GPU. Т.е разные операции GPU -> GPU с помощью Semaphore ждут друг друга
-	VkSemaphore _swapchainSemaphore, _renderSemaphore;
 	// Fence - это синхронизатор для CPU -> GPU. Мы не можем подвердить отправку нового commandBuffer и перезаписать старый, пока старый не выполнится
 	VkFence _renderFence;
 
@@ -74,6 +72,10 @@ public:
 	*/
 	VkQueue _graphicsQueue;
 	uint32_t _graphicsQueueFamily;
+
+	// Semaphore - синхронизатор для GPU. Т.е разные операции GPU -> GPU с помощью Semaphore ждут друг друга
+	std::vector<VkSemaphore> _swapchainSemaphores;
+	std::vector<VkSemaphore> _renderSemaphores;
 
 private:
 	void init_vulkan();

@@ -67,8 +67,12 @@ void VulkanEngine::cleanup()
 
             //destroy sync objects
             vkDestroyFence(_device, _frames[i]._renderFence, nullptr);
-            vkDestroySemaphore(_device, _frames[i]._renderSemaphore, nullptr);
-            vkDestroySemaphore(_device, _frames[i]._swapchainSemaphore, nullptr);
+        }
+
+        // Умный очистка семафор
+        for (uint32_t i = 0; i < _swapchainImages.size(); i++) {
+            vkDestroySemaphore(_device, _swapchainSemaphores[i], nullptr);
+            vkDestroySemaphore(_device, _renderSemaphores[i], nullptr);
         }
 
         // Да, я даже тут буду как не самый умный человек писать комментарии
@@ -97,6 +101,8 @@ void VulkanEngine::cleanup()
 
 void VulkanEngine::draw()
 {
+    const uint32_t SemaphoreId = _frameNumber % _swapchainSemaphores.size();
+    
     // Ждём когда GPU прекратит рендерить прошлую картинку в течении 1 сек.
     VK_CHECK(vkWaitForFences(_device, 1, &get_current_frame()._renderFence, true, 1000000000));
     // Возвращаем все Fences в исходное состояние
@@ -105,7 +111,7 @@ void VulkanEngine::draw()
     // О май гад это же ImageIndex из Vk-tutorial
     uint32_t swapchainImageIndex;
     // Запрашиваем картинку из 
-    VK_CHECK(vkAcquireNextImageKHR(_device, _swapchain, 1000000000, get_current_frame()._swapchainSemaphore, nullptr, &swapchainImageIndex));
+    VK_CHECK(vkAcquireNextImageKHR(_device, _swapchain, 1000000000, _swapchainSemaphores[SemaphoreId], nullptr, &swapchainImageIndex));
 
     // Просто запишешь это в красивую структуру. Это временная запись commandBuffer 
     VkCommandBuffer cmd = get_current_frame()._mainCommandBuffer;
@@ -145,10 +151,10 @@ void VulkanEngine::draw()
     VkCommandBufferSubmitInfo cmdinfo = vkinit::command_buffer_submit_info(cmd);
 
     // Структура для ожидающего семафора
-    VkSemaphoreSubmitInfo waitInfo = vkinit::semaphore_submit_info(VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR, get_current_frame()._swapchainSemaphore);
+    VkSemaphoreSubmitInfo waitInfo = vkinit::semaphore_submit_info(VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR, _swapchainSemaphores[SemaphoreId]);
 
     // Структура для отправляющего сигнал семафора
-    VkSemaphoreSubmitInfo signalInfo = vkinit::semaphore_submit_info(VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT, get_current_frame()._renderSemaphore);
+    VkSemaphoreSubmitInfo signalInfo = vkinit::semaphore_submit_info(VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT, _renderSemaphores[swapchainImageIndex]);
 
     // Структура с прошлимы заполнеными структурами
     VkSubmitInfo2 submit = vkinit::submit_info(&cmdinfo, &signalInfo, &waitInfo);
@@ -165,7 +171,7 @@ void VulkanEngine::draw()
     presentInfo.pSwapchains = &_swapchain;
     presentInfo.swapchainCount = 1;
 
-    presentInfo.pWaitSemaphores = &get_current_frame()._renderSemaphore;
+    presentInfo.pWaitSemaphores = &_renderSemaphores[swapchainImageIndex];
     presentInfo.waitSemaphoreCount = 1;
 
     presentInfo.pImageIndices = &swapchainImageIndex;
@@ -337,8 +343,16 @@ void VulkanEngine::init_sync_structures(){
                                             v
         [ Этап В ] <---(vkQueuePresent)------- [ _renderSemaphore ] (Зеленый свет: всё нарисовано!)
         */
-        VK_CHECK(vkCreateSemaphore(_device, &semaphoreCreateInfo, nullptr, &_frames[i]._swapchainSemaphore));
-        VK_CHECK(vkCreateSemaphore(_device, &semaphoreCreateInfo, nullptr, &_frames[i]._renderSemaphore));
+    }
+
+    // Меняем короче semaphore привязанные к каждому кадру на обычный вектор
+    uint32_t swapchainImageCount = static_cast<uint32_t>(_swapchainImages.size());
+    _swapchainSemaphores.resize(swapchainImageCount);
+    _renderSemaphores.resize(swapchainImageCount);
+
+    for (uint32_t i = 0; i < swapchainImageCount; i++) {
+        VK_CHECK(vkCreateSemaphore(_device, &semaphoreCreateInfo, nullptr, &_swapchainSemaphores[i]));
+        VK_CHECK(vkCreateSemaphore(_device, &semaphoreCreateInfo, nullptr, &_renderSemaphores[i]));
     }
 }
 

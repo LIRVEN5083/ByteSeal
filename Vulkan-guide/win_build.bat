@@ -8,9 +8,4 @@ if %errorlevel% equ 0 (
     cmake --build out/build/Debug
 )
 
-if %errorlevel% equ 0 (
-    start cmd /K "cd /d "%~dp0out\build\Debug" && ByteSeal.exe"
-)
-else(
-    pause
-)
+pause
