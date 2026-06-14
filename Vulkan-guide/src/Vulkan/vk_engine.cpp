@@ -61,7 +61,14 @@ void VulkanEngine::cleanup()
         vkDeviceWaitIdle(_device);
 
         for (int i = 0; i < FRAME_OVERLAP; i++) {
+
+            //already written from before
             vkDestroyCommandPool(_device, _frames[i]._commandPool, nullptr);
+
+            //destroy sync objects
+            vkDestroyFence(_device, _frames[i]._renderFence, nullptr);
+            vkDestroySemaphore(_device, _frames[i]._renderSemaphore, nullptr);
+            vkDestroySemaphore(_device, _frames[i]._swapchainSemaphore, nullptr);
         }
 
         // Да, я даже тут буду как не самый умный человек писать комментарии
@@ -112,17 +119,13 @@ void VulkanEngine::draw()
     // Открываем на запись. Теперь в наш удобненький cmd можно слать команды
     VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
 
-
-
-
-
     // Переключаем swapChain в режим записи
     vkutil::transition_image(cmd, _swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 
     // Делаем чистый цвет. Который будет мерцать: 120 frame period.
     VkClearColorValue clearValue;
     float flash = std::abs(std::sin(_frameNumber / 120.f));
-    clearValue = { { 0.0f, 0.0f, flash, 1.0f } };
+    clearValue = { { flash, 0.0f, 0.0f, 1.0f } };
 
     // Зона покрытием окраски. VK_IMAGE_ASPECT_COLOR_BIT - говорит что красим ВСЁ. ЕСЛИ ЧТО этот флаг это Aspect
     VkImageSubresourceRange clearRange = vkinit::image_subresource_range(VK_IMAGE_ASPECT_COLOR_BIT);
@@ -137,6 +140,40 @@ void VulkanEngine::draw()
 
     // Закрываем запись в коммандный буффер
     VK_CHECK(vkEndCommandBuffer(cmd));
+
+    // Структура для отправки командного буфера
+    VkCommandBufferSubmitInfo cmdinfo = vkinit::command_buffer_submit_info(cmd);
+
+    // Структура для ожидающего семафора
+    VkSemaphoreSubmitInfo waitInfo = vkinit::semaphore_submit_info(VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR, get_current_frame()._swapchainSemaphore);
+
+    // Структура для отправляющего сигнал семафора
+    VkSemaphoreSubmitInfo signalInfo = vkinit::semaphore_submit_info(VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT, get_current_frame()._renderSemaphore);
+
+    // Структура с прошлимы заполнеными структурами
+    VkSubmitInfo2 submit = vkinit::submit_info(&cmdinfo, &signalInfo, &waitInfo);
+
+    // И теперь отправляем все наши упакованные данные
+    VK_CHECK(vkQueueSubmit2(_graphicsQueue, 1, &submit, get_current_frame()._renderFence));
+
+    // Заполняем инфу о структуре ДЛЯ ОТПРАВКИ ИЗОБРАЖЕНИЯ! (Которое уже на нашей видеокарте).
+    // Мы буквально операционной системе говрим вывести готовое изображение.
+    VkPresentInfoKHR presentInfo = {};
+    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    presentInfo.pNext = nullptr;
+    // Ес чо то можно в систему вывести даже другие SwapChains. К примеру на 3 экрана сразу.
+    presentInfo.pSwapchains = &_swapchain;
+    presentInfo.swapchainCount = 1;
+
+    presentInfo.pWaitSemaphores = &get_current_frame()._renderSemaphore;
+    presentInfo.waitSemaphoreCount = 1;
+
+    presentInfo.pImageIndices = &swapchainImageIndex;
+
+    VK_CHECK(vkQueuePresentKHR(_graphicsQueue, &presentInfo));
+
+    // Это сранный счётчик для чередование на четное/нечетное ну типо вот эта херня: 0, 1, 0, 1
+    _frameNumber++;
 }
 
 void VulkanEngine::run()
