@@ -1,6 +1,7 @@
 #pragma once
 
 #include "vk_types.h"
+#include "vk_descriptors.h"
 
 // Боже храни MAX_FRAMES_IN_FLIGHT
 constexpr unsigned int FRAME_OVERLAP = 2;
@@ -73,7 +74,7 @@ public:
 	// Метод выполнения кадра
 	void draw();
 
-	// Тут именно про трисовку
+	// Тут именно про отрисовку
 	void draw_background(VkCommandBuffer cmd);
 
 	//run main loop
@@ -120,18 +121,37 @@ public:
 
 	// Холст
 	AllocatedImage _drawImage;
+
 	// Пизда пингвина которую мы юзали для swapChain, 
 	// такой-же ебанный костыль что-бы передать нужное "разрешение"
 	VkExtent2D _drawExtent;
 
+	// Наша аллокатор, который хранит в себе пул дескрипторов
+	DescriptorAllocator globalDescriptorAllocator;
+
+	// Set - реальные данные куда мы передаём, но кроме инициализации в него ещё наужно закинуть буферы с данными
+	VkDescriptorSet _drawImageDescriptors;
+	// setLayout - это бланк, шаблон по которому мы передаём данные в set который мы делаем аллокацией памяти
+	VkDescriptorSetLayout _drawImageDescriptorLayout;
+
+	// Скомпилированный бинарный код для градиентного шейдера
+	VkPipeline _gradientPipeline;
+	// Инструкция описывающая интерфейс данных для градиентного шейдера
+	VkPipelineLayout _gradientPipelineLayout;
+
 private:
 	void init_vulkan();
+
+	void init_descriptors();
 
 	void init_swapchain();
 
 	void init_commands();
 
 	void init_sync_structures();
+
+	void init_pipelines();
+	void init_background_pipelines();
 
 	void create_swapchain(uint32_t width, uint32_t height);
 
