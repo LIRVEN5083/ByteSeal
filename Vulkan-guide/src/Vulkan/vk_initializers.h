@@ -36,8 +36,16 @@ namespace vkinit {
     VkSubmitInfo2 submit_info(VkCommandBufferSubmitInfo* cmd, VkSemaphoreSubmitInfo* signalSemaphoreInfo,
         VkSemaphoreSubmitInfo* waitSemaphoreInfo);
 
-    //
+    // Это структура-заполнитель для описания текстуры
     VkImageCreateInfo image_create_info(VkFormat format, VkImageUsageFlags usageFlags, VkExtent3D extent);
 
+    // И не нужно 5 пядей во лбу что-бы сказать что это опять блядский тех паспорт для драйвера который потом пойдёт в дескриптор текстуры.
     VkImageViewCreateInfo imageview_create_info(VkFormat format, VkImage image, VkImageAspectFlags aspectFlags);
+
+    // Это структура-заполнитель нужный что-бы быстро поставить логику очистки и сохранения
+    VkRenderingAttachmentInfo attachment_info(
+        VkImageView view, VkClearValue* clear, VkImageLayout layout /*= VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL*/);
+
+    // Это структура-заполнитель ОПЯТЬ же для ебанных тех. данных
+    VkRenderingInfo rendering_info(VkExtent2D renderExtent, VkRenderingAttachmentInfo* colorAttachment, VkRenderingAttachmentInfo* depthAttachment);
 }

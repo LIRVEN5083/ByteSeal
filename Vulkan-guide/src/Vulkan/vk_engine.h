@@ -139,6 +139,15 @@ public:
 	// Инструкция описывающая интерфейс данных для градиентного шейдера
 	VkPipelineLayout _gradientPipelineLayout;
 
+	// Мы будет реализовывать staging buffer
+	VkFence _immFence;
+	VkCommandBuffer _immCommandBuffer;
+	VkCommandPool _immCommandPool;
+
+	void immediate_submit(std::function<void(VkCommandBuffer cmd)>&& function);
+
+	void draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView);
+
 private:
 	void init_vulkan();
 
@@ -152,6 +161,8 @@ private:
 
 	void init_pipelines();
 	void init_background_pipelines();
+
+	void init_imgui();
 
 	void create_swapchain(uint32_t width, uint32_t height);
 
