@@ -6,6 +6,25 @@
 // Боже храни MAX_FRAMES_IN_FLIGHT
 constexpr unsigned int FRAME_OVERLAP = 2;
 
+// Короче мы будем передавать данные (16 чисел) в push_constant (Это в нашем шейдере),
+// если точнее то в кеш видеокарты.
+struct ComputePushConstants {
+	glm::vec4 data1;
+	glm::vec4 data2;
+	glm::vec4 data3;
+	glm::vec4 data4;
+};
+
+// Эфекты
+struct ComputeEffect {
+	const char* name;
+
+	VkPipeline pipeline;
+	VkPipelineLayout layout;
+
+	ComputePushConstants data;
+};
+
 // Обьясняю что нам пытается донести автор vkguide.dev
 // Короче есть такой трабл что если фигачить картинку то ты не когда не узнаешь как она отобразиться у чувачка,
 // поэтому мы херачим всё изображение на холст, а холст копируем в swapChain. Ну и типо у нас больше гибкости должно стать
@@ -143,6 +162,10 @@ public:
 	VkFence _immFence;
 	VkCommandBuffer _immCommandBuffer;
 	VkCommandPool _immCommandPool;
+
+	// Типо что-бы с помощтю imguid менять цвета и приколдесы шейдера котоыре мы передаём через push_constant
+	std::vector<ComputeEffect> backgroundEffects;
+	int currentBackgroundEffect{ 0 };
 
 	void immediate_submit(std::function<void(VkCommandBuffer cmd)>&& function);
 
