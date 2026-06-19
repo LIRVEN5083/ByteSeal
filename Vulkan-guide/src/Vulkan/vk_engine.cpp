@@ -223,6 +223,10 @@ void VulkanEngine::draw_background(VkCommandBuffer cmd)
         effect.data.data1.x = SDL_GetTicks() / 1000.0f;
     }
 
+    if (std::string_view(effect.name) == "squares") {
+        effect.data.data1.x = SDL_GetTicks() / 1000.0f;
+    }
+
     // bind the background compute pipeline
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, effect.pipeline);
 
@@ -616,8 +620,8 @@ void VulkanEngine::init_background_pipelines()
         fmt::print("Error when building the compute shader \n");
     }
 
-    VkShaderModule skyShader;
-    if (!vkutil::load_shader_module("../../../Shaders/Sky/Binary/comp.spv", _device, &skyShader)) {
+    VkShaderModule squaresShader;
+    if (!vkutil::load_shader_module("../../../Shaders/Squares/Binary/comp.spv", _device, &squaresShader)) {
         fmt::print("Error when building the compute shader \n");
     }
 
@@ -649,10 +653,10 @@ void VulkanEngine::init_background_pipelines()
     VK_CHECK(vkCreateComputePipelines(_device, VK_NULL_HANDLE, 1, &computePipelineCreateInfo, nullptr, &gradient.pipeline));
 
     //change the shader module only to create the sky shader
-    computePipelineCreateInfo.stage.module = skyShader;
+    computePipelineCreateInfo.stage.module = squaresShader;
     ComputeEffect sky;
     sky.layout = _gradientPipelineLayout;
-    sky.name = "sky";
+    sky.name = "squares";
     sky.data = {};
     //default sky parameters
     sky.data.data1 = glm::vec4(0.1, 0.2, 0.4, 0.97);
@@ -673,7 +677,7 @@ void VulkanEngine::init_background_pipelines()
 
     //destroy structures properly
     vkDestroyShaderModule(_device, gradientShader, nullptr);
-    vkDestroyShaderModule(_device, skyShader, nullptr);
+    vkDestroyShaderModule(_device, squaresShader, nullptr);
     vkDestroyShaderModule(_device, waveShader, nullptr);
     _mainDeletionQueue.push_function([=, this]() {
         vkDestroyPipelineLayout(_device, _gradientPipelineLayout, nullptr);
