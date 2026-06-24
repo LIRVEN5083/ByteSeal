@@ -153,9 +153,8 @@ public:
 	// setLayout - это бланк, шаблон по которому мы передаём данные в set который мы делаем аллокацией памяти
 	VkDescriptorSetLayout _drawImageDescriptorLayout;
 
-	// Скомпилированный бинарный код для градиентного шейдера
-	VkPipeline _gradientPipeline;
-	// Инструкция описывающая интерфейс данных для градиентного шейдера
+	// Инструкция описывающая интерфейс данных для градиентного шейдера 
+	// (Сейчас это просто Layout для compute shaders, но мне лень переписывать названия в файлах)
 	VkPipelineLayout _gradientPipelineLayout;
 
 	// Мы будет реализовывать staging buffer
