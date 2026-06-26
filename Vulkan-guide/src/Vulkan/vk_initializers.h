@@ -48,4 +48,13 @@ namespace vkinit {
 
     // Это структура-заполнитель ОПЯТЬ же для ебанных тех. данных
     VkRenderingInfo rendering_info(VkExtent2D renderExtent, VkRenderingAttachmentInfo* colorAttachment, VkRenderingAttachmentInfo* depthAttachment);
+
+    // Shader stage - это завёрнутый шейдер модуль для графического конвеера
+    VkPipelineShaderStageCreateInfo pipeline_shader_stage_create_info(
+        VkShaderStageFlagBits stage,
+        VkShaderModule shaderModule,
+        const char* entryPoint = "main");
+
+    // Создание Layout для графического конвеера
+    VkPipelineLayoutCreateInfo pipeline_layout_create_info();
 }

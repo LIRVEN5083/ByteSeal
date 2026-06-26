@@ -190,3 +190,37 @@ VkRenderingInfo vkinit::rendering_info(VkExtent2D renderExtent, VkRenderingAttac
 
     return info;
 }
+
+VkPipelineShaderStageCreateInfo vkinit::pipeline_shader_stage_create_info(
+        VkShaderStageFlagBits stage,
+        VkShaderModule shaderModule,
+        const char* entryPoint)
+{
+    VkPipelineShaderStageCreateInfo info{};
+    info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    info.pNext = nullptr;
+
+    // Какая это стадия (вершинная, фрагментная и т.д.)
+    info.stage = stage;
+    // Сам модуль со скомпилированным кодом
+    info.module = shaderModule;
+    // Точка входа в шейдер (по умолчанию "main")
+    info.pName = entryPoint;
+
+    return info;
+}
+
+VkPipelineLayoutCreateInfo vkinit::pipeline_layout_create_info(){
+    VkPipelineLayoutCreateInfo info{};
+    info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    info.pNext = nullptr;
+    info.flags = 0;
+
+    // По умолчанию создаем пустой layout (без дескрипторов и push-констант)
+    info.setLayoutCount = 0;
+    info.pSetLayouts = nullptr;
+    info.pushConstantRangeCount = 0;
+    info.pPushConstantRanges = nullptr;
+
+    return info;
+}

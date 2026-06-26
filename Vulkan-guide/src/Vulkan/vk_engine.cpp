@@ -155,10 +155,16 @@ void VulkanEngine::draw()
     // Рисуем в холст
     draw_background(cmd);
 
+    // Мы переводим теперь наш холст для работы с растеризованной графикой(Vertex, fragment sgaders), а не Compute shaders
+    vkutil::transition_image(cmd, _drawImage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+    // Рисуем поверх фона из Compute shader наш треугольник
+    draw_geometry(cmd);
+
     // Моя в сотый РАЗ любимаЯ настройка типов данных для различных операций с нмим
     // Мы переводим ебанный холст swapChain и холст "обыкновенный" в режимы: получателя, отправителя
     // Потому-что блядское апаратное копирование GPU очень нежное и ему нужно указать всё до последней детали 
-    vkutil::transition_image(cmd, _drawImage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    vkutil::transition_image(cmd, _drawImage.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
     vkutil::transition_image(cmd, _swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
     // УРАА блядское копирование, можно теперь танцевать и радоваться
@@ -299,8 +305,6 @@ void VulkanEngine::run()
     }
 }
 
-// Это как в функции Draw где мы записываем данные в commandBuffer.
-// Только в этом случае мы передаём функтор(функцию) которая что-то запишет в commandBuffer.
 void VulkanEngine::immediate_submit(std::function<void(VkCommandBuffer cmd)>&& function){
     VK_CHECK(vkResetFences(_device, 1, &_immFence));
     VK_CHECK(vkResetCommandBuffer(_immCommandBuffer, 0));
@@ -595,6 +599,7 @@ void VulkanEngine::init_sync_structures(){
 
 void VulkanEngine::init_pipelines(){
     init_background_pipelines();
+    init_triangle_pipeline();
 }
 
 void VulkanEngine::init_background_pipelines()
@@ -616,17 +621,17 @@ void VulkanEngine::init_background_pipelines()
     VK_CHECK(vkCreatePipelineLayout(_device, &computeLayout, nullptr, &_gradientPipelineLayout));
 
     VkShaderModule gradientShader;
-    if (!vkutil::load_shader_module("../../../Shaders/Gradient/Binary/comp.spv", _device, &gradientShader)) {
+    if (!vkutil::load_shader_module("../Shaders/Gradient/Binary/comp.spv", _device, &gradientShader)) {
         fmt::print("Error when building the compute shader \n");
     }
 
     VkShaderModule squaresShader;
-    if (!vkutil::load_shader_module("../../../Shaders/Squares/Binary/comp.spv", _device, &squaresShader)) {
+    if (!vkutil::load_shader_module("../Shaders/Squares/Binary/comp.spv", _device, &squaresShader)) {
         fmt::print("Error when building the compute shader \n");
     }
 
     VkShaderModule waveShader;
-    if (!vkutil::load_shader_module("../../../Shaders/Wave/Binary/comp.spv", _device, &waveShader)) {
+    if (!vkutil::load_shader_module("../Shaders/Wave/Binary/comp.spv", _device, &waveShader)) {
         fmt::print("Error when building the compute shader \n");
     }
 
@@ -685,6 +690,64 @@ void VulkanEngine::init_background_pipelines()
         vkDestroyPipeline(_device, gradient.pipeline, nullptr);
         vkDestroyPipeline(_device, waves.pipeline, nullptr);
         });
+}
+
+void VulkanEngine::init_triangle_pipeline(){
+    VkShaderModule triangleFragShader;
+    if (!vkutil::load_shader_module("../Shaders/Triangle/Binary/colored_triangle.frag.spv", _device, &triangleFragShader)) {
+        fmt::print("Error when building the triangle fragment shader module");
+    }
+    else {
+        fmt::print("Triangle fragment shader succesfully loaded");
+    }
+
+    VkShaderModule triangleVertexShader;
+    if (!vkutil::load_shader_module("../Shaders/Triangle/Binary/colored_triangle.vert.spv", _device, &triangleVertexShader)) {
+        fmt::print("Error when building the triangle vertex shader module");
+    }
+    else {
+        fmt::print("Triangle vertex shader succesfully loaded");
+    }
+
+    //build the pipeline layout that controls the inputs/outputs of the shader
+    //we are not using descriptor sets or other systems yet, so no need to use anything other than empty default
+    VkPipelineLayoutCreateInfo pipeline_layout_info = vkinit::pipeline_layout_create_info();
+    VK_CHECK(vkCreatePipelineLayout(_device, &pipeline_layout_info, nullptr, &_trianglePipelineLayout));
+
+    PipelineBuilder pipelineBuilder;
+
+    //use the triangle layout we created
+    pipelineBuilder._pipelineLayout = _trianglePipelineLayout;
+    //connecting the vertex and pixel shaders to the pipeline
+    pipelineBuilder.set_shaders(triangleVertexShader, triangleFragShader);
+    //it will draw triangles
+    pipelineBuilder.set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+    //filled triangles
+    pipelineBuilder.set_polygon_mode(VK_POLYGON_MODE_FILL);
+    //no backface culling
+    pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+    //no multisampling
+    pipelineBuilder.set_multisampling_none();
+    //no blending
+    pipelineBuilder.disable_blending();
+    //no depth testing
+    pipelineBuilder.disable_depthtest();
+
+    //connect the image format we will draw into, from draw image
+    pipelineBuilder.set_color_attachment_format(_drawImage.imageFormat);
+    pipelineBuilder.set_depth_format(VK_FORMAT_UNDEFINED);
+
+    //finally build the pipeline
+    _trianglePipeline = pipelineBuilder.build_pipeline(_device);
+
+    //clean structures
+    vkDestroyShaderModule(_device, triangleFragShader, nullptr);
+    vkDestroyShaderModule(_device, triangleVertexShader, nullptr);
+
+    _mainDeletionQueue.push_function([&]() {
+        vkDestroyPipelineLayout(_device, _trianglePipelineLayout, nullptr);
+        vkDestroyPipeline(_device, _trianglePipeline, nullptr);
+    });
 }
 
 void VulkanEngine::init_imgui(){
@@ -748,6 +811,42 @@ void VulkanEngine::init_imgui(){
         vkDestroyDescriptorPool(_device, imguiPool, nullptr);
         });
 }
+
+void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
+{
+    //begin a render pass  connected to our draw image
+    VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(_drawImage.imageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+    VkRenderingInfo renderInfo = vkinit::rendering_info(_drawExtent, &colorAttachment, nullptr);
+    vkCmdBeginRendering(cmd, &renderInfo);
+
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _trianglePipeline);
+
+    //set dynamic viewport and scissor
+    VkViewport viewport = {};
+    viewport.x = 0;
+    viewport.y = 0;
+    viewport.width = _drawExtent.width;
+    viewport.height = _drawExtent.height;
+    viewport.minDepth = 0.f;
+    viewport.maxDepth = 1.f;
+
+    vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+    VkRect2D scissor = {};
+    scissor.offset.x = 0;
+    scissor.offset.y = 0;
+    scissor.extent.width = _drawExtent.width;
+    scissor.extent.height = _drawExtent.height;
+
+    vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+    //launch a draw command to draw 3 vertices
+    vkCmdDraw(cmd, 3, 1, 0, 0);
+
+    vkCmdEndRendering(cmd);
+}
+
 
 void VulkanEngine::create_swapchain(uint32_t width, uint32_t height){
     // Создаём структуру для создания swapChain (VkPhysicalDevice, VkLogicalDevice, VkSurface)

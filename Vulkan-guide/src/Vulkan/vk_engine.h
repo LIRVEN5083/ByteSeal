@@ -157,6 +157,10 @@ public:
 	// (Сейчас это просто Layout для compute shaders, но мне лень переписывать названия в файлах)
 	VkPipelineLayout _gradientPipelineLayout;
 
+	// Второй графический конвеер для растеризованой графики (Vetex, fragment shader) и его Layout
+	VkPipelineLayout _trianglePipelineLayout;
+	VkPipeline _trianglePipeline;
+
 	// Мы будет реализовывать staging buffer
 	VkFence _immFence;
 	VkCommandBuffer _immCommandBuffer;
@@ -166,8 +170,12 @@ public:
 	std::vector<ComputeEffect> backgroundEffects;
 	int currentBackgroundEffect{ 0 };
 
+	// Это как в функции Draw где мы записываем данные в commandBuffer.
+	// (В Vulkan-tutorial всё писалось в одной функции, а у нас всё в разных)
+	// Только в этом случае мы передаём функтор(функцию) которая что-то запишет в commandBuffer.
 	void immediate_submit(std::function<void(VkCommandBuffer cmd)>&& function);
 
+	// Отрисовка интерфейса
 	void draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView);
 
 private:
@@ -181,10 +189,16 @@ private:
 
 	void init_sync_structures();
 
+	// Инициации конвееров
 	void init_pipelines();
+	// Инициация ComputePipeline (которые на фоне)
 	void init_background_pipelines();
-
+	// Инициация GraphicPipeline
+	void init_triangle_pipeline();
+	// Инициация Dear IMGUI
 	void init_imgui();
+	// Рисуем в GraphicPipeline
+	void draw_geometry(VkCommandBuffer cmd);
 
 	void create_swapchain(uint32_t width, uint32_t height);
 
