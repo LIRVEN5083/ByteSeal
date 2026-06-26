@@ -2,11 +2,11 @@ set -e
 
 rm -rf out
 
-CC=clang CXX=clang++ cmake -B out/build/Debug -G "Ninja"
+CC=clang CXX=clang++ cmake -B out -G "Ninja"
 
-cmake --build out/build/Debug
+cmake --build out
 
-cd out/build/Debug
+cd out
 ./ByteSeal
 
 read -p
