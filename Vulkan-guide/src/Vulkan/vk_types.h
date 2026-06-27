@@ -28,3 +28,38 @@
             abort();                                                    \
         }                                                               \
     } while (0)
+
+// Структура которая хранит буфер и его аллокатор
+struct AllocatedBuffer {
+    VkBuffer buffer;            // Указатель на буфер
+    VmaAllocation allocation;   // Помнит конкретно выделенное место в памяти, нужен для удаления буфера
+    VmaAllocationInfo info;     // Обязательно нужен для того что-бы копировать данные через memcpy
+};
+
+
+// Простейшая структура, которая хранит данные о треугольнике (vertex, uv)
+struct Vertex {
+
+    glm::vec3 position;
+    float uv_x;
+    glm::vec3 normal;
+    float uv_y;
+    glm::vec4 color;
+};
+
+// Короче: Это типо крутой умны система на Vulkan 1.3
+// вместо того что-бы связывать дескрипторами, связывам напрямую указателем на 64 бита
+// это называеться BDA и в BDA чаще пихают pushConstant
+// Передаёшь указатель своей GPU и уже шейдер отлавливает адресс и работает с данными
+struct GPUMeshBuffers {
+
+    AllocatedBuffer indexBuffer;
+    AllocatedBuffer vertexBuffer;
+    VkDeviceAddress vertexBufferAddress;
+};
+
+// push constants для работы
+struct GPUDrawPushConstants {
+    glm::mat4 worldMatrix;          // Обычная матрица преобразований
+    VkDeviceAddress vertexBuffer;   // Вершинный буфер который мы алоцировали и получили адресс дляс передачи
+};

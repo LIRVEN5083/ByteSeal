@@ -157,9 +157,15 @@ public:
 	// (Сейчас это просто Layout для compute shaders, но мне лень переписывать названия в файлах)
 	VkPipelineLayout _gradientPipelineLayout;
 
-	// Второй графический конвеер для растеризованой графики (Vetex, fragment shader) и его Layout
+	// Второй графический конвеер (ТРЕУГОЛЬНИК) для растеризованой графики (Vetex, fragment shader) и его Layout
 	VkPipelineLayout _trianglePipelineLayout;
 	VkPipeline _trianglePipeline;
+
+	// Графический конвеер
+	VkPipelineLayout _meshPipelineLayout;
+	VkPipeline _meshPipeline;
+	// Данные для BDA
+	GPUMeshBuffers rectangle;
 
 	// Мы будет реализовывать staging buffer
 	VkFence _immFence;
@@ -170,9 +176,11 @@ public:
 	std::vector<ComputeEffect> backgroundEffects;
 	int currentBackgroundEffect{ 0 };
 
-	// Это как в функции Draw где мы записываем данные в commandBuffer.
-	// (В Vulkan-tutorial всё писалось в одной функции, а у нас всё в разных)
-	// Только в этом случае мы передаём функтор(функцию) которая что-то запишет в commandBuffer.
+	// Мы создаём просто командный буфер и в него записываем команду через функтор который мы передаём
+	// Потом базовые подожди пока закончит
+	// И в середине уже сам функтор который что либо делает с созданным командным буфером.
+	// А потом его отправляет в очередь.
+	// Если не душнить, то это просто удобный способ отправить команду видеокарте
 	void immediate_submit(std::function<void(VkCommandBuffer cmd)>&& function);
 
 	// Отрисовка интерфейса
@@ -193,12 +201,24 @@ private:
 	void init_pipelines();
 	// Инициация ComputePipeline (которые на фоне)
 	void init_background_pipelines();
-	// Инициация GraphicPipeline
+	// Инициация GraphicPipeline для треугольника
 	void init_triangle_pipeline();
+	// Инициализия GraphicPipeline
+	void init_mesh_pipeline();
 	// Инициация Dear IMGUI
 	void init_imgui();
 	// Рисуем в GraphicPipeline
 	void draw_geometry(VkCommandBuffer cmd);
+
+	// Алокация и возврат буфера
+	AllocatedBuffer create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
+	// Удаление буфера
+	void destroy_buffer(const AllocatedBuffer& buffer);
+	// Загрузка данных с DDR на GDDR
+	GPUMeshBuffers uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
+
+	// Омерзительный костыль
+	void init_default_data();
 
 	void create_swapchain(uint32_t width, uint32_t height);
 
