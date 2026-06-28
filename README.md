@@ -8,5 +8,8 @@ To compile projects you need:
   
 - Clang + LLVM
 
+
+- Ninja
+
   
 - Vulkan SDK
