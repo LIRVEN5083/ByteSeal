@@ -230,7 +230,10 @@ void VulkanEngine::draw(){
 
     presentInfo.pImageIndices = &swapchainImageIndex;
 
-    VK_CHECK(vkQueuePresentKHR(_graphicsQueue, &presentInfo));
+    VkResult presentResult = vkQueuePresentKHR(_graphicsQueue, &presentInfo);
+    if (presentResult == VK_ERROR_OUT_OF_DATE_KHR) {
+        resize_requested = true;
+    }
 
     // Это сранный счётчик для чередование на четное/нечетное ну типо вот эта херня: 0, 1, 0, 1
     _frameNumber++;
