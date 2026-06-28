@@ -2,6 +2,7 @@
 
 #include "vk_types.h"
 #include "vk_descriptors.h"
+#include "vk_loader.h"
 
 // Боже храни MAX_FRAMES_IN_FLIGHT
 constexpr unsigned int FRAME_OVERLAP = 2;
@@ -140,6 +141,7 @@ public:
 
 	// Холст
 	AllocatedImage _drawImage;
+	AllocatedImage _depthImage;
 
 	// Пизда пингвина которую мы юзали для swapChain, 
 	// такой-же ебанный костыль что-бы передать нужное "разрешение"
@@ -186,6 +188,10 @@ public:
 	// Отрисовка интерфейса
 	void draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView);
 
+	// Загрузка данных с DDR на GDDR
+	GPUMeshBuffers uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
+
+	std::vector<std::shared_ptr<MeshAsset>> testMeshes;
 private:
 	void init_vulkan();
 
@@ -214,8 +220,6 @@ private:
 	AllocatedBuffer create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
 	// Удаление буфера
 	void destroy_buffer(const AllocatedBuffer& buffer);
-	// Загрузка данных с DDR на GDDR
-	GPUMeshBuffers uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
 
 	// Омерзительный костыль
 	void init_default_data();

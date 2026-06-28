@@ -43,6 +43,8 @@ add_executable(${PROJECT_NAME}
     src/external/tiny_obj_loader.h
 )
 
+add_subdirectory(src/external/fastgltf)
+
 target_include_directories(${PROJECT_NAME} PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src/external
 
@@ -61,6 +63,9 @@ target_include_directories(${PROJECT_NAME} PUBLIC
      ${SDL3_INCLUDE_DIR}
 
      ${CMAKE_CURRENT_SOURCE_DIR}/src/Vulkan
+
+     ${CMAKE_CURRENT_SOURCE_DIR}/src/external/fastgltf/include
+     ${CMAKE_CURRENT_SOURCE_DIR}/src/external/fastgltf/src
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE 
@@ -85,6 +90,7 @@ target_link_libraries(${PROJECT_NAME}
     Vulkan::Vulkan
     Vulkan::Headers
     ${SDL3_LINK_TARGET} 
+    fastgltf::fastgltf
 )
 
 if(WIN32)

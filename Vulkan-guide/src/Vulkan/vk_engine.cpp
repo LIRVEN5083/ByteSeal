@@ -6,6 +6,7 @@
 #define VMA_IMPLEMENTATION
 #include "vk_mem_alloc.h"
 
+#include <vk_loader.h>
 #include <vk_initializers.h>
 #include <vk_images.h>
 #include <vk_pipelines.h>
@@ -62,7 +63,8 @@ void VulkanEngine::init()
 
     init_imgui();
 
-    init_default_data();
+    // Костыль
+    testMeshes = loadGltfMeshes(this,"../Model/basicmesh.glb").value();
 
     // Просто булевая переменная которая говорит запустился рендер чи нет
     _isInitialized = true;
@@ -74,6 +76,13 @@ void VulkanEngine::cleanup()
     if (_isInitialized) {
 
         vkDeviceWaitIdle(_device);
+
+        for (auto& mesh : testMeshes) {
+            destroy_buffer(mesh->meshBuffers.indexBuffer);
+            destroy_buffer(mesh->meshBuffers.vertexBuffer);
+        }
+
+        _mainDeletionQueue.flush();
 
         for (int i = 0; i < FRAME_OVERLAP; i++) {
 
@@ -159,6 +168,10 @@ void VulkanEngine::draw()
 
     // Мы переводим теперь наш холст для работы с растеризованной графикой(Vertex, fragment sgaders), а не Compute shaders
     vkutil::transition_image(cmd, _drawImage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+    // Для преобразования картинки
+    vkutil::transition_image(cmd, _drawImage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    vkutil::transition_image(cmd, _depthImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
     // Рисуем поверх фона из Compute shader наш треугольник
     draw_geometry(cmd);
@@ -494,11 +507,29 @@ void VulkanEngine::init_swapchain(){
 
     VK_CHECK(vkCreateImageView(_device, &rview_info, nullptr, &_drawImage.imageView));
 
+    _depthImage.imageFormat = VK_FORMAT_D32_SFLOAT;
+    _depthImage.imageExtent = drawImageExtent;
+    VkImageUsageFlags depthImageUsages{};
+    depthImageUsages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+
+    VkImageCreateInfo dimg_info = vkinit::image_create_info(_depthImage.imageFormat, depthImageUsages, drawImageExtent);
+
+    //allocate and create the image
+    vmaCreateImage(_allocator, &dimg_info, &rimg_allocinfo, &_depthImage.image, &_depthImage.allocation, nullptr);
+
+    //build a image-view for the draw image to use for rendering
+    VkImageViewCreateInfo dview_info = vkinit::imageview_create_info(_depthImage.imageFormat, _depthImage.image, VK_IMAGE_ASPECT_DEPTH_BIT);
+
+    VK_CHECK(vkCreateImageView(_device, &dview_info, nullptr, &_depthImage.imageView));
+
     //add to deletion queues
-    _mainDeletionQueue.push_function([=, this]() {
+    _mainDeletionQueue.push_function([=]() {
         vkDestroyImageView(_device, _drawImage.imageView, nullptr);
         vmaDestroyImage(_allocator, _drawImage.image, _drawImage.allocation);
-        });
+
+        vkDestroyImageView(_device, _depthImage.imageView, nullptr);
+        vmaDestroyImage(_allocator, _depthImage.image, _depthImage.allocation);
+});
 }
 
 void VulkanEngine::init_commands(){
@@ -800,11 +831,12 @@ void VulkanEngine::init_mesh_pipeline(){
     //no blending
     pipelineBuilder.disable_blending();
 
-    pipelineBuilder.disable_depthtest();
+    //pipelineBuilder.disable_depthtest();
+    pipelineBuilder.enable_depthtest(true, VK_COMPARE_OP_GREATER_OR_EQUAL);
 
     //connect the image format we will draw into, from draw image
     pipelineBuilder.set_color_attachment_format(_drawImage.imageFormat);
-    pipelineBuilder.set_depth_format(VK_FORMAT_UNDEFINED);
+    pipelineBuilder.set_depth_format(_depthImage.imageFormat);
 
     //finally build the pipeline
     _meshPipeline = pipelineBuilder.build_pipeline(_device);
@@ -883,15 +915,17 @@ void VulkanEngine::init_imgui(){
 
 void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
 {
-    //begin a render pass  connected to our draw image
-    VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(_drawImage.imageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    // 1. Проверяем, загрузились ли наши меши при старте, чтобы не поймать crash
+    if (testMeshes.empty()) return;
 
-    VkRenderingInfo renderInfo = vkinit::rendering_info(_drawExtent, &colorAttachment, nullptr);
+    // 2. Начинаем рендер-пасс (Используем COLOR_ATTACHMENT_OPTIMAL вместо GENERAL)
+    VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(_drawImage.imageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    VkRenderingAttachmentInfo depthAttachment = vkinit::depth_attachment_info(_depthImage.imageView, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+
+    VkRenderingInfo renderInfo = vkinit::rendering_info(_windowExtent, &colorAttachment, &depthAttachment);
     vkCmdBeginRendering(cmd, &renderInfo);
 
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _trianglePipeline);
-
-    //set dynamic viewport and scissor
+    // 3. Выставляем динамические Viewport и Scissor
     VkViewport viewport = {};
     viewport.x = 0;
     viewport.y = 0;
@@ -899,7 +933,6 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
     viewport.height = _drawExtent.height;
     viewport.minDepth = 0.f;
     viewport.maxDepth = 1.f;
-
     vkCmdSetViewport(cmd, 0, 1, &viewport);
 
     VkRect2D scissor = {};
@@ -907,23 +940,43 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
     scissor.offset.y = 0;
     scissor.extent.width = _drawExtent.width;
     scissor.extent.height = _drawExtent.height;
-
     vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-    //launch a draw command to draw 3 vertices
-    vkCmdDraw(cmd, 3, 1, 0, 0);
+    // =================================================================
+    // СНАЧАЛА СЧИТАЕМ ВСЕ МАТРИЦЫ И ГОТОВИМ ДАННЫЕ
+    // =================================================================
+    glm::mat4 modelRotation = glm::rotate(glm::mat4(1.0f), glm::radians(180.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+    glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3{ 0, 0, -5 });
+    glm::mat4 projection = glm::perspective(glm::radians(70.f), (float)_drawExtent.width / (float)_drawExtent.height, 0.1f, 10000.f);
 
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _meshPipeline);
+    // Инвертируем ось Y для Vulkan
+    projection[1][1] *= -1;
 
     GPUDrawPushConstants push_constants;
-    push_constants.worldMatrix = glm::mat4{ 1.f };
-    push_constants.vertexBuffer = rectangle.vertexBufferAddress;
+    push_constants.worldMatrix = projection * view * modelRotation; // Записываем матрицу камеры
+    // ВАЖНО: Если у тебя в структуре из гайда поле называется worldLink, замени .worldMatrix на .worldLink
 
+    // Передаем Buffer Device Address для вершин
+    push_constants.vertexBuffer = testMeshes[2]->meshBuffers.vertexBufferAddress;
+
+    // =================================================================
+    // ТЕПЕРЬ ОТПРАВЛЯЕМ НА КАРТУ И РИСУЕМ
+    // =================================================================
+
+    // Биндим пайплайн для 3D мешей (созданный с поддержкой формата глубины D32)
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _meshPipeline);
+
+    // Отправляем push-константы со ВСЕМИ данными (матрица + адрес буфера)
     vkCmdPushConstants(cmd, _meshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &push_constants);
-    vkCmdBindIndexBuffer(cmd, rectangle.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 
-    vkCmdDrawIndexed(cmd, 6, 1, 0, 0, 0);
+    // Биндим индексный буфер
+    vkCmdBindIndexBuffer(cmd, testMeshes[2]->meshBuffers.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 
+    // Рисуем первую поверхность нашей 3D модели
+    // ВАЖНО: в новых версиях поле может называться indexCount вместо count. Проверь у себя.
+    vkCmdDrawIndexed(cmd, testMeshes[2]->surfaces[0].count, 1, testMeshes[2]->surfaces[0].startIndex, 0, 0);
+
+    // Завершаем отрисовку
     vkCmdEndRendering(cmd);
 }
 
