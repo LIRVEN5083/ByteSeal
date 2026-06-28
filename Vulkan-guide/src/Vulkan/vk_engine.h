@@ -100,6 +100,9 @@ public:
 	//run main loop
 	void run();
 
+	// Возможность изменять размер окна
+	bool resize_requested = false;
+
 	// ИНИЦИАЦИЯ Vulkan и его важных составляющих
 	VkInstance _instance;// Точка запуска Vulkan
 	VkDebugUtilsMessengerEXT _debug_messenger;// Слои валидации
@@ -146,6 +149,7 @@ public:
 	// Пизда пингвина которую мы юзали для swapChain, 
 	// такой-же ебанный костыль что-бы передать нужное "разрешение"
 	VkExtent2D _drawExtent;
+	float renderScale = 1.0f;
 
 	// Наша аллокатор, который хранит в себе пул дескрипторов
 	DescriptorAllocator globalDescriptorAllocator;
@@ -227,4 +231,6 @@ private:
 	void create_swapchain(uint32_t width, uint32_t height);
 
 	void destroy_swapchain();
+
+	void resize_swapchain();
 };

@@ -39,7 +39,7 @@ void VulkanEngine::init()
     SDL_Init(SDL_INIT_VIDEO);
 
     // Просто в переменную записываем флаг, который указывает что SDL работает в связке с Vulkan
-    SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_VULKAN);
+    SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
 
     // Заполнение структуры для создания окна
     _window = SDL_CreateWindow(
@@ -126,8 +126,7 @@ void VulkanEngine::cleanup()
     loadedEngine = nullptr;
 }
 
-void VulkanEngine::draw()
-{
+void VulkanEngine::draw(){
     const uint32_t SemaphoreId = _frameNumber % _swapchainSemaphores.size();
 
     // Ждём когда GPU прекратит рендерить прошлую картинку в течении 1 сек.
@@ -142,7 +141,11 @@ void VulkanEngine::draw()
     // О май гад это же ImageIndex из Vk-tutorial
     uint32_t swapchainImageIndex;
     // Запрашиваем картинку из 
-    VK_CHECK(vkAcquireNextImageKHR(_device, _swapchain, 1000000000, _swapchainSemaphores[SemaphoreId], nullptr, &swapchainImageIndex));
+    VkResult e = vkAcquireNextImageKHR(_device, _swapchain, 1000000000, _swapchainSemaphores[SemaphoreId], nullptr, &swapchainImageIndex);
+    if (e == VK_ERROR_OUT_OF_DATE_KHR) {
+        resize_requested = true;
+        return ;
+    }
 
     // Просто запишешь это в красивую структуру. Это временная запись commandBuffer 
     VkCommandBuffer cmd = get_current_frame()._mainCommandBuffer;
@@ -154,8 +157,8 @@ void VulkanEngine::draw()
     VkCommandBufferBeginInfo cmdBeginInfo = vkinit::command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
     // Разрешение нашей картинки с которой мы будем работать
-    _drawExtent.width = _drawImage.imageExtent.width;
-    _drawExtent.height = _drawImage.imageExtent.height;
+    _drawExtent.height = std::min(_swapchainExtent.height, _drawImage.imageExtent.height) * renderScale;
+    _drawExtent.width= std::min(_swapchainExtent.width, _drawImage.imageExtent.width) * renderScale;
 
     // Открываем на запись. Теперь в наш удобненький cmd можно слать команды
     VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
@@ -168,9 +171,7 @@ void VulkanEngine::draw()
 
     // Мы переводим теперь наш холст для работы с растеризованной графикой(Vertex, fragment sgaders), а не Compute shaders
     vkutil::transition_image(cmd, _drawImage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-
     // Для преобразования картинки
-    vkutil::transition_image(cmd, _drawImage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     vkutil::transition_image(cmd, _depthImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
     // Рисуем поверх фона из Compute shader наш треугольник
@@ -291,7 +292,9 @@ void VulkanEngine::run()
             continue;
         }
 
-
+        if (resize_requested) {
+            resize_swapchain();
+        }
 
         // IMGUI
         // Инициализация кадра для бэкендов перед NewFrame
@@ -300,6 +303,8 @@ void VulkanEngine::run()
         ImGui::NewFrame();
 
         if (ImGui::Begin("background")) {
+
+            ImGui::SliderFloat("Render Scale",&renderScale, 0.3f, 1.f);
 
             ComputeEffect& selected = backgroundEffects[currentBackgroundEffect];
 
@@ -1140,4 +1145,20 @@ void VulkanEngine::destroy_swapchain(){
     for (int i = 0; i < _swapchainImageViews.size(); i++) {
         vkDestroyImageView(_device, _swapchainImageViews[i], nullptr);
     }
+}
+
+void VulkanEngine::resize_swapchain()
+{
+    vkDeviceWaitIdle(_device);
+
+    destroy_swapchain();
+
+    int w, h;
+    SDL_GetWindowSize(_window, &w, &h);
+    _windowExtent.width = w;
+    _windowExtent.height = h;
+
+    create_swapchain(_windowExtent.width, _windowExtent.height);
+
+    resize_requested = false;
 }
