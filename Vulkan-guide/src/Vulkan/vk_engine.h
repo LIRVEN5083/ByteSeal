@@ -71,6 +71,9 @@ struct FrameData {
 	// Так-же пул намертво привязан к очереди, то-есть команндные пулы для вычеслений и графики это должны быть разные сущности
 	VkCommandPool _commandPool;
 	VkCommandBuffer _mainCommandBuffer;
+
+	// Наша новая система аллокации дескрипторов
+	DescriptorAllocatorGrowable _frameDescriptors;
 };
 
 class VulkanEngine {
@@ -152,12 +155,16 @@ public:
 	float renderScale = 1.0f;
 
 	// Наша аллокатор, который хранит в себе пул дескрипторов
-	DescriptorAllocator globalDescriptorAllocator;
+	DescriptorAllocatorGrowable globalDescriptorAllocator;
 
 	// Set - реальные данные куда мы передаём, но кроме инициализации в него ещё наужно закинуть буферы с данными
 	VkDescriptorSet _drawImageDescriptors;
 	// setLayout - это бланк, шаблон по которому мы передаём данные в set который мы делаем аллокацией памяти
 	VkDescriptorSetLayout _drawImageDescriptorLayout;
+
+	// Ну типо дескрипторы для сцены
+	GPUSceneData sceneData;
+	VkDescriptorSetLayout _gpuSceneDataDescriptorLayout;
 
 	// Инструкция описывающая интерфейс данных для градиентного шейдера 
 	// (Сейчас это просто Layout для compute shaders, но мне лень переписывать названия в файлах)
