@@ -203,6 +203,25 @@ public:
 	GPUMeshBuffers uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
 
 	std::vector<std::shared_ptr<MeshAsset>> testMeshes;
+
+	// Создание пустого изображения на GPU
+	AllocatedImage create_image(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
+	// Нарисовать на пустой алоцированном холсте картинку (копирование данных на пустую картинку)
+	AllocatedImage create_image(void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
+	// Удаление изображение из GPU
+	void destroy_image(const AllocatedImage& img);
+
+// Temporary data about TEXTURES /////////////////////////////////////////////////////////////////////////////////////
+	AllocatedImage _whiteImage;
+	AllocatedImage _blackImage;
+	AllocatedImage _greyImage;
+	AllocatedImage _errorCheckerboardImage;
+
+	VkSampler _defaultSamplerLinear;
+	VkSampler _defaultSamplerNearest;
+
+	VkDescriptorSetLayout _singleImageDescriptorLayout;
+
 private:
 	void init_vulkan();
 
