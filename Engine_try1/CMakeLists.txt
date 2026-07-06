@@ -14,13 +14,16 @@ if(WIN32)
     set(SDL3_LINK_TARGET "${CMAKE_CURRENT_SOURCE_DIR}/src/external/SDL3/lib/x64/SDL3.lib")
 else()
     find_package(SDL3 REQUIRED CONFIG)
-    set(SDL3_INCLUDE_DIR "") 
+    set(SDL3_INCLUDE_DIR "")
     set(SDL3_LINK_TARGET SDL3::SDL3-shared)
 endif()
 
 add_executable(${PROJECT_NAME}
-    src/Vulkan/main.cpp
-    
+        src/Vulkan/main.cpp
+        src/Vulkan/vk_init_engine.cpp
+        src/Vulkan/vk_init_engine.h
+        src/Vulkan/vk_types.h
+
     src/external/vk-bootstrap/src/VkBootstrap.h
     src/external/vk-bootstrap/src/VkBootstrap.cpp
 
@@ -46,8 +49,8 @@ target_include_directories(${PROJECT_NAME} PUBLIC
 
     ${CMAKE_CURRENT_SOURCE_DIR}/src/external/fmt/include
 
-     ${CMAKE_CURRENT_SOURCE_DIR}/src/external/VulkanMemoryAllocator/include 
-  
+     ${CMAKE_CURRENT_SOURCE_DIR}/src/external/VulkanMemoryAllocator/include
+
      ${CMAKE_CURRENT_SOURCE_DIR}/src/external/vk-bootstrap/src
 
      ${CMAKE_CURRENT_SOURCE_DIR}/src/external/imgui
@@ -61,7 +64,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC
      ${CMAKE_CURRENT_SOURCE_DIR}/src/external/fastgltf/src
 )
 
-target_compile_definitions(${PROJECT_NAME} PRIVATE 
+target_compile_definitions(${PROJECT_NAME} PRIVATE
     VK_BOOTSTRAP_VULKAN_HEADER_VERSION=350
     VMA_STATIC_VULKAN_FUNCTIONS=1
     VMA_DYNAMIC_VULKAN_FUNCTIONS=0
@@ -79,10 +82,10 @@ elseif(UNIX AND NOT APPLE)
     )
 endif()
 
-target_link_libraries(${PROJECT_NAME} 
+target_link_libraries(${PROJECT_NAME}
     Vulkan::Vulkan
     Vulkan::Headers
-    ${SDL3_LINK_TARGET} 
+    ${SDL3_LINK_TARGET}
     fastgltf::fastgltf
 )
 

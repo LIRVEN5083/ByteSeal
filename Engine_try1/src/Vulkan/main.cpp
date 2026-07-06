@@ -1,14 +1,7 @@
-#include "vk_engine.h"
+#include "vk_init_engine.h"
 
-int main(int argc, char* argv[])
-{
-	VulkanEngine engine;
-
-	engine.init();	
-	
-	engine.run();	
-
-	engine.cleanup();	
-
+int main(int argc, char* argv[]){
+	VK_INIT_ENGINE::VulkanInitEngine init_engine(true);
+	init_engine.Get();
 	return 0;
 }
