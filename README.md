@@ -13,3 +13,6 @@ To compile projects you need:
 
   
 - Vulkan SDK
+
+
+<pre><code>git submodule update --init --recursive --depth=1 --progress</code></pre>
