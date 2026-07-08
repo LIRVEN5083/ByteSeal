@@ -1,30 +1,42 @@
-#include <SDL3/SDL.h>
-#include <SDL3/SDL_vulkan.h>
 #include "vk_init_engine.h"
 
 #define VMA_IMPLEMENTATION
 #include "vk_mem_alloc.h"
 
-#include "VkBootstrap.h"
+void VK_INIT_ENGINE::VulkanInitEngine::init_cleanup(){
+    if (ready_init._allocator != VK_NULL_HANDLE) {
+        vmaDestroyAllocator(ready_init._allocator);
+    }
+    if (ready_init._device != VK_NULL_HANDLE) {
+        vkDestroyDevice(ready_init._device, nullptr);
+    }
+    if (ready_init._surface != VK_NULL_HANDLE) {
+        vkDestroySurfaceKHR(ready_init._instance, ready_init._surface, nullptr);
+    }
+    if (ready_init._debug_messenger != VK_NULL_HANDLE) {
+        vkb::destroy_debug_utils_messenger(ready_init._instance, ready_init._debug_messenger);
+    }
+    if (ready_init._instance != VK_NULL_HANDLE) {
+        vkDestroyInstance(ready_init._instance, nullptr);
+    }
 
-#include "imgui.h"
-#include "imgui_impl_sdl3.h"
-#include "imgui_impl_vulkan.h"
+    if (ready_init._window != nullptr) {
+        SDL_DestroyWindow(ready_init._window);
+    }
+    SDL_Quit();
+}
 
-#include <chrono>
-#include <thread>
-
-
-_inited_engine& VK_INIT_ENGINE::VulkanInitEngine::Get(){
+VK_INIT_ENGINE::_inited_engine& VK_INIT_ENGINE::VulkanInitEngine::Get(){
     return this->ready_init;
 }
 
 VK_INIT_ENGINE::VulkanInitEngine::VulkanInitEngine(bool Validation_layers){
+    this->ready_init._windowExtent = applicationSize;
     SDL_Init(SDL_INIT_VIDEO);
     SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
     ready_init._window = SDL_CreateWindow(
         "ByteSeal Engine",
-        _windowExtent.width, _windowExtent.height,
+        this->ready_init._windowExtent.width, this->ready_init._windowExtent.height,
         window_flags
     );
 
@@ -77,28 +89,6 @@ VK_INIT_ENGINE::VulkanInitEngine::VulkanInitEngine(bool Validation_layers){
 
     allocatorInfo.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
     vmaCreateAllocator(&allocatorInfo, &this->ready_init._allocator);
-}
 
-VK_INIT_ENGINE::VulkanInitEngine::~VulkanInitEngine() {
-    if (this->ready_init._allocator != VK_NULL_HANDLE) {
-        vmaDestroyAllocator(this->ready_init._allocator);
-    }
-    if (this->ready_init._device != VK_NULL_HANDLE) {
-        vkDestroyDevice(this->ready_init._device, nullptr);
-    }
-    if (this->ready_init._surface != VK_NULL_HANDLE) {
-        vkDestroySurfaceKHR(this->ready_init._instance, this->ready_init._surface, nullptr);
-    }
-    if (this->ready_init._debug_messenger != VK_NULL_HANDLE) {
-        vkb::destroy_debug_utils_messenger(this->ready_init._instance, this->ready_init._debug_messenger);
-    }
-
-    if (this->ready_init._instance != VK_NULL_HANDLE) {
-        vkDestroyInstance(this->ready_init._instance, nullptr);
-    }
-
-    if (this->ready_init._window != nullptr) {
-        SDL_DestroyWindow(this->ready_init._window);
-    }
-    SDL_Quit();
+    this->ready_init._isInitialized = true;
 }

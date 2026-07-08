@@ -7,6 +7,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+set(CMAKE_POLICY_DEFAULT_CMP0148 OLD)
 set(DRACO_BUILD_ANIM_SEQUENCER OFF CACHE BOOL "" FORCE)
 set(DRACO_BUILD_TRANSCODER OFF CACHE BOOL "" FORCE)
 set(DRACO_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -25,8 +26,12 @@ endif()
 add_executable(${PROJECT_NAME}
         src/Vulkan/main.cpp
         src/Vulkan/vk_init_engine.cpp
-        src/Vulkan/vk_init_engine.h
+        src/Vulkan/vk_initializers.cpp
+        src/Vulkan/vk_images.cpp
+        src/Vulkan/vk_pipelines.cpp
+        src/Vulkan/vk_descriptors.cpp
         src/Vulkan/vk_types.h
+        src/Vulkan/vk_application.cpp
 
     src/external/vk-bootstrap/src/VkBootstrap.h
     src/external/vk-bootstrap/src/VkBootstrap.cpp
