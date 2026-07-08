@@ -7,6 +7,10 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+set(DRACO_BUILD_ANIM_SEQUENCER OFF CACHE BOOL "" FORCE)
+set(DRACO_BUILD_TRANSCODER OFF CACHE BOOL "" FORCE)
+set(DRACO_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+
 find_package(Vulkan REQUIRED)
 
 if(WIN32)
@@ -31,15 +35,16 @@ add_executable(${PROJECT_NAME}
     src/external/imgui/imgui_draw.cpp
     src/external/imgui/imgui_tables.cpp
     src/external/imgui/imgui_widgets.cpp
-    src/external/imgui/imgui_demo.cpp
 
     src/external/imgui/backends/imgui_impl_sdl3.cpp
     src/external/imgui/backends/imgui_impl_vulkan.cpp
 
+    src/external/basisu/transcoder/basisu_transcoder.cpp
+
     src/external/tiny_obj_loader.h
 )
 
-add_subdirectory(src/external/fastgltf)
+add_subdirectory(src/external/draco)
 
 target_include_directories(${PROJECT_NAME} PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src/external
@@ -60,8 +65,11 @@ target_include_directories(${PROJECT_NAME} PUBLIC
 
      ${CMAKE_CURRENT_SOURCE_DIR}/src/Vulkan
 
-     ${CMAKE_CURRENT_SOURCE_DIR}/src/external/fastgltf/include
-     ${CMAKE_CURRENT_SOURCE_DIR}/src/external/fastgltf/src
+     ${CMAKE_CURRENT_SOURCE_DIR}/src/external/basisu
+
+     ${CMAKE_CURRENT_SOURCE_DIR}/src/external/gli
+
+     ${Vulkan_INCLUDE_DIRS}
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE
@@ -69,6 +77,7 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
     VMA_STATIC_VULKAN_FUNCTIONS=1
     VMA_DYNAMIC_VULKAN_FUNCTIONS=0
     FMT_HEADER_ONLY
+    BASISD_SUPPORT_KTX2_ZSTD=0
 )
 
 if(WIN32)
@@ -86,7 +95,7 @@ target_link_libraries(${PROJECT_NAME}
     Vulkan::Vulkan
     Vulkan::Headers
     ${SDL3_LINK_TARGET}
-    fastgltf::fastgltf
+    draco
 )
 
 if(WIN32)

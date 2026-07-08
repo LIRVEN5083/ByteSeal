@@ -1,0 +1,3 @@
+[submodule "Engine_try1/src/external/draco"]
+	path = Engine_try1/src/external/draco
+	url = https://github.com/google/draco
