@@ -105,9 +105,6 @@ void VulkanEngine::cleanup()
             vkDestroySemaphore(_device, _renderSemaphores[i], nullptr);
         }
 
-        //flush the global deletion queue
-        _mainDeletionQueue.flush();
-
         // Да, я даже тут буду как не самый умный человек писать комментарии
         // Уничтожение swapChain
         destroy_swapchain();
