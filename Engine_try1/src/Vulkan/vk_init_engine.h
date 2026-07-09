@@ -49,6 +49,12 @@ namespace VK_INIT_ENGINE{
         // Буфер глубины
         AllocatedImage _depthImage;
 
+        // Набор для передачи данных в шейдер (Для загрузки glTF)
+        // for immediate_submit
+        VkFence _immFence;
+        VkCommandBuffer _immCommandBuffer;
+        VkCommandPool _immCommandPool;
+
         bool _isInitialized = false;
     };
 

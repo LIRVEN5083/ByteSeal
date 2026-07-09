@@ -9,6 +9,13 @@ void VK_INIT_ENGINE::VulkanInitEngine::init_cleanup(){
         vkDeviceWaitIdle(ready_init._device);
     }
 
+    if (ready_init._immFence != VK_NULL_HANDLE){
+        vkDestroyFence(ready_init._device, ready_init._immFence, nullptr);
+    }
+    if (ready_init._immCommandPool != VK_NULL_HANDLE){
+        vkDestroyCommandPool(ready_init._device, ready_init._immCommandPool, nullptr);
+    }
+
     // Очистка swapchain
     if (ready_init._allocator != VK_NULL_HANDLE) {
         if (ready_init._drawImage.imageView != VK_NULL_HANDLE) {
@@ -205,6 +212,19 @@ VK_INIT_ENGINE::VulkanInitEngine::VulkanInitEngine(bool Validation_layers){
 
     allocatorInfo.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
     vmaCreateAllocator(&allocatorInfo, &this->ready_init._allocator);
+
+    // Создание структур для immidiate_submit
+    VkFenceCreateInfo fenceCreateInfo = vkinit::fence_create_info(VK_FENCE_CREATE_SIGNALED_BIT);
+    VK_CHECK(vkCreateFence(ready_init._device, &fenceCreateInfo, nullptr, &ready_init._immFence));
+
+    VkCommandPoolCreateInfo commandPoolInfo = vkinit::command_pool_create_info(ready_init._graphicsQueueFamily, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
+    VK_CHECK(vkCreateCommandPool(ready_init._device, &commandPoolInfo, nullptr, &ready_init._immCommandPool));
+
+    // allocate the command buffer for immediate submits
+    VkCommandBufferAllocateInfo cmdAllocInfo = vkinit::command_buffer_allocate_info(ready_init._immCommandPool, 1);
+
+    VK_CHECK(vkAllocateCommandBuffers(ready_init._device, &cmdAllocInfo, &ready_init._immCommandBuffer));
+
 
     init_swapchain();
 
