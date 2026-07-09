@@ -1,19 +1,8 @@
 #pragma once
 #include "vk_init_engine.h"
 #include "vk_descriptors.h"
-#include <vk_initializers.h>
 #include <vk_images.h>
 #include <vk_pipelines.h>
-
-constexpr unsigned int FRAME_OVERLAP = 2;
-
-struct AllocatedImage {
-    VkImage image;
-    VkImageView imageView;
-    VmaAllocation allocation;
-    VkExtent3D imageExtent;
-    VkFormat imageFormat;
-};
 
 // Очередь удаления
 // Короче мы используем функцию для создание и пишем лямбду на удаление.
@@ -66,6 +55,7 @@ namespace VK_APPLICATION {
             void renderLoop();
         private:
             VK_INIT_ENGINE::_inited_engine& _init;
+            FrameData _frames[FRAME_OVERLAP];
 
     };
 }

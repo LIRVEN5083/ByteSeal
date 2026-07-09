@@ -1,6 +1,7 @@
 #pragma once
 #include <vk_types.h>
 #include "VkBootstrap.h"
+#include <vk_initializers.h>
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
@@ -11,6 +12,16 @@
 
 #include <chrono>
 #include <thread>
+
+constexpr unsigned int FRAME_OVERLAP = 2;
+
+struct AllocatedImage {
+    VkImage image;
+    VkImageView imageView;
+    VmaAllocation allocation;
+    VkExtent3D imageExtent;
+    VkFormat imageFormat;
+};
 
 namespace VK_INIT_ENGINE{
     struct _inited_engine{
@@ -24,6 +35,20 @@ namespace VK_INIT_ENGINE{
         VkQueue _graphicsQueue;
         uint32_t _graphicsQueueFamily;
         VmaAllocator _allocator;
+
+        // swapChain - Буфер кадра
+        VkSwapchainKHR _swapchain; // Физическое обьявление SwapChain
+        VkFormat _swapchainImageFormat; // Формат/Инструкция как работает SwapChain
+
+        std::vector<VkImage> _swapchainImages; // Сырые изображения (просто байтовые комбинации) к примеру: 0, 1, 2 (Тройная буферизация)
+        std::vector<VkImageView> _swapchainImageViews; // Инструкция к каждому кадру (Сырой картинки из swapChainImages)
+        VkExtent2D _swapchainExtent;
+
+        // Холст цветной куда шейдеры выводят изображение
+        AllocatedImage _drawImage;
+        // Буфер глубины
+        AllocatedImage _depthImage;
+
         bool _isInitialized = false;
     };
 
@@ -36,5 +61,7 @@ namespace VK_INIT_ENGINE{
     private:
         VkExtent2D applicationSize{800, 500};
         _inited_engine ready_init;
+        void create_swapchain(uint32_t width, uint32_t height);
+        void init_swapchain();
     };
 }

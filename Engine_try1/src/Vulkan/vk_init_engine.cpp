@@ -4,6 +4,43 @@
 #include "vk_mem_alloc.h"
 
 void VK_INIT_ENGINE::VulkanInitEngine::init_cleanup(){
+    // Ожидание
+    if (ready_init._device != VK_NULL_HANDLE) {
+        vkDeviceWaitIdle(ready_init._device);
+    }
+
+    // Очистка swapchain
+    if (ready_init._allocator != VK_NULL_HANDLE) {
+        if (ready_init._drawImage.imageView != VK_NULL_HANDLE) {
+            vkDestroyImageView(ready_init._device, ready_init._drawImage.imageView, nullptr);
+        }
+        if (ready_init._depthImage.imageView != VK_NULL_HANDLE) {
+            vkDestroyImageView(ready_init._device, ready_init._depthImage.imageView, nullptr);
+        }
+        if (ready_init._drawImage.image != VK_NULL_HANDLE) {
+            vmaDestroyImage(ready_init._allocator, ready_init._drawImage.image, ready_init._drawImage.allocation);
+        }
+        if (ready_init._depthImage.image != VK_NULL_HANDLE) {
+            vmaDestroyImage(ready_init._allocator, ready_init._depthImage.image, ready_init._depthImage.allocation);
+        }
+    }
+
+    for (auto imageView : ready_init._swapchainImageViews) {
+        if (imageView != VK_NULL_HANDLE) {
+            vkDestroyImageView(ready_init._device, imageView, nullptr);
+        }
+    }
+
+    ready_init._swapchainImageViews.clear();
+    ready_init._swapchainImages.clear();
+
+    // Уничтожаем сам Swapchain
+    if (ready_init._swapchain != VK_NULL_HANDLE) {
+        vkDestroySwapchainKHR(ready_init._device, ready_init._swapchain, nullptr);
+    }
+
+
+    // Базовая чистка
     if (ready_init._allocator != VK_NULL_HANDLE) {
         vmaDestroyAllocator(ready_init._allocator);
     }
@@ -24,6 +61,85 @@ void VK_INIT_ENGINE::VulkanInitEngine::init_cleanup(){
         SDL_DestroyWindow(ready_init._window);
     }
     SDL_Quit();
+}
+
+void VK_INIT_ENGINE::VulkanInitEngine::create_swapchain(uint32_t width, uint32_t height){
+    // Создаём структуру для создания swapChain (VkPhysicalDevice, VkLogicalDevice, VkSurface)
+    vkb::SwapchainBuilder swapchainBuilder{ ready_init._chosenGPU, ready_init._device, ready_init._surface };
+
+    // Это тупа формат свап чейна, лол
+    ready_init._swapchainImageFormat = VK_FORMAT_B8G8R8A8_UNORM;
+
+    vkb::Swapchain vkbSwapchain = swapchainBuilder
+        // .use_default_format_selection() - типо хер его, просто заполнение структуры на формат SwapChain
+        .set_desired_format(VkSurfaceFormatKHR{ .format = ready_init._swapchainImageFormat, .colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR })
+        // use vsync present mode - флажок FIFO_KHR - означает у нас будет крайне жёсткая верт.синхронизация
+        .set_desired_present_mode(VK_PRESENT_MODE_FIFO_KHR)
+        // Это размер буфера. Ну тип можно поставить FULL HD но оно же тип будет образаться и растягиваться от размера окна
+        .set_desired_extent(width, height)
+        // DST_BIT - картинка может быть приемником для копирования. SRC_BIT - картинка может быть источником для копирования
+        .add_image_usage_flags(VK_IMAGE_USAGE_TRANSFER_DST_BIT)
+        .build()
+        .value();
+
+    // Реальному полю вулкан мы присваеваем херню которую писали выше .set_desired_extent(width, height)
+    ready_init._swapchainExtent = vkbSwapchain.extent;
+    // Реальное поле со свап чейн теперь есть и заполнено темой сверху
+    ready_init._swapchain = vkbSwapchain.swapchain;
+    // Просто инициация массива с картинками
+    ready_init._swapchainImages = vkbSwapchain.get_images().value();
+    // Просто инициация массива обёрток на массив с картинками
+    ready_init._swapchainImageViews = vkbSwapchain.get_image_views().value();
+}
+
+void VK_INIT_ENGINE::VulkanInitEngine::init_swapchain(){
+    create_swapchain(ready_init._windowExtent.width, ready_init._windowExtent.height);
+    //draw image size will match the window
+    VkExtent3D drawImageExtent = {
+        ready_init._windowExtent.width,
+        ready_init._windowExtent.height,
+        1
+    };
+
+    //hardcoding the draw format to 32 bit float
+    ready_init._drawImage.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
+    ready_init._drawImage.imageExtent = drawImageExtent;
+
+    VkImageUsageFlags drawImageUsages{};
+    drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    drawImageUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
+    drawImageUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
+    VkImageCreateInfo rimg_info = vkinit::image_create_info(ready_init._drawImage.imageFormat, drawImageUsages, drawImageExtent);
+
+    //for the draw image, we want to allocate it from gpu local memory
+    VmaAllocationCreateInfo rimg_allocinfo = {};
+    rimg_allocinfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+    rimg_allocinfo.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+    //allocate and create the image
+    vmaCreateImage(ready_init._allocator, &rimg_info, &rimg_allocinfo, &ready_init._drawImage.image, &ready_init._drawImage.allocation, nullptr);
+
+    //build a image-view for the draw image to use for rendering
+    VkImageViewCreateInfo rview_info = vkinit::imageview_create_info(ready_init._drawImage.imageFormat, ready_init._drawImage.image, VK_IMAGE_ASPECT_COLOR_BIT);
+
+    VK_CHECK(vkCreateImageView(ready_init._device, &rview_info, nullptr, &ready_init._drawImage.imageView));
+
+    ready_init._depthImage.imageFormat = VK_FORMAT_D32_SFLOAT;
+    ready_init._depthImage.imageExtent = drawImageExtent;
+    VkImageUsageFlags depthImageUsages{};
+    depthImageUsages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+
+    VkImageCreateInfo dimg_info = vkinit::image_create_info(ready_init._depthImage.imageFormat, depthImageUsages, drawImageExtent);
+
+    //allocate and create the image
+    vmaCreateImage(ready_init._allocator, &dimg_info, &rimg_allocinfo, &ready_init._depthImage.image, &ready_init._depthImage.allocation, nullptr);
+
+    //build a image-view for the draw image to use for rendering
+    VkImageViewCreateInfo dview_info = vkinit::imageview_create_info(ready_init._depthImage.imageFormat, ready_init._depthImage.image, VK_IMAGE_ASPECT_DEPTH_BIT);
+
+    VK_CHECK(vkCreateImageView(ready_init._device, &dview_info, nullptr, &ready_init._depthImage.imageView));
 }
 
 VK_INIT_ENGINE::_inited_engine& VK_INIT_ENGINE::VulkanInitEngine::Get(){
@@ -89,6 +205,8 @@ VK_INIT_ENGINE::VulkanInitEngine::VulkanInitEngine(bool Validation_layers){
 
     allocatorInfo.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
     vmaCreateAllocator(&allocatorInfo, &this->ready_init._allocator);
+
+    init_swapchain();
 
     this->ready_init._isInitialized = true;
 }
