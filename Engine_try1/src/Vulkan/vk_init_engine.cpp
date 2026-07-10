@@ -9,6 +9,15 @@ void VK_INIT_ENGINE::VulkanInitEngine::init_cleanup(){
         vkDeviceWaitIdle(ready_init._device);
     }
 
+    for (uint32_t i = 0; i < FRAME_OVERLAP; i++) {
+        vkDestroyFence(ready_init._device, ready_init._renderFence[i], nullptr);
+    }
+
+    for (uint32_t i = 0; i < static_cast<uint32_t>(ready_init._swapchainImages.size()); i++) {
+        vkDestroySemaphore(ready_init._device, ready_init._swapchainSemaphores[i], nullptr);
+        vkDestroySemaphore(ready_init._device, ready_init._renderSemaphores[i], nullptr);
+    }
+
     if (ready_init._immFence != VK_NULL_HANDLE){
         vkDestroyFence(ready_init._device, ready_init._immFence, nullptr);
     }
@@ -149,6 +158,54 @@ void VK_INIT_ENGINE::VulkanInitEngine::init_swapchain(){
     VK_CHECK(vkCreateImageView(ready_init._device, &dview_info, nullptr, &ready_init._depthImage.imageView));
 }
 
+void VK_INIT_ENGINE::VulkanInitEngine::init_sync_structures(){
+    VkFenceCreateInfo fenceCreateInfo = vkinit::fence_create_info(VK_FENCE_CREATE_SIGNALED_BIT);
+    VkSemaphoreCreateInfo semaphoreCreateInfo = vkinit::semaphore_create_info(0);
+
+    uint32_t swapchainImageCount = static_cast<uint32_t>(ready_init._swapchainImages.size());
+    ready_init._swapchainSemaphores.resize(swapchainImageCount);
+    ready_init._renderSemaphores.resize(swapchainImageCount);
+    ready_init._renderFence.resize(FRAME_OVERLAP);
+
+
+    for (uint32_t i = 0; i < FRAME_OVERLAP; i++) {
+        VK_CHECK(vkCreateFence(ready_init._device, &fenceCreateInfo, nullptr, &ready_init._renderFence[i]));
+    }
+
+    for (uint32_t i = 0; i < swapchainImageCount; i++) {
+        VK_CHECK(vkCreateSemaphore(ready_init._device, &semaphoreCreateInfo, nullptr, &ready_init._swapchainSemaphores[i]));
+        VK_CHECK(vkCreateSemaphore(ready_init._device, &semaphoreCreateInfo, nullptr, &ready_init._renderSemaphores[i]));
+    }
+
+    // Создать Fence для одноразовых команд загрузки ресурсов
+    VK_CHECK(vkCreateFence(ready_init._device, &fenceCreateInfo, nullptr, &ready_init._immFence));
+
+}
+
+void VK_INIT_ENGINE::_inited_engine::immediate_submit(std::function<void(VkCommandBuffer cmd)>&& function){
+    VK_CHECK(vkResetFences(_device, 1, &_immFence));
+    VK_CHECK(vkResetCommandBuffer(_immCommandBuffer, 0));
+
+    VkCommandBuffer cmd = _immCommandBuffer;
+
+    VkCommandBufferBeginInfo cmdBeginInfo = vkinit::command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+
+    VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
+
+    function(cmd);
+
+    VK_CHECK(vkEndCommandBuffer(cmd));
+
+    VkCommandBufferSubmitInfo cmdinfo = vkinit::command_buffer_submit_info(cmd);
+    VkSubmitInfo2 submit = vkinit::submit_info(&cmdinfo, nullptr, nullptr);
+
+    // submit command buffer to the queue and execute it.
+    //  _renderFence will now block until the graphic commands finish execution
+    VK_CHECK(vkQueueSubmit2(_graphicsQueue, 1, &submit, _immFence));
+
+    VK_CHECK(vkWaitForFences(_device, 1, &_immFence, true, 9999999999));
+}
+
 VK_INIT_ENGINE::_inited_engine& VK_INIT_ENGINE::VulkanInitEngine::Get(){
     return this->ready_init;
 }
@@ -214,9 +271,6 @@ VK_INIT_ENGINE::VulkanInitEngine::VulkanInitEngine(bool Validation_layers){
     vmaCreateAllocator(&allocatorInfo, &this->ready_init._allocator);
 
     // Создание структур для immidiate_submit
-    VkFenceCreateInfo fenceCreateInfo = vkinit::fence_create_info(VK_FENCE_CREATE_SIGNALED_BIT);
-    VK_CHECK(vkCreateFence(ready_init._device, &fenceCreateInfo, nullptr, &ready_init._immFence));
-
     VkCommandPoolCreateInfo commandPoolInfo = vkinit::command_pool_create_info(ready_init._graphicsQueueFamily, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
     VK_CHECK(vkCreateCommandPool(ready_init._device, &commandPoolInfo, nullptr, &ready_init._immCommandPool));
 
@@ -225,8 +279,9 @@ VK_INIT_ENGINE::VulkanInitEngine::VulkanInitEngine(bool Validation_layers){
 
     VK_CHECK(vkAllocateCommandBuffers(ready_init._device, &cmdAllocInfo, &ready_init._immCommandBuffer));
 
-
     init_swapchain();
+
+    init_sync_structures();
 
     this->ready_init._isInitialized = true;
 }

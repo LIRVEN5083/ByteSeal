@@ -30,8 +30,8 @@ struct FrameData {
     // Очередь удаления
     DeletionQueue _deletionQueue;
 
-    // Fence - это синхронизатор для CPU -> GPU. Мы не можем подвердить отправку нового commandBuffer и перезаписать старый, пока старый не выполнится
-    VkFence _renderFence;
+    // Сцена
+    AllocatedBuffer gpuSceneDataBuffer;
 
     // пул команд (аллокатор для командного буфера)
     // Так-же пул намертво привязан к очереди, то-есть команндные пулы для вычеслений и графики это должны быть разные сущности
@@ -45,17 +45,35 @@ struct FrameData {
 namespace VK_APPLICATION {
 
     class VulkanApplication{
-        public:
-            int _frameNumber {0};
-            bool stop_rendering{ false };
-            VulkanApplication(VK_INIT_ENGINE::_inited_engine& inited_engine);
 
-            void cleanup();
-            void run();
-            void renderLoop();
+        public:
+        int _frameNumber {0};
+        bool stop_rendering{ false };
+        VulkanApplication(VK_INIT_ENGINE::_inited_engine& inited_engine);
+
+        void cleanup();
+        void run();
+
         private:
-            VK_INIT_ENGINE::_inited_engine& _init;
-            FrameData _frames[FRAME_OVERLAP];
+        VK_INIT_ENGINE::_inited_engine& _init;
+        FrameData _frames[FRAME_OVERLAP];
+
+        VkExtent2D _drawExtent;
+        float renderScale = 1.0f;
+
+        GPUSceneData sceneData;
+        VkDescriptorSetLayout _gpuSceneDataDescriptorLayout;
+        DescriptorAllocatorGrowable globalDescriptorAllocator;
+
+        // HardCoded data
+        VkPipelineLayout _gridPipelineLayout;
+        VkPipeline _gridPipeline;
+
+        void renderLoop();
+        void init_descriptors();
+        void init_grid_pipeline();
+        void init_commands();
+        void draw_grid(VkCommandBuffer cmd, VkDescriptorSet globalDescriptor);
 
     };
 }

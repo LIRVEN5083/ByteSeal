@@ -30,3 +30,25 @@
             abort();                                                    \
         }                                                                      \
     } while (0)
+
+// Структура которая хранит буфер и его аллокатор
+struct AllocatedBuffer {
+    VkBuffer buffer;            // Указатель на буфер
+    VmaAllocation allocation;   // Помнит конкретно выделенное место в памяти, нужен для удаления буфера
+    VmaAllocationInfo info;     // Обязательно нужен для того что-бы копировать данные через memcpy
+};
+
+// push constants для работы
+struct GPUDrawPushConstants {
+    glm::mat4 worldMatrix;          // Обычная матрица преобразований
+    VkDeviceAddress vertexBuffer;   // Вершинный буфер который мы алоцировали и получили адресс дляс передачи
+};
+
+struct GPUSceneData {
+    glm::mat4 view;
+    glm::mat4 proj;
+    glm::mat4 viewproj;
+    glm::vec4 ambientColor;
+    glm::vec4 sunlightDirection; // w for sun power
+    glm::vec4 sunlightColor;
+};

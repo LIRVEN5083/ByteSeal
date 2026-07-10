@@ -60,4 +60,9 @@ namespace vkinit {
 
     VkRenderingAttachmentInfo depth_attachment_info(
     VkImageView view, VkImageLayout layout /*= VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL*/);
+
+    // Алокация и возврат буфера
+    AllocatedBuffer create_buffer(size_t allocSize, VmaAllocator _allocator, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
+    // Удаление буфера
+    void destroy_buffer(const AllocatedBuffer& buffer, VmaAllocator _allocator);
 }

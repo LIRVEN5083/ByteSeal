@@ -55,7 +55,15 @@ namespace VK_INIT_ENGINE{
         VkCommandBuffer _immCommandBuffer;
         VkCommandPool _immCommandPool;
 
+        // Базовый набор для renderLoop
+        std::vector<VkFence> _renderFence;
+        std::vector<VkSemaphore> _swapchainSemaphores;
+        std::vector<VkSemaphore> _renderSemaphores;
+
+
         bool _isInitialized = false;
+
+        void immediate_submit(std::function<void(VkCommandBuffer cmd)>&& function);
     };
 
     class VulkanInitEngine{
@@ -69,5 +77,6 @@ namespace VK_INIT_ENGINE{
         _inited_engine ready_init;
         void create_swapchain(uint32_t width, uint32_t height);
         void init_swapchain();
+        void init_sync_structures();
     };
 }
