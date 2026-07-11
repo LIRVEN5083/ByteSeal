@@ -32,6 +32,7 @@ add_executable(${PROJECT_NAME}
         src/Vulkan/vk_descriptors.cpp
         src/Vulkan/vk_types.h
         src/Vulkan/vk_application.cpp
+        src/Vulkan/vk_glTF_loading.cpp
 
     src/external/vk-bootstrap/src/VkBootstrap.h
     src/external/vk-bootstrap/src/VkBootstrap.cpp
