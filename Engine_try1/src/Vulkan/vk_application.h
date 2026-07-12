@@ -1,8 +1,8 @@
 #pragma once
-#include "vk_init_engine.h"
 #include "vk_descriptors.h"
 #include "vk_images.h"
 #include "vk_pipelines.h"
+#include "vk_glTF_loading.h"
 
 // Очередь удаления
 // Короче мы используем функцию для создание и пишем лямбду на удаление.

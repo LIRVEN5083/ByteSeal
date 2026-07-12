@@ -1,5 +1,4 @@
 #include "vk_application.h"
-#include "vk_glTF_loading.h"
 
 #include <iostream>
 
