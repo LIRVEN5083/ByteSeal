@@ -226,10 +226,10 @@ void VK_APPLICATION::VulkanApplication::init_grid_pipeline(){
     pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
     //no multisampling
     pipelineBuilder.set_multisampling_none();
-    //no blending
-    //pipelineBuilder.enable_blending_additive();
-    //no depth testing
-    pipelineBuilder.disable_blending();
+
+    pipelineBuilder.enable_blending_alphablend();
+
+    //pipelineBuilder.disable_blending();
     pipelineBuilder.enable_depthtest(VK_TRUE, VK_COMPARE_OP_LESS_OR_EQUAL);
 
     //connect the image format we will draw into, from draw image
@@ -265,7 +265,7 @@ void VK_APPLICATION::VulkanApplication::draw_grid(VkCommandBuffer cmd, VkDescrip
     );
 
     float aspect = (float)_init._windowExtent.width / (float)_init._windowExtent.height;
-    sceneData.proj = glm::perspective(glm::radians(70.0f), aspect, 0.1f, 100.0f);
+    sceneData.proj = glm::perspective(glm::radians(70.0f), aspect, 0.1f, 1000.0f);
 
     sceneData.proj[1][1] *= -1.0f;
 
