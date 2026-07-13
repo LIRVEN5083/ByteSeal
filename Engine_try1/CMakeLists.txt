@@ -11,6 +11,9 @@ set(CMAKE_POLICY_DEFAULT_CMP0148 OLD)
 set(DRACO_BUILD_ANIM_SEQUENCER OFF CACHE BOOL "" FORCE)
 set(DRACO_BUILD_TRANSCODER OFF CACHE BOOL "" FORCE)
 set(DRACO_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(DRACO_BUILD_TESTS OFF CACHE BOOL "Disable Draco tests" FORCE)
+set(DRACO_TESTS OFF CACHE BOOL "Disable Draco tests" FORCE)
+set(DRACO_BUILD_SHARED OFF CACHE BOOL "Disable Draco shared library" FORCE)
 
 find_package(Vulkan REQUIRED)
 
@@ -101,7 +104,7 @@ target_link_libraries(${PROJECT_NAME}
     Vulkan::Vulkan
     Vulkan::Headers
     ${SDL3_LINK_TARGET}
-    draco
+    draco_static
 )
 
 if(WIN32)
