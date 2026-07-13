@@ -15,4 +15,4 @@ To compile projects you need:
 - Vulkan SDK
 
 
-<pre><code>git submodule update --init --recursive --depth=1 --progress</code></pre>
+<pre><code>git clone https://github.com/LIRVEN5083/ByteSeal && cd ByteSeal && git submodule update --init --recursive --depth=1 --progress</code></pre>
