@@ -53,6 +53,18 @@ add_executable(${PROJECT_NAME}
     src/external/tiny_obj_loader.h
 )
 
+if(MINGW)
+    target_link_options(ByteSeal PRIVATE
+            "-static-libgcc"
+            "-static-libstdc++"
+            "LINKER:-Bstatic"
+            "LINKER:--whole-archive"
+            "-lwinpthread"
+            "LINKER:--no-whole-archive"
+    )
+endif()
+
+
 add_subdirectory(src/external/draco)
 
 target_include_directories(${PROJECT_NAME} PUBLIC
