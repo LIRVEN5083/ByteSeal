@@ -83,7 +83,8 @@ void main() {
         }
     }
 
-    float OpacityFalloff = (1.0 - satf(length(WorldPos.xy - gCameraWorldPos.xy) / gGridSize));
+    float dist = length(WorldPos.xy - gCameraWorldPos.xy);
+    float OpacityFalloff = pow(satf(1.0 - (dist / gGridSize)), 2.0);
     Color.a *= OpacityFalloff;
 
     // Хак оптимизации: отбрасываем полностью прозрачные пиксели, чтобы не забивать филлрейт

@@ -260,7 +260,7 @@ void VK_APPLICATION::VulkanApplication::draw_grid(VkCommandBuffer cmd, VkDescrip
     // Камера летает по кругу, смотрим строго в центр (0,0,0)
     sceneData.view = glm::lookAt(
         glm::vec3(0.0f, -2.0f, 2.0f),
-        glm::vec3(0.0f, 0.0f, 0.0f),
+        glm::vec3(0.0f, 0.0f, 2.0f),
         glm::vec3(0.0f, 0.0f, 1.0f)
     );
 
