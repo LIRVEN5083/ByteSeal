@@ -84,18 +84,7 @@ void VK_APPLICATION::VulkanApplication::renderLoop(){
     currentFrame._deletionQueue.flush();
     currentFrame._frameDescriptors.clear_pools(_init._device);
 
-    VmaAllocationInfo allocInfo;
-    vmaGetAllocationInfo(_init._allocator, currentFrame.gpuSceneDataBuffer.allocation, &allocInfo);
-
-    // Мгновенно перезаписываем матрицы камеры в памяти GPU поверх старых
-    GPUSceneData* sceneUniformData = (GPUSceneData*)allocInfo.pMappedData;
-    *sceneUniformData = sceneData; // Простое копирование структур в ОЗУ/ВРЕМЯ
-
-    VkDescriptorSet globalDescriptor = currentFrame._frameDescriptors.allocate(_init._device, _gpuSceneDataDescriptorLayout);
-
-    DescriptorWriter writer;
-    writer.write_buffer(0, currentFrame.gpuSceneDataBuffer.buffer, sizeof(GPUSceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-    writer.update_set(_init._device, globalDescriptor);
+    VkDescriptorSet globalDescriptor = update_scene_data(currentFrame);
 
     // О май гад это же ImageIndex из Vk-tutorial
     uint32_t swapchainImageIndex;
@@ -397,21 +386,6 @@ void VK_APPLICATION::VulkanApplication::init_commands(){
 }
 
 void VK_APPLICATION::VulkanApplication::draw_grid(VkCommandBuffer cmd, VkDescriptorSet globalDescriptor){
-    // Камера летает по кругу, смотрим строго в центр (0,0,0)
-    sceneData.view = glm::lookAt(
-        glm::vec3(0.0f, -2.0f, 2.0f),
-        glm::vec3(0.0f, 0.0f, 2.0f),
-        glm::vec3(0.0f, 0.0f, 1.0f)
-    );
-
-    float aspect = (float)_init._windowExtent.width / (float)_init._windowExtent.height;
-    sceneData.proj = glm::perspective(glm::radians(70.0f), aspect, 0.1f, 1000.0f);
-
-    sceneData.proj[1][1] *= -1.0f;
-
-    sceneData.viewproj = sceneData.proj * sceneData.view;
-
-
     VkClearValue clearColor;
     clearColor.color = { { 1.0f, 1.0f, 1.0f, 1.0f } };
 
@@ -453,5 +427,36 @@ void VK_APPLICATION::VulkanApplication::draw_grid(VkCommandBuffer cmd, VkDescrip
     vkCmdDraw(cmd, 6, 1, 0, 0);
 
     vkCmdEndRendering(cmd);
+}
+
+VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& currentFrame){
+    sceneData.view = glm::lookAt(
+        glm::vec3(0.0f, -2.0f, 2.0f),
+        glm::vec3(0.0f, 0.0f, 2.0f),
+        glm::vec3(0.0f, 0.0f, 1.0f)
+    );
+
+    float aspect = (float)_init._windowExtent.width / (float)_init._windowExtent.height;
+    sceneData.proj = glm::perspective(glm::radians(70.0f), aspect, 0.1f, 1000.0f);
+
+    sceneData.proj[1][1] *= -1.0f;
+
+    sceneData.viewproj = sceneData.proj * sceneData.view;
+
+    VmaAllocationInfo allocInfo;
+    vmaGetAllocationInfo(_init._allocator, currentFrame.gpuSceneDataBuffer.allocation, &allocInfo);
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    GPUSceneData* sceneUniformData = (GPUSceneData*)allocInfo.pMappedData;
+    *sceneUniformData = sceneData;
+
+    VkDescriptorSet globalDescriptor = currentFrame._frameDescriptors.allocate(_init._device, _gpuSceneDataDescriptorLayout);
+
+    DescriptorWriter writer;
+    writer.write_buffer(0, currentFrame.gpuSceneDataBuffer.buffer, sizeof(GPUSceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+    writer.update_set(_init._device, globalDescriptor);
+
+    return globalDescriptor;
 }
 

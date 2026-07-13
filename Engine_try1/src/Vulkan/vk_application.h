@@ -78,5 +78,6 @@ namespace VK_APPLICATION {
         void init_grid_pipeline();
         void init_commands();
         void draw_grid(VkCommandBuffer cmd, VkDescriptorSet globalDescriptor);
+        VkDescriptorSet update_scene_data(FrameData& currentFrame);
     };
 }
