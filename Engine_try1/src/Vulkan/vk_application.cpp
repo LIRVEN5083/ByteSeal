@@ -257,23 +257,11 @@ void VK_APPLICATION::VulkanApplication::init_commands(){
 }
 
 void VK_APPLICATION::VulkanApplication::draw_grid(VkCommandBuffer cmd, VkDescriptorSet globalDescriptor){
-    static auto startTime = std::chrono::high_resolution_clock::now();
-    auto currentTime = std::chrono::high_resolution_clock::now();
-    float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
-
-    // Задаем ДИКУЮ скорость, чтобы камера крутилась как сумасшедшая (3.0f — это быстро)
-    float angle = time * 1.0f;
-    float radius = 6.0f;
-    float cameraHeight = 2.0f;
-
-    float camX = std::sin(angle) * radius;
-    float camZ = std::cos(angle) * radius;
-
     // Камера летает по кругу, смотрим строго в центр (0,0,0)
     sceneData.view = glm::lookAt(
-        glm::vec3(camX, cameraHeight, camZ),
+        glm::vec3(0.0f, -2.0f, 2.0f),
         glm::vec3(0.0f, 0.0f, 0.0f),
-        glm::vec3(0.0f, 1.0f, 0.0f)
+        glm::vec3(0.0f, 0.0f, 1.0f)
     );
 
     float aspect = (float)_init._windowExtent.width / (float)_init._windowExtent.height;
@@ -286,9 +274,6 @@ void VK_APPLICATION::VulkanApplication::draw_grid(VkCommandBuffer cmd, VkDescrip
 
     VkClearValue clearColor;
     clearColor.color = { { 1.0f, 1.0f, 1.0f, 1.0f } };
-
-    VkClearValue clearDepth;
-    clearDepth.depthStencil.depth = 1.0f;
 
     VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(_init._drawImage.imageView, &clearColor, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     VkRenderingAttachmentInfo depthAttachment = vkinit::depth_attachment_info(_init._depthImage.imageView, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
@@ -329,3 +314,4 @@ void VK_APPLICATION::VulkanApplication::draw_grid(VkCommandBuffer cmd, VkDescrip
 
     vkCmdEndRendering(cmd);
 }
+

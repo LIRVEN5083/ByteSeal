@@ -3,29 +3,24 @@
 layout(set = 0, binding = 0) uniform SceneData {
     mat4 view;
     mat4 proj;
-    mat4 viewproj;
+    mat4 viewproj; // Если матрицы не доходят, проверим саму память
     vec4 ambientColor;
     vec4 sunlightDirection;
     vec4 sunlightColor;
 } scene;
 
-layout(location = 0) out vec4 v_matrixRow;
-
-const vec2 Pos[4] = vec2[4](
-    vec2(-0.5, -0.5),
-                            vec2( 0.5, -0.5),
-                            vec2( 0.5,  0.5),
-                            vec2(-0.5,  0.5)
+const vec3 Pos[4] = vec3[4](
+    vec3(-0.5, -0.5, 0.0),
+    vec3( 0.5, -0.5, 0.0),
+    vec3( 0.5,  0.5, 0.0),
+    vec3(-0.5,  0.5, 0.0)
 );
 const int Indices[6] = int[6](0, 2, 1, 2, 0, 3);
 
 void main() {
     int Index = Indices[gl_VertexIndex];
+    vec4 vPos = vec4(Pos[Index], 1.0);
 
-    // Передаем первую строку (или колонку) матрицы viewproj во фрагментный шейдер
-    // scene.viewproj[0] содержит компоненты (m00, m01, m02, m03)
-    v_matrixRow = scene.viewproj[0];
-
-    // Рисуем квадрат гарантированно по центру экрана, чтобы точно его видеть
-    gl_Position = vec4(Pos[Index], 0.0, 1.0);
+    gl_Position = scene.proj * scene.view * vPos;
 }
+
