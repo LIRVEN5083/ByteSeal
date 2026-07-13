@@ -103,4 +103,25 @@ namespace VK_LOADING{
         float emissiveStrength = 1.0f;
     };
 
+    struct Primitive {
+        uint32_t firstIndex;
+        uint32_t indexCount;
+        uint32_t vertexCount;
+        Material &material;
+        bool hasIndices;
+        BoundingBox bb;
+        Primitive(uint32_t firstIndex, uint32_t indexCount, uint32_t vertexCount, Material& material);
+        void setBoundingBox(glm::vec3 min, glm::vec3 max);
+    };
+
+    struct Mesh {
+        std::vector<Primitive*> primitives;
+        BoundingBox bb;
+        BoundingBox aabb;
+        glm::mat4 matrix;
+        uint32_t index;
+        Mesh(glm::mat4 matrix);
+        ~Mesh();
+        void setBoundingBox(glm::vec3 min, glm::vec3 max);
+    };
 }

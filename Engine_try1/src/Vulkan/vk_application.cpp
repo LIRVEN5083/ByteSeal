@@ -190,7 +190,7 @@ void VK_APPLICATION::VulkanApplication::init_descriptors(){
 
 void VK_APPLICATION::VulkanApplication::init_grid_pipeline(){
     VkShaderModule triangleFragShader;
-    if (!vkutil::load_shader_module("../Shaders/Triangle/Binary/colored_triangle.frag.spv", _init._device, &triangleFragShader)) {
+    if (!vkutil::load_shader_module("../Shaders/InfGrid/Binary/grid.frag.spv", _init._device, &triangleFragShader)) {
         fmt::print("Error when building the grid fragment shader module\n");
     }
     else {
@@ -198,7 +198,7 @@ void VK_APPLICATION::VulkanApplication::init_grid_pipeline(){
     }
 
     VkShaderModule triangleVertexShader;
-    if (!vkutil::load_shader_module("../Shaders/Triangle/Binary/colored_triangle.vert.spv", _init._device, &triangleVertexShader)) {
+    if (!vkutil::load_shader_module("../Shaders/InfGrid/Binary/grid.vert.spv", _init._device, &triangleVertexShader)) {
         fmt::print("Error when building the grid vertex shader module\n");
     }
     else {
@@ -257,8 +257,40 @@ void VK_APPLICATION::VulkanApplication::init_commands(){
 }
 
 void VK_APPLICATION::VulkanApplication::draw_grid(VkCommandBuffer cmd, VkDescriptorSet globalDescriptor){
-    // Настраиваем цели рендеринга для текущего кадра
-    VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(_init._drawImage.imageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    static auto startTime = std::chrono::high_resolution_clock::now();
+    auto currentTime = std::chrono::high_resolution_clock::now();
+    float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+
+    // Задаем ДИКУЮ скорость, чтобы камера крутилась как сумасшедшая (3.0f — это быстро)
+    float angle = time * 1.0f;
+    float radius = 6.0f;
+    float cameraHeight = 2.0f;
+
+    float camX = std::sin(angle) * radius;
+    float camZ = std::cos(angle) * radius;
+
+    // Камера летает по кругу, смотрим строго в центр (0,0,0)
+    sceneData.view = glm::lookAt(
+        glm::vec3(camX, cameraHeight, camZ),
+        glm::vec3(0.0f, 0.0f, 0.0f),
+        glm::vec3(0.0f, 1.0f, 0.0f)
+    );
+
+    float aspect = (float)_init._windowExtent.width / (float)_init._windowExtent.height;
+    sceneData.proj = glm::perspective(glm::radians(70.0f), aspect, 0.1f, 100.0f);
+
+    sceneData.proj[1][1] *= -1.0f;
+
+    sceneData.viewproj = sceneData.proj * sceneData.view;
+
+
+    VkClearValue clearColor;
+    clearColor.color = { { 1.0f, 1.0f, 1.0f, 1.0f } };
+
+    VkClearValue clearDepth;
+    clearDepth.depthStencil.depth = 1.0f;
+
+    VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(_init._drawImage.imageView, &clearColor, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     VkRenderingAttachmentInfo depthAttachment = vkinit::depth_attachment_info(_init._depthImage.imageView, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
     VkRenderingInfo renderInfo = vkinit::rendering_info(_drawExtent, &colorAttachment, &depthAttachment);
@@ -280,44 +312,20 @@ void VK_APPLICATION::VulkanApplication::draw_grid(VkCommandBuffer cmd, VkDescrip
     scissor.extent.height = _drawExtent.height;
     vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-    sceneData.view = glm::lookAt(
-    glm::vec3(0.0f, 0.0f, 0.0f),
-    glm::vec3(0.0f, 0.0f, 0.0f),
-    glm::vec3(0.0f, 0.0f, 1.0f)
-    );
-    float aspect = (float)_init._windowExtent.width / (float)_init._windowExtent.height;
-    sceneData.proj = glm::perspective(glm::radians(70.0f), aspect, 0.1f, 100.0f);
 
-    // Железный хак для Vulkan: переворачиваем ось Y в матрице проекции,
-    // иначе вся 3D математика в шейдерах будет вывернута наизнанку!
-    sceneData.proj[1][1] *= -1.0f;
-
-    // Заодно запишем и viewproj, если она у тебя объявлена в структуре:
-    sceneData.viewproj = sceneData.proj * sceneData.view;
-
-    VkClearValue clearColor;
-    clearColor.color = { { 0.001f, 0.001f, 0.001f, 1.0f } };
-
-    VkClearValue clearDepth;
-    clearDepth.depthStencil.depth = 1.0f;
-
-    // Активируем наш скомпилированный пайплайн сетки
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _gridPipeline);
 
-    // Привязываем наш заполненный дескриптор камеры в Set 0
     vkCmdBindDescriptorSets(
         cmd,
         VK_PIPELINE_BIND_POINT_GRAPHICS,
-        _gridPipelineLayout, // Твой PipelineLayout
-        0,                   // firstSet = 0
-        1,                   // descriptorCount = 1
-        &globalDescriptor,   // Указатель на наш дескриптор
+        _gridPipelineLayout,
+        0,
+        1,
+        &globalDescriptor,
         0, nullptr
     );
 
-    // Вызываем команду рисования 6 вершин (2 треугольника для Quad) без Vertex Buffer!
     vkCmdDraw(cmd, 6, 1, 0, 0);
 
-    // Закрываем зону отрисовки 3D сцены
     vkCmdEndRendering(cmd);
 }
