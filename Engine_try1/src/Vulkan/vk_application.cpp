@@ -65,6 +65,10 @@ void VK_APPLICATION::VulkanApplication::run(){
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             continue;
         }
+
+        if (resize_requested) {
+            resize_swapchain();
+        }
         renderLoop();
     }
 }
@@ -97,6 +101,16 @@ void VK_APPLICATION::VulkanApplication::renderLoop(){
     uint32_t swapchainImageIndex;
     // Запрашиваем картинку из
     VkResult e = vkAcquireNextImageKHR(_init._device, _init._swapchain, 1000000000, _init._swapchainSemaphores[frameId], nullptr, &swapchainImageIndex);
+    if (e == VK_ERROR_OUT_OF_DATE_KHR || e == VK_TIMEOUT) {
+        resize_requested = true;
+        return;
+    }
+    else if (e == VK_SUBOPTIMAL_KHR) {
+        resize_requested = true;
+    }
+    else if (e != VK_SUCCESS) {
+        VK_CHECK(e);
+    }
 
     VkCommandBuffer cmd = currentFrame._mainCommandBuffer;
 
@@ -155,10 +169,136 @@ void VK_APPLICATION::VulkanApplication::renderLoop(){
     presentInfo.pWaitSemaphores = &_init._renderSemaphores[swapchainImageIndex];
     presentInfo.pImageIndices = &swapchainImageIndex;
 
-    vkQueuePresentKHR(_init._graphicsQueue, &presentInfo);
+    VkResult presentResult = vkQueuePresentKHR(_init._graphicsQueue, &presentInfo);
+    if (presentResult == VK_ERROR_OUT_OF_DATE_KHR) {
+        resize_requested = true;
+    }
 
     // Переходим к следующему кадру
     _frameNumber++;
+}
+
+void VK_APPLICATION::VulkanApplication::resize_swapchain(){
+    vkDeviceWaitIdle(_init._device);
+
+    int w, h;
+    SDL_GetWindowSize(_init._window, &w, &h);
+
+    while (w == 0 || h == 0) {
+        SDL_GetWindowSize(_init._window, &w, &h);
+        SDL_WaitEvent(nullptr);
+    }
+
+    while (w == 0 || h == 0) {
+        SDL_GetWindowSize(_init._window, &w, &h);
+        SDL_WaitEvent(nullptr);
+    }
+
+    _init._windowExtent.width = w;
+    _init._windowExtent.height = h;
+
+    destroy_swapchain();
+
+    vkb::SwapchainBuilder swapchainBuilder{_init._chosenGPU, _init._device, _init._surface};
+
+    auto vkbSwapchain = swapchainBuilder
+        .set_desired_extent(_init._windowExtent.width, _init._windowExtent.height)
+        .set_desired_format({_init._swapchainImageFormat, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR})
+        // Флаг нужный для resize
+        .add_image_usage_flags(VK_IMAGE_USAGE_TRANSFER_DST_BIT)
+        .build()
+        .value();
+
+    VkExtent3D drawImageExtent = {
+        _init._windowExtent.width,
+        _init._windowExtent.height,
+        1
+    };
+
+    _init._swapchain = vkbSwapchain.swapchain;
+    _init._swapchainImages = vkbSwapchain.get_images().value();
+    _init._swapchainImageViews = vkbSwapchain.get_image_views().value();
+    _init._swapchainExtent = vkbSwapchain.extent;
+
+    _init._drawImage.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
+    _init._drawImage.imageExtent = drawImageExtent;
+
+    VkImageUsageFlags drawImageUsages{};
+    drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    drawImageUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
+    drawImageUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
+    VkImageCreateInfo rimg_info = vkinit::image_create_info(_init._drawImage.imageFormat, drawImageUsages, drawImageExtent);
+
+    //for the draw image, we want to allocate it from gpu local memory
+    VmaAllocationCreateInfo rimg_allocinfo = {};
+    rimg_allocinfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+    rimg_allocinfo.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+    //allocate and create the image
+    vmaCreateImage(_init._allocator, &rimg_info, &rimg_allocinfo, &_init._drawImage.image, &_init._drawImage.allocation, nullptr);
+
+    //build a image-view for the draw image to use for rendering
+    VkImageViewCreateInfo rview_info = vkinit::imageview_create_info(_init._drawImage.imageFormat, _init._drawImage.image, VK_IMAGE_ASPECT_COLOR_BIT);
+
+    VK_CHECK(vkCreateImageView(_init._device, &rview_info, nullptr, &_init._drawImage.imageView));
+
+    _init._depthImage.imageFormat = VK_FORMAT_D32_SFLOAT;
+    _init._depthImage.imageExtent = drawImageExtent;
+    VkImageUsageFlags depthImageUsages{};
+    depthImageUsages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+
+    VkImageCreateInfo dimg_info = vkinit::image_create_info(_init._depthImage.imageFormat, depthImageUsages, drawImageExtent);
+
+    //allocate and create the image
+    vmaCreateImage(_init._allocator, &dimg_info, &rimg_allocinfo, &_init._depthImage.image, &_init._depthImage.allocation, nullptr);
+
+    //build a image-view for the draw image to use for rendering
+    VkImageViewCreateInfo dview_info = vkinit::imageview_create_info(_init._depthImage.imageFormat, _init._depthImage.image, VK_IMAGE_ASPECT_DEPTH_BIT);
+
+    VK_CHECK(vkCreateImageView(_init._device, &dview_info, nullptr, &_init._depthImage.imageView));
+
+    resize_requested = false;
+}
+
+
+void VK_APPLICATION::VulkanApplication::destroy_swapchain(){
+    // Очистка swapchain
+    if (_init._allocator != VK_NULL_HANDLE) {
+        if (_init._drawImage.imageView != VK_NULL_HANDLE) {
+            vkDestroyImageView(_init._device, _init._drawImage.imageView, nullptr);
+            _init._drawImage.imageView = VK_NULL_HANDLE;
+        }
+        if (_init._depthImage.imageView != VK_NULL_HANDLE) {
+            vkDestroyImageView(_init._device, _init._depthImage.imageView, nullptr);
+            _init._depthImage.imageView = VK_NULL_HANDLE;
+        }
+        if (_init._drawImage.image != VK_NULL_HANDLE) {
+            vmaDestroyImage(_init._allocator, _init._drawImage.image, _init._drawImage.allocation);
+            _init._drawImage.image = VK_NULL_HANDLE;
+            _init._drawImage.allocation = VK_NULL_HANDLE;
+        }
+        if (_init._depthImage.image != VK_NULL_HANDLE) {
+            vmaDestroyImage(_init._allocator, _init._depthImage.image, _init._depthImage.allocation);
+            _init._depthImage.image = VK_NULL_HANDLE;
+            _init._depthImage.allocation = VK_NULL_HANDLE;
+        }
+    }
+
+    for (auto imageView : _init._swapchainImageViews) {
+        if (imageView != VK_NULL_HANDLE) {
+            vkDestroyImageView(_init._device, imageView, nullptr);
+        }
+    }
+
+    _init._swapchainImageViews.clear();
+    _init._swapchainImages.clear();
+
+    // Уничтожаем сам Swapchain
+    if (_init._swapchain != VK_NULL_HANDLE) {
+        vkDestroySwapchainKHR(_init._device, _init._swapchain, nullptr);
+    }
 }
 
 void VK_APPLICATION::VulkanApplication::init_descriptors(){

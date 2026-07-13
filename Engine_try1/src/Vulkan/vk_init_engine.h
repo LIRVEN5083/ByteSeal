@@ -72,8 +72,9 @@ namespace VK_INIT_ENGINE{
 
         VulkanInitEngine(bool Validation_layers = true);
         void init_cleanup();
+
     private:
-        VkExtent2D applicationSize{1920, 1080};
+        VkExtent2D applicationSize{800, 500};
         _inited_engine ready_init;
         void create_swapchain(uint32_t width, uint32_t height);
         void init_swapchain();

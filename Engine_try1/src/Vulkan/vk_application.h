@@ -58,6 +58,7 @@ namespace VK_APPLICATION {
         VK_INIT_ENGINE::_inited_engine& _init;
         FrameData _frames[FRAME_OVERLAP];
 
+        bool resize_requested = false;
         VkExtent2D _drawExtent;
         float renderScale = 1.0f;
 
@@ -70,6 +71,9 @@ namespace VK_APPLICATION {
         VkPipeline _gridPipeline;
 
         void renderLoop();
+        void resize_swapchain();
+        void destroy_swapchain();
+
         void init_descriptors();
         void init_grid_pipeline();
         void init_commands();
