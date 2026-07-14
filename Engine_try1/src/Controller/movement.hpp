@@ -12,13 +12,15 @@ namespace CONTROLLER{
         float speed{5.0f};
     };
 
-    struct View{
+    struct Camera{
         float yaw{0.0f};
         float pitch{0.0f};
         float sensetivity{0.0f};
         glm::vec3 front{0.0f};
         glm::vec3 Wfront{0.0f};
         glm::vec3 right{0.0f};
+
+        bool isCameraActive{false};
     };
 
     struct Delta{

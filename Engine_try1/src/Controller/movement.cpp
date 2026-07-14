@@ -1,10 +1,10 @@
 #include "movement.hpp"
 
-void IncreaseSpeed(float& speed) {
+void CONTROLLER::IncreaseSpeed(float& speed) {
     speed += 0.1;
 }
 
-void DecreaseSpeed(float& speed) {
+void CONTROLLER::DecreaseSpeed(float& speed) {
     if (speed > 0.2) {
         speed -= 0.1;
     }

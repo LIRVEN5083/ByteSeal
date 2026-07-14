@@ -67,7 +67,7 @@ namespace VK_APPLICATION {
         DescriptorAllocatorGrowable globalDescriptorAllocator;
 
         CONTROLLER::Movement _movement;
-        CONTROLLER::View _camera;
+        CONTROLLER::Camera _camera;
         CONTROLLER::Delta _delta;
 
         // HardCoded data

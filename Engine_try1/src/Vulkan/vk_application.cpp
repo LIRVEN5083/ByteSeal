@@ -62,27 +62,33 @@ void VK_APPLICATION::VulkanApplication::run(){
                 stop_rendering = false;
             }
             if (e.type == SDL_EVENT_MOUSE_MOTION) {
-                float xoffset = e.motion.xrel;
-                float yoffset = -e.motion.yrel; // Инвертируем Y
+                if (_camera.isCameraActive){
+                    float xoffset = e.motion.xrel;
+                    float yoffset = -e.motion.yrel; // Инвертируем Y
 
-                float sensitivity = 0.05f;
-                xoffset *= sensitivity;
-                yoffset *= sensitivity;
+                    float sensitivity = 0.05f;
+                    xoffset *= sensitivity;
+                    yoffset *= sensitivity;
 
-                _camera.yaw   -= xoffset;
-                _camera.pitch += yoffset;
+                    _camera.yaw   -= xoffset;
+                    _camera.pitch += yoffset;
 
-                if (_camera.pitch > 89.0f)  _camera.pitch = 89.0f;
-                if (_camera.pitch < -89.0f) _camera.pitch = -89.0f;
+                    if (_camera.pitch > 89.0f)  _camera.pitch = 89.0f;
+                    if (_camera.pitch < -89.0f) _camera.pitch = -89.0f;
+                }
             }
+
+
             if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
                 if (!SDL_GetWindowRelativeMouseMode(_init._window)) {
                     SDL_SetWindowRelativeMouseMode(_init._window, true);
+                    _camera.isCameraActive = true;
                 }
             }
             if (e.type == SDL_EVENT_KEY_DOWN) {
                 if (e.key.key == SDLK_ESCAPE) {
                     SDL_SetWindowRelativeMouseMode(_init._window, false);
+                    _camera.isCameraActive = false;
                 }
             }
         }
@@ -409,7 +415,7 @@ void VK_APPLICATION::VulkanApplication::init_commands(){
 
 void VK_APPLICATION::VulkanApplication::draw_grid(VkCommandBuffer cmd, VkDescriptorSet globalDescriptor){
     VkClearValue clearColor;
-    clearColor.color = { { 1.0f, 1.0f, 1.0f, 1.0f } };
+    clearColor.color = { { 0.3f, 0.3f, 0.3f, 1.0f } };
 
     VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(_init._drawImage.imageView, &clearColor, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     VkRenderingAttachmentInfo depthAttachment = vkinit::depth_attachment_info(_init._depthImage.imageView, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
@@ -501,9 +507,8 @@ void VK_APPLICATION::VulkanApplication::made_move(){
     auto deltaTime = std::chrono::duration_cast<std::chrono::duration<float>>(currentTime - _delta.lastFrameTime).count();
     _delta.lastFrameTime = currentTime;
     _delta.moveStep = deltaTime * _movement.speed;
-    std::cout<<deltaTime<<"\t"<<_movement.speed<<"\t"<<_delta.moveStep<<"\n";
 
-    if (true) {
+    if (_camera.isCameraActive) {
         int numkeys;
         const bool* keyboardState = SDL_GetKeyboardState(&numkeys);
 
@@ -529,6 +534,12 @@ void VK_APPLICATION::VulkanApplication::made_move(){
         }
         if (keyboardState[SDL_SCANCODE_LSHIFT]) {
             _movement.valueZ -= 1.0f * _delta.moveStep;
+        }
+        if (keyboardState[SDL_SCANCODE_E]) {
+            CONTROLLER::IncreaseSpeed(_movement.speed);
+        }
+        if (keyboardState[SDL_SCANCODE_Q]) {
+            CONTROLLER::DecreaseSpeed(_movement.speed);
         }
     }
 }
