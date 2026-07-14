@@ -43,6 +43,9 @@ void VK_APPLICATION::VulkanApplication::run(){
     SDL_Event e;
     bool bQuit = false;
 
+    _delta.lastFrameTime = std::chrono::high_resolution_clock::now();
+    _delta.startTime = std::chrono::high_resolution_clock::now();
+
     while (!bQuit) {
         while (SDL_PollEvent(&e)) {
 
@@ -91,7 +94,9 @@ void VK_APPLICATION::VulkanApplication::run(){
         if (resize_requested) {
             resize_swapchain();
         }
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         renderLoop();
+        made_move();
     }
 }
 
@@ -450,30 +455,21 @@ VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& 
     // Z-up
     glm::vec3 up = {0.0f, 0.0f, 1.0f};
 
-    // Time
-    Uint64 currentTime = SDL_GetTicksNS();
-    float deltaTime = (currentTime - _delta.lastTime) / 1000000000.0f;
-    _delta.lastTime = currentTime;
-    float time = (currentTime - _delta.startTime) / 1000000000.0f;
-    float moveStep = deltaTime * _movement.speed;
-
     // For camera-movement
-    glm::vec3 front;
-    front.x = cos(glm::radians(_camera.yaw)) * cos(glm::radians(_camera.pitch));
-    front.y = sin(glm::radians(_camera.yaw)) * cos(glm::radians(_camera.pitch));
-    front.z = sin(glm::radians(_camera.pitch));
-    front = glm::normalize(front);
+    _camera.front.x = cos(glm::radians(_camera.yaw)) * cos(glm::radians(_camera.pitch));
+    _camera.front.y = sin(glm::radians(_camera.yaw)) * cos(glm::radians(_camera.pitch));
+    _camera.front.z = sin(glm::radians(_camera.pitch));
+    _camera.front = glm::normalize(_camera.front);
 
-    glm::vec3 Wfront;
-    Wfront.x = cos(glm::radians(_camera.yaw));
-    Wfront.y = sin(glm::radians(_camera.yaw));
-    Wfront.z = 0;
+    _camera.Wfront.x = cos(glm::radians(_camera.yaw));
+    _camera.Wfront.y = sin(glm::radians(_camera.yaw));
+    _camera.Wfront.z = 0;
 
-    glm::vec3 right = glm::normalize(glm::cross(Wfront, up));
+    _camera.right = glm::normalize(glm::cross(_camera.Wfront, up));
 
     //For camera
     glm::vec3 eye = { _movement.valueX, _movement.valueY, _movement.valueZ };
-    glm::vec3 target = eye + front;
+    glm::vec3 target = eye + _camera.front;
     sceneData.view = glm::lookAt(eye, target, up);
 
     // Perspective projection
@@ -498,5 +494,42 @@ VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& 
     writer.update_set(_init._device, globalDescriptor);
 
     return globalDescriptor;
+}
+
+void VK_APPLICATION::VulkanApplication::made_move(){
+    auto currentTime = std::chrono::high_resolution_clock::now();
+    auto deltaTime = std::chrono::duration_cast<std::chrono::duration<float>>(currentTime - _delta.lastFrameTime).count();
+    _delta.lastFrameTime = currentTime;
+    _delta.moveStep = deltaTime * _movement.speed;
+    std::cout<<deltaTime<<"\t"<<_movement.speed<<"\t"<<_delta.moveStep<<"\n";
+
+    if (true) {
+        int numkeys;
+        const bool* keyboardState = SDL_GetKeyboardState(&numkeys);
+
+        if (keyboardState[SDL_SCANCODE_W]) {
+            _movement.valueY += _camera.Wfront.y * _delta.moveStep;
+            _movement.valueX += _camera.Wfront.x * _delta.moveStep;
+        }
+        if (keyboardState[SDL_SCANCODE_S]) {
+            _movement.valueY -= _camera.Wfront.y * _delta.moveStep;
+            _movement.valueX -= _camera.Wfront.x * _delta.moveStep;
+        }
+
+        if (keyboardState[SDL_SCANCODE_A]) {
+            _movement.valueY -= _camera.right.y * _delta.moveStep;
+            _movement.valueX -= _camera.right.x * _delta.moveStep;
+        }
+        if (keyboardState[SDL_SCANCODE_D]) {
+            _movement.valueY += _camera.right.y * _delta.moveStep;
+            _movement.valueX += _camera.right.x * _delta.moveStep;
+        }
+        if (keyboardState[SDL_SCANCODE_SPACE]) {
+            _movement.valueZ += 1.0f * _delta.moveStep;
+        }
+        if (keyboardState[SDL_SCANCODE_LSHIFT]) {
+            _movement.valueZ -= 1.0f * _delta.moveStep;
+        }
+    }
 }
 
