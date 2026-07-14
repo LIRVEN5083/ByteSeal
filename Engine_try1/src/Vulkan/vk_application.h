@@ -66,6 +66,10 @@ namespace VK_APPLICATION {
         VkDescriptorSetLayout _gpuSceneDataDescriptorLayout;
         DescriptorAllocatorGrowable globalDescriptorAllocator;
 
+        CONTROLLER::Movement _movement;
+        CONTROLLER::View _camera;
+        CONTROLLER::Delta _delta;
+
         // HardCoded data
         VkPipelineLayout _gridPipelineLayout;
         VkPipeline _gridPipeline;

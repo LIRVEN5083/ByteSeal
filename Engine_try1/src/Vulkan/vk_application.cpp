@@ -43,25 +43,47 @@ void VK_APPLICATION::VulkanApplication::run(){
     SDL_Event e;
     bool bQuit = false;
 
-    // Основной цикл вообще всего
     while (!bQuit) {
-        // Основной цикл событий
         while (SDL_PollEvent(&e)) {
 
             if (e.type == SDL_EVENT_QUIT) {
                 bQuit = true;
             }
-
+            if (e.type == SDL_EVENT_WINDOW_RESIZED) {
+                resize_requested = true;
+            }
             if (e.type == SDL_EVENT_WINDOW_MINIMIZED) {
                 stop_rendering = true;
             }
             if (e.type == SDL_EVENT_WINDOW_RESTORED) {
                 stop_rendering = false;
             }
+            if (e.type == SDL_EVENT_MOUSE_MOTION) {
+                float xoffset = e.motion.xrel;
+                float yoffset = -e.motion.yrel; // Инвертируем Y
+
+                float sensitivity = 0.05f;
+                xoffset *= sensitivity;
+                yoffset *= sensitivity;
+
+                _camera.yaw   -= xoffset;
+                _camera.pitch += yoffset;
+
+                if (_camera.pitch > 89.0f)  _camera.pitch = 89.0f;
+                if (_camera.pitch < -89.0f) _camera.pitch = -89.0f;
+            }
+            if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
+                if (!SDL_GetWindowRelativeMouseMode(_init._window)) {
+                    SDL_SetWindowRelativeMouseMode(_init._window, true);
+                }
+            }
+            if (e.type == SDL_EVENT_KEY_DOWN) {
+                if (e.key.key == SDLK_ESCAPE) {
+                    SDL_SetWindowRelativeMouseMode(_init._window, false);
+                }
+            }
         }
-        // do not draw if we are minimized
         if (stop_rendering) {
-            // throttle the speed to avoid the endless spinning
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             continue;
         }
@@ -171,15 +193,10 @@ void VK_APPLICATION::VulkanApplication::resize_swapchain(){
     vkDeviceWaitIdle(_init._device);
 
     int w, h;
-    SDL_GetWindowSize(_init._window, &w, &h);
+    SDL_GetWindowSizeInPixels(_init._window, &w, &h);
 
     while (w == 0 || h == 0) {
-        SDL_GetWindowSize(_init._window, &w, &h);
-        SDL_WaitEvent(nullptr);
-    }
-
-    while (w == 0 || h == 0) {
-        SDL_GetWindowSize(_init._window, &w, &h);
+        SDL_GetWindowSizeInPixels(_init._window, &w, &h);
         SDL_WaitEvent(nullptr);
     }
 
@@ -430,23 +447,46 @@ void VK_APPLICATION::VulkanApplication::draw_grid(VkCommandBuffer cmd, VkDescrip
 }
 
 VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& currentFrame){
-    sceneData.view = glm::lookAt(
-        glm::vec3(0.0f, -2.0f, 2.0f),
-        glm::vec3(0.0f, 0.0f, 2.0f),
-        glm::vec3(0.0f, 0.0f, 1.0f)
-    );
+    // Z-up
+    glm::vec3 up = {0.0f, 0.0f, 1.0f};
 
+    // Time
+    Uint64 currentTime = SDL_GetTicksNS();
+    float deltaTime = (currentTime - _delta.lastTime) / 1000000000.0f;
+    _delta.lastTime = currentTime;
+    float time = (currentTime - _delta.startTime) / 1000000000.0f;
+    float moveStep = deltaTime * _movement.speed;
+
+    // For camera-movement
+    glm::vec3 front;
+    front.x = cos(glm::radians(_camera.yaw)) * cos(glm::radians(_camera.pitch));
+    front.y = sin(glm::radians(_camera.yaw)) * cos(glm::radians(_camera.pitch));
+    front.z = sin(glm::radians(_camera.pitch));
+    front = glm::normalize(front);
+
+    glm::vec3 Wfront;
+    Wfront.x = cos(glm::radians(_camera.yaw));
+    Wfront.y = sin(glm::radians(_camera.yaw));
+    Wfront.z = 0;
+
+    glm::vec3 right = glm::normalize(glm::cross(Wfront, up));
+
+    //For camera
+    glm::vec3 eye = { _movement.valueX, _movement.valueY, _movement.valueZ };
+    glm::vec3 target = eye + front;
+    sceneData.view = glm::lookAt(eye, target, up);
+
+    // Perspective projection
     float aspect = (float)_init._windowExtent.width / (float)_init._windowExtent.height;
     sceneData.proj = glm::perspective(glm::radians(70.0f), aspect, 0.1f, 1000.0f);
-
     sceneData.proj[1][1] *= -1.0f;
 
+    // proj * view
     sceneData.viewproj = sceneData.proj * sceneData.view;
 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     VmaAllocationInfo allocInfo;
     vmaGetAllocationInfo(_init._allocator, currentFrame.gpuSceneDataBuffer.allocation, &allocInfo);
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     GPUSceneData* sceneUniformData = (GPUSceneData*)allocInfo.pMappedData;
     *sceneUniformData = sceneData;

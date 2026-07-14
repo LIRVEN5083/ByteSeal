@@ -1,37 +1,32 @@
-#ifndef _MOVEMENT_HPP
-#define _MOVEMENT_HPP
+#pragma once
 
-#include <GLFW/glfw3.h>
-#include <GLFW/glfw3native.h>
+#include "../Vulkan/vk_types.h"
+#include "SDL3/SDL.h"
+#include "SDL3/SDL_vulkan.h"
 #include <chrono>
 #include <iostream>
 
-extern uint32_t WindowSizeX;
-extern uint32_t WindowSizeY;
+namespace CONTROLLER{
+    struct Movement{
+        float valueZ{2.0f};
+        float valueX{0.0f};
+        float valueY{0.0f};
+        float speed{0.0f};
+    };
 
-//Movement
-extern float valueZ;
-extern float valueX;
-extern float valueY;
-extern float speed;
+    struct View{
+        float yaw{0.0f};
+        float pitch{0.0f};
+        float sensetivity{0.0f};
+    };
 
-//For view
-extern float lastX;
-extern float lastY;
-extern float yaw;
-extern float pitch;
+    struct Delta{
+        uint64_t lastTime = SDL_GetTicksNS();
+        uint64_t startTime{lastTime};
+    };
 
-extern float speed;
-extern int times;
+    void IncreaseSpeed(float& speed);
 
-void mouse_callback(GLFWwindow* window, double xpos, double ypos);
+    void DecreaseSpeed(float& speed);
 
-void IncreaseSpeed(float& speed);
-
-void DecreaseSpeed(float& speed);
-
-float getTime();
-
-void RegSpeed(GLFWwindow* window, int key, int scancode, int action, int mode);
-
-#endif
+}

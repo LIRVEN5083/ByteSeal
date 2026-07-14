@@ -213,7 +213,7 @@ VK_INIT_ENGINE::_inited_engine& VK_INIT_ENGINE::VulkanInitEngine::Get(){
 VK_INIT_ENGINE::VulkanInitEngine::VulkanInitEngine(bool Validation_layers){
     this->ready_init._windowExtent = applicationSize;
     SDL_Init(SDL_INIT_VIDEO);
-    SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
+    SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
     ready_init._window = SDL_CreateWindow(
         "ByteSeal Engine",
         this->ready_init._windowExtent.width, this->ready_init._windowExtent.height,
