@@ -14,14 +14,6 @@
 
 constexpr unsigned int FRAME_OVERLAP = 2;
 
-struct AllocatedImage {
-    VkImage image;
-    VkImageView imageView;
-    VmaAllocation allocation;
-    VkExtent3D imageExtent;
-    VkFormat imageFormat;
-};
-
 namespace VK_INIT_ENGINE{
     struct _inited_engine{
         struct SDL_Window* _window{ nullptr };
@@ -29,6 +21,7 @@ namespace VK_INIT_ENGINE{
         VkInstance _instance;
         VkDebugUtilsMessengerEXT _debug_messenger;
         VkPhysicalDevice _chosenGPU;
+        VkPhysicalDeviceFeatures _deviceFeatures;
         VkDevice _device;
         VkSurfaceKHR _surface;
         VkQueue _graphicsQueue;
@@ -61,8 +54,6 @@ namespace VK_INIT_ENGINE{
 
 
         bool _isInitialized = false;
-
-        void immediate_submit(std::function<void(VkCommandBuffer cmd)>&& function);
     };
 
     class VulkanInitEngine{

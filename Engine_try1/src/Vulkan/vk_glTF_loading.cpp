@@ -107,13 +107,13 @@ void VK_LOADING::Texture::fromglTfImage(tinygltf::Image& gltfimage, std::string 
 			// Select target format based on device features (use uncompressed if none supported)
 			auto targetFormat = basist::transcoder_texture_format::cTFRGBA32;
 
-			auto formatSupported = [device](VkFormat format) {
+			auto formatSupported = [_init](VkFormat format) {
 				VkFormatProperties formatProperties;
-				vkGetPhysicalDeviceFormatProperties(device->physicalDevice, format, &formatProperties);
+				vkGetPhysicalDeviceFormatProperties(_init->_chosenGPU, format, &formatProperties);
 				return ((formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_TRANSFER_DST_BIT) && (formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT));
 			};
 
-			if (device->features.textureCompressionBC) {
+			if (_init->_deviceFeatures.textureCompressionBC) {
 				// BC7 is the preferred block compression if available
 				if (formatSupported(VK_FORMAT_BC7_UNORM_BLOCK)) {
 					targetFormat = basist::transcoder_texture_format::cTFBC7_RGBA;
@@ -126,7 +126,7 @@ void VK_LOADING::Texture::fromglTfImage(tinygltf::Image& gltfimage, std::string 
 				}
 			}
 			// Adaptive scalable texture compression
-			if (device->features.textureCompressionASTC_LDR) {
+			if (_init->_deviceFeatures.textureCompressionASTC_LDR) {
 				if (formatSupported(VK_FORMAT_ASTC_4x4_SRGB_BLOCK))
 				{
 					targetFormat = basist::transcoder_texture_format::cTFASTC_4x4_RGBA;
@@ -134,7 +134,7 @@ void VK_LOADING::Texture::fromglTfImage(tinygltf::Image& gltfimage, std::string 
 				}
 			}
 			// Ericsson texture compression
-			if (device->features.textureCompressionETC2) {
+			if (_init->_deviceFeatures.textureCompressionETC2) {
 				if (formatSupported(VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK))
 				{
 					targetFormat = basist::transcoder_texture_format::cTFETC2_RGBA;
@@ -172,21 +172,7 @@ void VK_LOADING::Texture::fromglTfImage(tinygltf::Image& gltfimage, std::string 
 				totalBufferSize += numBlocksOrPixels * bytesPerBlockOrPixel;
 			}
 
-			VkBuffer stagingBuffer;
-			VkDeviceMemory stagingMemory;
-			VkBufferCreateInfo bufferCreateInfo{};
-			bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-			bufferCreateInfo.size = totalBufferSize;
-			bufferCreateInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-			bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-			VK_CHECK_RESULT(vkCreateBuffer(device->logicalDevice, &bufferCreateInfo, nullptr, &stagingBuffer));
-			vkGetBufferMemoryRequirements(device->logicalDevice, stagingBuffer, &memReqs);
-			memAllocInfo.allocationSize = memReqs.size;
-			memAllocInfo.memoryTypeIndex = device->getMemoryType(memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-			VK_CHECK_RESULT(vkAllocateMemory(device->logicalDevice, &memAllocInfo, nullptr, &stagingMemory));
-			VK_CHECK_RESULT(vkBindBufferMemory(device->logicalDevice, stagingBuffer, stagingMemory, 0));
-			uint8_t* stagingBufferMapped;
-			VK_CHECK_RESULT(vkMapMemory(device->logicalDevice, stagingMemory, 0, memReqs.size, 0, (void**)&stagingBufferMapped));
+			AllocatedBuffer stagingBuffer = vkinit::create_buffer(totalBufferSize, _init->_allocator, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
 
 			unsigned char* buffer = new unsigned char[totalBufferSize];
 			unsigned char* bufferPtr = &buffer[0];
@@ -207,7 +193,7 @@ void VK_LOADING::Texture::fromglTfImage(tinygltf::Image& gltfimage, std::string 
 				bufferPtr += outputSize;
 			}
 
-			memcpy(stagingBufferMapped, buffer, totalBufferSize);
+			std::memcpy(stagingBuffer.info.pMappedData, buffer, totalBufferSize);
 
 			VkImageCreateInfo imageCreateInfo{};
 			imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -619,3 +605,4 @@ VK_LOADING::Node* VK_LOADING::Model::findNode(Node* parent, uint32_t index){
 VK_LOADING::Node* VK_LOADING::Model::nodeFromIndex(uint32_t index){
 
 }
+

@@ -1,6 +1,9 @@
 #pragma once
 
+
 #include "vk_types.h"
+#include "vk_init_engine.h"
+#include "vk_images.h"
 
 namespace vkinit {
 
@@ -65,4 +68,12 @@ namespace vkinit {
     AllocatedBuffer create_buffer(size_t allocSize, VmaAllocator _allocator, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
     // Удаление буфера
     void destroy_buffer(const AllocatedBuffer& buffer, VmaAllocator _allocator);
+
+    void immediate_submit(std::function<void(VkCommandBuffer cmd)>&& function, VK_INIT_ENGINE::_inited_engine& _init);
+    // Создание пустого изображения на GPU
+    AllocatedImage create_image(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, VK_INIT_ENGINE::_inited_engine& _init, bool mipmapped = false);
+    // Нарисовать на пустой алоцированном холсте картинку (копирование данных на пустую картинку)
+    AllocatedImage create_image(void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, VK_INIT_ENGINE::_inited_engine& _init, bool mipmapped = false);
+    // Удаление изображение из GPU
+    void destroy_image(const AllocatedImage& img, VK_INIT_ENGINE::_inited_engine& _init);
 }

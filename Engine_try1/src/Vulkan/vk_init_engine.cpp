@@ -182,30 +182,6 @@ void VK_INIT_ENGINE::VulkanInitEngine::init_sync_structures(){
 
 }
 
-void VK_INIT_ENGINE::_inited_engine::immediate_submit(std::function<void(VkCommandBuffer cmd)>&& function){
-    VK_CHECK(vkResetFences(_device, 1, &_immFence));
-    VK_CHECK(vkResetCommandBuffer(_immCommandBuffer, 0));
-
-    VkCommandBuffer cmd = _immCommandBuffer;
-
-    VkCommandBufferBeginInfo cmdBeginInfo = vkinit::command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-
-    VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
-
-    function(cmd);
-
-    VK_CHECK(vkEndCommandBuffer(cmd));
-
-    VkCommandBufferSubmitInfo cmdinfo = vkinit::command_buffer_submit_info(cmd);
-    VkSubmitInfo2 submit = vkinit::submit_info(&cmdinfo, nullptr, nullptr);
-
-    // submit command buffer to the queue and execute it.
-    //  _renderFence will now block until the graphic commands finish execution
-    VK_CHECK(vkQueueSubmit2(_graphicsQueue, 1, &submit, _immFence));
-
-    VK_CHECK(vkWaitForFences(_device, 1, &_immFence, true, 9999999999));
-}
-
 VK_INIT_ENGINE::_inited_engine& VK_INIT_ENGINE::VulkanInitEngine::Get(){
     return this->ready_init;
 }
@@ -261,6 +237,8 @@ VK_INIT_ENGINE::VulkanInitEngine::VulkanInitEngine(bool Validation_layers){
     this->ready_init._graphicsQueue = vkbDevice.get_queue(vkb::QueueType::graphics).value();
 
     this->ready_init._graphicsQueueFamily = vkbDevice.get_queue_index(vkb::QueueType::graphics).value();
+
+    vkGetPhysicalDeviceFeatures(ready_init._chosenGPU, &ready_init._deviceFeatures);
 
     VmaAllocatorCreateInfo allocatorInfo = {};
     allocatorInfo.physicalDevice = this->ready_init._chosenGPU;
