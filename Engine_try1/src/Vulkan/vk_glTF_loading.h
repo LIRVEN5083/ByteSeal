@@ -124,4 +124,80 @@ namespace VK_LOADING{
         ~Mesh();
         void setBoundingBox(glm::vec3 min, glm::vec3 max);
     };
+
+    struct Node {
+        Node *parent;
+        uint32_t index;
+        std::vector<Node*> children;
+        glm::mat4 matrix;
+        std::string name;
+        Mesh *mesh;
+        glm::vec3 translation{};
+        glm::vec3 scale{ 1.0f };
+        glm::quat rotation{};
+        BoundingBox bvh;
+        BoundingBox aabb;
+        bool useCachedMatrix{ false };
+        glm::mat4 cachedLocalMatrix{ glm::mat4(1.0f) };
+        glm::mat4 cachedMatrix{ glm::mat4(1.0f) };
+        glm::mat4 localMatrix();
+        glm::mat4 getMatrix();
+        void update();
+        ~Node();
+    };
+
+    struct Model {
+
+    	VK_INIT_ENGINE::_inited_engine* _init;
+
+		struct Vertex {
+			glm::vec3 pos;
+			glm::vec3 normal;
+			glm::vec2 uv0;
+			glm::vec2 uv1;
+			glm::vec4 color;
+		};
+
+		AllocatedBuffer vertices;
+		AllocatedBuffer indices;
+
+		glm::mat4 aabb;
+
+		std::vector<Node*> nodes;
+		std::vector<Node*> linearNodes;
+
+		std::vector<Texture> textures;
+		std::vector<TextureSampler> textureSamplers;
+		std::vector<Material> materials;
+		std::vector<std::string> extensions;
+
+		struct Dimensions {
+			glm::vec3 min = glm::vec3(FLT_MAX);
+			glm::vec3 max = glm::vec3(-FLT_MAX);
+		} dimensions;
+
+		struct LoaderInfo {
+			uint32_t* indexBuffer;
+			Vertex* vertexBuffer;
+			size_t indexPos = 0;
+			size_t vertexPos = 0;
+		};
+
+		std::string filePath;
+
+		void loadNode(VK_LOADING::Node* parent, const tinygltf::Node& node, uint32_t nodeIndex, const tinygltf::Model& model, LoaderInfo& loaderInfo, float globalscale);
+		void getNodeProps(const tinygltf::Node& node, const tinygltf::Model& model, size_t& vertexCount, size_t& indexCount);
+		void loadTextures(tinygltf::Model& gltfModel, VK_INIT_ENGINE::_inited_engine* _init, VkQueue transferQueue);
+		VkSamplerAddressMode getVkWrapMode(int32_t wrapMode);
+		VkFilter getVkFilterMode(int32_t filterMode);
+		void loadTextureSamplers(tinygltf::Model& gltfModel);
+		void loadMaterials(tinygltf::Model& gltfModel);
+		void loadFromFile(std::string filename, VK_INIT_ENGINE::_inited_engine* _init, VkQueue transferQueue, float scale = 1.0f);
+		void drawNode(Node* node, VkCommandBuffer commandBuffer);
+		void draw(VkCommandBuffer commandBuffer);
+		void calculateBoundingBox(Node* node, Node* parent);
+		void getSceneDimensions();
+		Node* findNode(Node* parent, uint32_t index);
+		Node* nodeFromIndex(uint32_t index);
+	};
 }
