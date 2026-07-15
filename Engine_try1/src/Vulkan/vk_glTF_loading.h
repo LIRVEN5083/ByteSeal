@@ -1,3 +1,11 @@
+/**
+* Vulkan glTF model and texture loading class based on tinyglTF (https://github.com/syoyo/tinygltf)
+ *
+ * Copyright (C) 2018-2024 by Sascha Willems - www.saschawillems.de
+ *
+ * This code is licensed under the MIT license (MIT) (http://opensource.org/licenses/MIT)
+ */
+
 #pragma once
 
 #include "vk_types.h"
@@ -56,8 +64,8 @@ namespace VK_LOADING{
         VkDescriptorImageInfo descriptor;
         VkSampler sampler;
 
-        // Место аллокации
-        VmaAllocation allocation;
+    	// Указатель на очистку в глобальной аллокаторе _init.allocator
+    	VmaAllocation allocation;
 
         void updateDescriptor();
         void destroy();
