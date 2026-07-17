@@ -4,6 +4,11 @@
 #include "vk_types.h"
 #include "vk_init_engine.h"
 #include "vk_images.h"
+#include "vk_pipelines.h"
+
+namespace VK_INIT_ENGINE {
+    struct _inited_engine;
+}
 
 namespace vkinit {
 
@@ -69,7 +74,7 @@ namespace vkinit {
     // Удаление буфера
     void destroy_buffer(const AllocatedBuffer& buffer, VmaAllocator _allocator);
 
-    void immediate_submit(std::function<void(VkCommandBuffer cmd)>&& function, VK_INIT_ENGINE::_inited_engine& _init);
+    void submit_immediate(std::function<void(VkCommandBuffer cmd)>&& function, VK_INIT_ENGINE::_inited_engine& _init);
     // Создание пустого изображения на GPU
     AllocatedImage create_image(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, VK_INIT_ENGINE::_inited_engine& _init, bool mipmapped = false);
     // Нарисовать на пустой алоцированном холсте картинку (копирование данных на пустую картинку)
