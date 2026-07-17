@@ -66,6 +66,7 @@ if(MINGW)
 endif()
 
 
+add_subdirectory(src/external/fastgltf)
 add_subdirectory(src/external/draco)
 
 target_include_directories(${PROJECT_NAME} PUBLIC
@@ -100,6 +101,7 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
     VMA_DYNAMIC_VULKAN_FUNCTIONS=0
     FMT_HEADER_ONLY
     BASISD_SUPPORT_KTX2_ZSTD=0
+    FASTGLTF_ENABLE_DRACO=1
 )
 
 if(WIN32)
@@ -118,6 +120,7 @@ target_link_libraries(${PROJECT_NAME}
     Vulkan::Headers
     ${SDL3_LINK_TARGET}
     draco_static
+    fastgltf::fastgltf
 )
 
 if(WIN32)
