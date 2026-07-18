@@ -14,6 +14,14 @@ void VK_APPLICATION::VulkanApplication::cleanup(){
         _frames[i]._deletionQueue.flush();
     }
 
+    for (auto& mesh : testMeshes) {
+        vkinit::destroy_buffer(mesh->meshBuffers.indexBuffer, _init._allocator);
+        vkinit::destroy_buffer(mesh->meshBuffers.vertexBuffer, _init._allocator);
+    }
+
+    vkDestroyPipelineLayout(_init._device, _BasePipelineLayout, nullptr);
+    vkDestroyPipeline(_init._device, _BasePipeline, nullptr);
+
     vkDestroyPipelineLayout(_init._device, _gridPipelineLayout, nullptr);
     vkDestroyPipeline(_init._device, _gridPipeline, nullptr);
 
@@ -40,11 +48,13 @@ void VK_APPLICATION::VulkanApplication::run(){
     init_commands();
     init_descriptors();
     init_grid_pipeline();
+    init_base_pipeline();
     SDL_Event e;
     bool bQuit = false;
 
     _delta.lastFrameTime = std::chrono::high_resolution_clock::now();
     _delta.startTime = std::chrono::high_resolution_clock::now();
+    testMeshes = loadGltfMeshes(this,"../Model/1965_ford_mustang_shelby_gt350.glb").value();
 
     while (!bQuit) {
         while (SDL_PollEvent(&e)) {
@@ -149,6 +159,7 @@ void VK_APPLICATION::VulkanApplication::renderLoop(){
     vkutil::transition_image(cmd, _init._drawImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     vkutil::transition_image(cmd, _init._depthImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
+    draw_meshes(cmd, globalDescriptor);
     draw_grid(cmd, globalDescriptor);
 
     vkutil::transition_image(cmd, _init._drawImage.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
@@ -318,6 +329,74 @@ void VK_APPLICATION::VulkanApplication::destroy_swapchain(){
     }
 }
 
+GPUMeshBuffers VK_APPLICATION::VulkanApplication::upload_meshes(std::span<uint32_t> indices, std::span<Vertex> vertices){
+    // Размер масивов с данными, чтобы программа знала точное количество
+    const size_t vertexBufferSize = vertices.size() * sizeof(Vertex);
+    const size_t indexBufferSize = indices.size() * sizeof(uint32_t);
+
+    // Тут мы храним:
+    // 1. Буфер индексов
+    // 2. Буфер вершин
+    // 3. Адресс на всю эту бурмалду
+    GPUMeshBuffers newSurface;
+
+    // Создание вершинного буфера
+    newSurface.vertexBuffer = vkinit::create_buffer(vertexBufferSize, _init._allocator, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+        VMA_MEMORY_USAGE_GPU_ONLY);
+
+    // Находим адресс к вершиному буферу
+    VkBufferDeviceAddressInfo deviceAdressInfo{ .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,.buffer = newSurface.vertexBuffer.buffer };
+    // Заносим этот адресс в нашу структуру
+    newSurface.vertexBufferAddress = vkGetBufferDeviceAddress(_init._device, &deviceAdressInfo);
+
+    // Создаём буфер индексов
+    newSurface.indexBuffer = vkinit::create_buffer(indexBufferSize, _init._allocator, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VMA_MEMORY_USAGE_GPU_ONLY);
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Дальше типичная реализация Staging buffer, т.е системы копирования данных и передачи их в видеокарту напрямую
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    // staging buffer и его создание с флагом VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+    // который говорит что это источник для копирования
+    AllocatedBuffer staging = vkinit::create_buffer(vertexBufferSize + indexBufferSize, _init._allocator, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+    // Получаем указатель
+    VmaAllocationInfo allocInfo;
+    vmaGetAllocationInfo(_init._allocator, staging.allocation, &allocInfo);
+    void* data = allocInfo.pMappedData;
+
+    // Копируем данные о вершинах в staging buffer
+    memcpy(data, vertices.data(), vertexBufferSize);
+    // Копируем данные о индексах в staging buffer,
+    // но со смешением по памяти в массив вершин
+    memcpy((char*)data + vertexBufferSize, indices.data(), indexBufferSize);
+
+    // И используем нашу крутую функцию для быстрой записы в командный буфер
+    // Тут мы копируем данные из Staging Buffer в уже красиво подготовленый
+    // адресс памяти (технология BDA)
+    vkinit::submit_immediate([&](VkCommandBuffer cmd) {
+        VkBufferCopy vertexCopy{ 0 };
+        vertexCopy.dstOffset = 0;
+        vertexCopy.srcOffset = 0;
+        vertexCopy.size = vertexBufferSize;
+
+        vkCmdCopyBuffer(cmd, staging.buffer, newSurface.vertexBuffer.buffer, 1, &vertexCopy);
+
+        VkBufferCopy indexCopy{ 0 };
+        indexCopy.dstOffset = 0;
+        indexCopy.srcOffset = vertexBufferSize; // Мы начинаем не с 0 адресса как для вершин, а с конца адресса вершин
+        indexCopy.size = indexBufferSize;
+
+        vkCmdCopyBuffer(cmd, staging.buffer, newSurface.indexBuffer.buffer, 1, &indexCopy);
+    }, _init);
+
+    // Уничтожаем Staging Buffer
+    vkinit::destroy_buffer(staging, _init._allocator);
+
+    // Возвращаем
+    return newSurface;
+}
+
 void VK_APPLICATION::VulkanApplication::init_descriptors(){
 
     // Для данных о сцене
@@ -387,7 +466,7 @@ void VK_APPLICATION::VulkanApplication::init_grid_pipeline(){
     pipelineBuilder.enable_blending_alphablend();
 
     //pipelineBuilder.disable_blending();
-    pipelineBuilder.enable_depthtest(VK_TRUE, VK_COMPARE_OP_LESS_OR_EQUAL);
+    pipelineBuilder.enable_depthtest(VK_FALSE, VK_COMPARE_OP_LESS_OR_EQUAL);
 
     //connect the image format we will draw into, from draw image
     pipelineBuilder.set_color_attachment_format(_init._drawImage.imageFormat);
@@ -399,6 +478,67 @@ void VK_APPLICATION::VulkanApplication::init_grid_pipeline(){
     //clean structures
     vkDestroyShaderModule(_init._device, triangleFragShader, nullptr);
     vkDestroyShaderModule(_init._device, triangleVertexShader, nullptr);
+}
+
+void VK_APPLICATION::VulkanApplication::init_base_pipeline(){
+    VkShaderModule baseFragShader;
+    if (!vkutil::load_shader_module("../Shaders/BaseMesh/Binary/mesh.frag.spv", _init._device, &baseFragShader)) {
+        fmt::print("Error when building the triangle fragment shader module");
+    }
+    else {
+        fmt::print("Triangle fragment shader succesfully loaded");
+    }
+
+    VkShaderModule baseVertexShader;
+    if (!vkutil::load_shader_module("../Shaders/BaseMesh/Binary/mesh.vert.spv", _init._device, &baseVertexShader)) {
+        fmt::print("Error when building the triangle vertex shader module");
+    }
+    else {
+        fmt::print("Triangle vertex shader succesfully loaded");
+    }
+
+    VkPushConstantRange bufferRange{};
+    bufferRange.offset = 0;
+    bufferRange.size = sizeof(GPUDrawPushConstants);
+    bufferRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+    VkPipelineLayoutCreateInfo pipeline_layout_info = vkinit::pipeline_layout_create_info();
+    pipeline_layout_info.pPushConstantRanges = &bufferRange;
+    pipeline_layout_info.pushConstantRangeCount = 1;
+    pipeline_layout_info.pSetLayouts = &_gpuSceneDataDescriptorLayout;
+    pipeline_layout_info.setLayoutCount = 1;
+    VK_CHECK(vkCreatePipelineLayout(_init._device, &pipeline_layout_info, nullptr, &_BasePipelineLayout));
+
+    PipelineBuilder pipelineBuilder;
+
+    //use the triangle layout we created
+    pipelineBuilder._pipelineLayout = _BasePipelineLayout;
+    //connecting the vertex and pixel shaders to the pipeline
+    pipelineBuilder.set_shaders(baseVertexShader, baseFragShader);
+    //it will draw triangles
+    pipelineBuilder.set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+    //filled triangles
+    pipelineBuilder.set_polygon_mode(VK_POLYGON_MODE_FILL);
+    //no backface culling
+    pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+    //no multisampling
+    pipelineBuilder.set_multisampling_none();
+
+    pipelineBuilder.disable_blending();
+
+    //pipelineBuilder.disable_blending();
+    pipelineBuilder.enable_depthtest(VK_TRUE, VK_COMPARE_OP_LESS_OR_EQUAL);
+
+    //connect the image format we will draw into, from draw image
+    pipelineBuilder.set_color_attachment_format(_init._drawImage.imageFormat);
+    pipelineBuilder.set_depth_format(_init._depthImage.imageFormat);
+
+    //finally build the pipeline
+    _BasePipeline = pipelineBuilder.build_pipeline(_init._device);
+
+    //clean structures
+    vkDestroyShaderModule(_init._device, baseFragShader, nullptr);
+    vkDestroyShaderModule(_init._device, baseVertexShader, nullptr);
 }
 
 void VK_APPLICATION::VulkanApplication::init_commands(){
@@ -414,11 +554,13 @@ void VK_APPLICATION::VulkanApplication::init_commands(){
 }
 
 void VK_APPLICATION::VulkanApplication::draw_grid(VkCommandBuffer cmd, VkDescriptorSet globalDescriptor){
-    VkClearValue clearColor;
-    clearColor.color = { { 0.3f, 0.3f, 0.3f, 1.0f } };
+    VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(_init._drawImage.imageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD; // <-- СОХРАНЯЕМ цвет машины!
+    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 
-    VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(_init._drawImage.imageView, &clearColor, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     VkRenderingAttachmentInfo depthAttachment = vkinit::depth_attachment_info(_init._depthImage.imageView, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+    depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD; // <-- СОХРАНЯЕМ глубину машины!
+    depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 
     VkRenderingInfo renderInfo = vkinit::rendering_info(_drawExtent, &colorAttachment, &depthAttachment);
     vkCmdBeginRendering(cmd, &renderInfo);
@@ -453,7 +595,84 @@ void VK_APPLICATION::VulkanApplication::draw_grid(VkCommandBuffer cmd, VkDescrip
     );
 
     vkCmdDraw(cmd, 6, 1, 0, 0);
+    vkCmdEndRendering(cmd);
+}
 
+void VK_APPLICATION::VulkanApplication::draw_meshes(VkCommandBuffer cmd, VkDescriptorSet globalDescriptor){
+    // 1. Проверяем, загрузились ли наши меши при старте, чтобы не поймать crash
+    if (testMeshes.empty()) return;
+
+    VkClearValue clearColor;
+    clearColor.color = { { 0.3f, 0.3f, 0.3f, 1.0f } };
+
+    VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(_init._drawImage.imageView, &clearColor, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR; // <-- СТИРАЕМ старый цвет
+    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
+    VkRenderingAttachmentInfo depthAttachment = vkinit::depth_attachment_info(_init._depthImage.imageView, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+    depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR; // <-- СТИРАЕМ старую глубину
+    depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
+    VkRenderingInfo renderInfo = vkinit::rendering_info(_drawExtent, &colorAttachment, &depthAttachment);
+    vkCmdBeginRendering(cmd, &renderInfo);
+
+    // 3. Выставляем динамические Viewport и Scissor
+    VkViewport viewport = {};
+    viewport.x = 0;
+    viewport.y = 0;
+    viewport.width = _drawExtent.width;
+    viewport.height = _drawExtent.height;
+    viewport.minDepth = 0.f;
+    viewport.maxDepth = 1.f;
+    vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+    VkRect2D scissor = {};
+    scissor.offset.x = 0;
+    scissor.offset.y = 0;
+    scissor.extent.width = _drawExtent.width;
+    scissor.extent.height = _drawExtent.height;
+    vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Биндим пайплайн для 3D мешей (созданный с поддержкой формата глубины D32)
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _BasePipeline);
+
+    vkCmdBindDescriptorSets(
+        cmd,
+        VK_PIPELINE_BIND_POINT_GRAPHICS,
+        _BasePipelineLayout,
+        0,
+        1,
+        &globalDescriptor,
+        0, nullptr
+    );
+
+    for (const auto& mesh : testMeshes)
+    {
+        // Биндим индексный буфер КОНКРЕТНОЙ модели (он один на весь меш)
+        vkCmdBindIndexBuffer(cmd, mesh->meshBuffers.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+
+        // ВНУТРЕННИЙ ЦИКЛ: Рисуем каждую отдельную часть (surface) этой модели
+        for (const auto& surface : mesh->surfaces)
+        {
+            GPUDrawPushConstants push_constants;
+
+            push_constants.worldMatrix = surface.transform;
+
+            push_constants.vertexBuffer = mesh->meshBuffers.vertexBufferAddress;
+
+            vkCmdPushConstants(cmd, _BasePipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &push_constants);
+
+            vkCmdDrawIndexed(
+                cmd,
+                surface.count,
+                1,
+                surface.startIndex,
+                0,
+                0
+            );
+        }
+    }
     vkCmdEndRendering(cmd);
 }
 

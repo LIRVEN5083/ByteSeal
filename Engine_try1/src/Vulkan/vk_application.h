@@ -53,6 +53,7 @@ namespace VK_APPLICATION {
 
         void cleanup();
         void run();
+        GPUMeshBuffers upload_meshes(std::span<uint32_t> indices, std::span<Vertex> vertices);
 
         private:
         VK_INIT_ENGINE::_inited_engine& _init;
@@ -74,14 +75,23 @@ namespace VK_APPLICATION {
         VkPipelineLayout _gridPipelineLayout;
         VkPipeline _gridPipeline;
 
+        VkPipelineLayout _BasePipelineLayout;
+        VkPipeline _BasePipeline;
+
+        std::vector<std::shared_ptr<MeshAsset>> testMeshes;
+
         void renderLoop();
         void resize_swapchain();
         void destroy_swapchain();
 
         void init_descriptors();
         void init_grid_pipeline();
+        void init_base_pipeline();
         void init_commands();
+
         void draw_grid(VkCommandBuffer cmd, VkDescriptorSet globalDescriptor);
+        void draw_meshes(VkCommandBuffer cmd, VkDescriptorSet globalDescriptor);
+
         VkDescriptorSet update_scene_data(FrameData& currentFrame);
         void made_move();
     };
