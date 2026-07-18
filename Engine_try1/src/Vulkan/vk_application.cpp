@@ -483,18 +483,18 @@ void VK_APPLICATION::VulkanApplication::init_grid_pipeline(){
 void VK_APPLICATION::VulkanApplication::init_base_pipeline(){
     VkShaderModule baseFragShader;
     if (!vkutil::load_shader_module("../Shaders/BaseMesh/Binary/mesh.frag.spv", _init._device, &baseFragShader)) {
-        fmt::print("Error when building the triangle fragment shader module");
+        fmt::print("Error when building the Mesh fragment shader module\n");
     }
     else {
-        fmt::print("Triangle fragment shader succesfully loaded");
+        fmt::print("Mesh fragment shader succesfully loaded\n");
     }
 
     VkShaderModule baseVertexShader;
     if (!vkutil::load_shader_module("../Shaders/BaseMesh/Binary/mesh.vert.spv", _init._device, &baseVertexShader)) {
-        fmt::print("Error when building the triangle vertex shader module");
+        fmt::print("Error when building the Mesh vertex shader module\n");
     }
     else {
-        fmt::print("Triangle vertex shader succesfully loaded");
+        fmt::print("Mesh vertex shader succesfully loaded\n");
     }
 
     VkPushConstantRange bufferRange{};
