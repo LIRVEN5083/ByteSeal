@@ -27,6 +27,7 @@ namespace CONTROLLER{
         std::chrono::high_resolution_clock::time_point lastFrameTime;
         std::chrono::high_resolution_clock::time_point startTime;
         float moveStep;
+        float delta;
     };
 
     void IncreaseSpeed(float& speed);

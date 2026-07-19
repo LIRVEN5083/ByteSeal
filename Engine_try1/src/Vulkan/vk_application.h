@@ -53,7 +53,6 @@ namespace VK_APPLICATION {
 
         void cleanup();
         void run();
-        GPUMeshBuffers upload_meshes(std::span<uint32_t> indices, std::span<Vertex> vertices);
 
         private:
         VK_INIT_ENGINE::_inited_engine& _init;
@@ -78,7 +77,9 @@ namespace VK_APPLICATION {
         VkPipelineLayout _BasePipelineLayout;
         VkPipeline _BasePipeline;
 
-        std::vector<std::shared_ptr<MeshAsset>> testMeshes;
+        Model _baseModel;
+        // Для теста нодов
+        float angle{0.0f};
 
         void renderLoop();
         void resize_swapchain();
@@ -90,9 +91,10 @@ namespace VK_APPLICATION {
         void init_commands();
 
         void draw_grid(VkCommandBuffer cmd, VkDescriptorSet globalDescriptor);
-        void draw_meshes(VkCommandBuffer cmd, VkDescriptorSet globalDescriptor);
+        void draw_model(VkCommandBuffer cmd, VkDescriptorSet globalDescriptor);
 
         VkDescriptorSet update_scene_data(FrameData& currentFrame);
+        void update_time();
         void made_move();
     };
 }
