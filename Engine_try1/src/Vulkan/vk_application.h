@@ -92,9 +92,11 @@ namespace VK_APPLICATION {
 
         void draw_grid(VkCommandBuffer cmd, VkDescriptorSet globalDescriptor);
         void draw_model(VkCommandBuffer cmd, VkDescriptorSet globalDescriptor);
+        void draw_imgui(VkCommandBuffer cmd);
 
         VkDescriptorSet update_scene_data(FrameData& currentFrame);
         void update_time();
+        void update_imgui();
         void made_move();
     };
 }

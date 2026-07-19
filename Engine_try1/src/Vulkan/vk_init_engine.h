@@ -64,10 +64,13 @@ namespace VK_INIT_ENGINE{
         void init_cleanup();
 
     private:
-        VkExtent2D applicationSize{800, 500};
+        VkExtent2D applicationSize{1200, 800};
         _inited_engine ready_init;
         void create_swapchain(uint32_t width, uint32_t height);
         void init_swapchain();
         void init_sync_structures();
+
+        VkDescriptorPool imguiPool;
+        void init_imgui();
     };
 }
