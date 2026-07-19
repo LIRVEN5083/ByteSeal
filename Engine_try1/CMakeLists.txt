@@ -46,6 +46,8 @@ add_executable(${PROJECT_NAME}
     src/external/imgui/imgui_tables.cpp
     src/external/imgui/imgui_widgets.cpp
 
+    src/external/imgui/imgui_demo.cpp
+
     src/external/imgui/backends/imgui_impl_sdl3.cpp
     src/external/imgui/backends/imgui_impl_vulkan.cpp
 

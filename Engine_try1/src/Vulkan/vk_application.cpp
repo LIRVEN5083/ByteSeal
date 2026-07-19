@@ -58,6 +58,7 @@ void VK_APPLICATION::VulkanApplication::run(){
 
     while (!bQuit) {
         while (SDL_PollEvent(&e)) {
+            ImGui_ImplSDL3_ProcessEvent(&e);
 
             if (e.type == SDL_EVENT_QUIT) {
                 bQuit = true;
@@ -89,16 +90,22 @@ void VK_APPLICATION::VulkanApplication::run(){
             }
 
 
-            if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
-                if (!SDL_GetWindowRelativeMouseMode(_init._window)) {
-                    SDL_SetWindowRelativeMouseMode(_init._window, true);
-                    _camera.isCameraActive = true;
-                }
-            }
             if (e.type == SDL_EVENT_KEY_DOWN) {
                 if (e.key.key == SDLK_ESCAPE) {
-                    SDL_SetWindowRelativeMouseMode(_init._window, false);
-                    _camera.isCameraActive = false;
+                    bool isRealative = SDL_GetWindowRelativeMouseMode(_init._window);
+
+                    if (isRealative){
+                        SDL_SetWindowRelativeMouseMode(_init._window, false);
+                        _camera.isCameraActive = false;
+
+                        ImGui::GetIO().ConfigFlags &= ~ImGuiConfigFlags_NoMouse;
+                    }
+                    else{
+                        SDL_SetWindowRelativeMouseMode(_init._window, true);
+                        _camera.isCameraActive = true;
+
+                        ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NoMouse;
+                    }
                 }
             }
         }
@@ -111,6 +118,7 @@ void VK_APPLICATION::VulkanApplication::run(){
             resize_swapchain();
         }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        update_imgui();
         update_time();
         renderLoop();
         made_move();
@@ -162,6 +170,7 @@ void VK_APPLICATION::VulkanApplication::renderLoop(){
 
     draw_model(cmd, globalDescriptor);
     draw_grid(cmd, globalDescriptor);
+    draw_imgui(cmd);
 
     vkutil::transition_image(cmd, _init._drawImage.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
     // Переводим текущую картинку Swapchain в режим приемника копирования
@@ -625,6 +634,23 @@ void VK_APPLICATION::VulkanApplication::draw_model(VkCommandBuffer cmd, VkDescri
     vkCmdEndRendering(cmd);
 }
 
+void VK_APPLICATION::VulkanApplication::draw_imgui(VkCommandBuffer cmd){
+    VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(_init._drawImage.imageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD; // <-- СОХРАНЯЕМ цвет машины!
+    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
+    VkRenderingAttachmentInfo depthAttachment = vkinit::depth_attachment_info(_init._depthImage.imageView, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+    depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD; // <-- СОХРАНЯЕМ глубину машины!
+    depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
+    VkRenderingInfo renderInfo = vkinit::rendering_info(_drawExtent, &colorAttachment, nullptr);
+    vkCmdBeginRendering(cmd, &renderInfo);
+
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
+
+    vkCmdEndRendering(cmd);
+}
+
 VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& currentFrame){
     // Z-up
     glm::vec3 up = {0.0f, 0.0f, 1.0f};
@@ -685,6 +711,19 @@ void VK_APPLICATION::VulkanApplication::update_time(){
     _delta.delta = std::chrono::duration_cast<std::chrono::duration<float>>(currentTime - _delta.lastFrameTime).count();
     _delta.lastFrameTime = currentTime;
     _delta.moveStep = _delta.delta * _movement.speed;
+}
+
+void VK_APPLICATION::VulkanApplication::update_imgui(){
+    // 1. Запуск нового кадра ImGui
+    ImGui_ImplVulkan_NewFrame();
+    ImGui_ImplSDL3_NewFrame();
+    ImGui::NewFrame();
+
+    // 2. ВЫЗОВ DEMO-ОКНА (Оно само соберёт весь интерфейс)
+    ImGui::ShowDemoWindow();
+
+    // 3. Финализация расчетов геометрии интерфейса
+    ImGui::Render();
 }
 
 void VK_APPLICATION::VulkanApplication::made_move(){
