@@ -14,7 +14,7 @@ void VK_APPLICATION::VulkanApplication::cleanup(){
         _frames[i]._deletionQueue.flush();
     }
 
-    for (auto& mesh : testMeshes) {
+    for (auto& mesh : _baseModel.Meshes) {
         vkinit::destroy_buffer(mesh->meshBuffers.indexBuffer, _init._allocator);
         vkinit::destroy_buffer(mesh->meshBuffers.vertexBuffer, _init._allocator);
     }
@@ -54,7 +54,7 @@ void VK_APPLICATION::VulkanApplication::run(){
 
     _delta.lastFrameTime = std::chrono::high_resolution_clock::now();
     _delta.startTime = std::chrono::high_resolution_clock::now();
-    testMeshes = loadGltfMeshes(this,"../Model/1965_ford_mustang_shelby_gt350.glb").value();
+    _baseModel = load_glTF( _init, this,"../Model/low-poly_ak-108.glb");
 
     while (!bQuit) {
         while (SDL_PollEvent(&e)) {
@@ -111,6 +111,7 @@ void VK_APPLICATION::VulkanApplication::run(){
             resize_swapchain();
         }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        update_time();
         renderLoop();
         made_move();
     }
@@ -159,7 +160,7 @@ void VK_APPLICATION::VulkanApplication::renderLoop(){
     vkutil::transition_image(cmd, _init._drawImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     vkutil::transition_image(cmd, _init._depthImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
-    draw_meshes(cmd, globalDescriptor);
+    draw_model(cmd, globalDescriptor);
     draw_grid(cmd, globalDescriptor);
 
     vkutil::transition_image(cmd, _init._drawImage.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
@@ -327,74 +328,6 @@ void VK_APPLICATION::VulkanApplication::destroy_swapchain(){
     if (_init._swapchain != VK_NULL_HANDLE) {
         vkDestroySwapchainKHR(_init._device, _init._swapchain, nullptr);
     }
-}
-
-GPUMeshBuffers VK_APPLICATION::VulkanApplication::upload_meshes(std::span<uint32_t> indices, std::span<Vertex> vertices){
-    // Размер масивов с данными, чтобы программа знала точное количество
-    const size_t vertexBufferSize = vertices.size() * sizeof(Vertex);
-    const size_t indexBufferSize = indices.size() * sizeof(uint32_t);
-
-    // Тут мы храним:
-    // 1. Буфер индексов
-    // 2. Буфер вершин
-    // 3. Адресс на всю эту бурмалду
-    GPUMeshBuffers newSurface;
-
-    // Создание вершинного буфера
-    newSurface.vertexBuffer = vkinit::create_buffer(vertexBufferSize, _init._allocator, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-        VMA_MEMORY_USAGE_GPU_ONLY);
-
-    // Находим адресс к вершиному буферу
-    VkBufferDeviceAddressInfo deviceAdressInfo{ .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,.buffer = newSurface.vertexBuffer.buffer };
-    // Заносим этот адресс в нашу структуру
-    newSurface.vertexBufferAddress = vkGetBufferDeviceAddress(_init._device, &deviceAdressInfo);
-
-    // Создаём буфер индексов
-    newSurface.indexBuffer = vkinit::create_buffer(indexBufferSize, _init._allocator, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-        VMA_MEMORY_USAGE_GPU_ONLY);
-
-    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // Дальше типичная реализация Staging buffer, т.е системы копирования данных и передачи их в видеокарту напрямую
-    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    // staging buffer и его создание с флагом VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-    // который говорит что это источник для копирования
-    AllocatedBuffer staging = vkinit::create_buffer(vertexBufferSize + indexBufferSize, _init._allocator, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
-    // Получаем указатель
-    VmaAllocationInfo allocInfo;
-    vmaGetAllocationInfo(_init._allocator, staging.allocation, &allocInfo);
-    void* data = allocInfo.pMappedData;
-
-    // Копируем данные о вершинах в staging buffer
-    memcpy(data, vertices.data(), vertexBufferSize);
-    // Копируем данные о индексах в staging buffer,
-    // но со смешением по памяти в массив вершин
-    memcpy((char*)data + vertexBufferSize, indices.data(), indexBufferSize);
-
-    // И используем нашу крутую функцию для быстрой записы в командный буфер
-    // Тут мы копируем данные из Staging Buffer в уже красиво подготовленый
-    // адресс памяти (технология BDA)
-    vkinit::submit_immediate([&](VkCommandBuffer cmd) {
-        VkBufferCopy vertexCopy{ 0 };
-        vertexCopy.dstOffset = 0;
-        vertexCopy.srcOffset = 0;
-        vertexCopy.size = vertexBufferSize;
-
-        vkCmdCopyBuffer(cmd, staging.buffer, newSurface.vertexBuffer.buffer, 1, &vertexCopy);
-
-        VkBufferCopy indexCopy{ 0 };
-        indexCopy.dstOffset = 0;
-        indexCopy.srcOffset = vertexBufferSize; // Мы начинаем не с 0 адресса как для вершин, а с конца адресса вершин
-        indexCopy.size = indexBufferSize;
-
-        vkCmdCopyBuffer(cmd, staging.buffer, newSurface.indexBuffer.buffer, 1, &indexCopy);
-    }, _init);
-
-    // Уничтожаем Staging Buffer
-    vkinit::destroy_buffer(staging, _init._allocator);
-
-    // Возвращаем
-    return newSurface;
 }
 
 void VK_APPLICATION::VulkanApplication::init_descriptors(){
@@ -598,19 +531,27 @@ void VK_APPLICATION::VulkanApplication::draw_grid(VkCommandBuffer cmd, VkDescrip
     vkCmdEndRendering(cmd);
 }
 
-void VK_APPLICATION::VulkanApplication::draw_meshes(VkCommandBuffer cmd, VkDescriptorSet globalDescriptor){
-    // 1. Проверяем, загрузились ли наши меши при старте, чтобы не поймать crash
-    if (testMeshes.empty()) return;
+void VK_APPLICATION::VulkanApplication::draw_model(VkCommandBuffer cmd, VkDescriptorSet globalDescriptor){
+    if (_baseModel.meshNodes.empty()) return;
+
+    float speed = 1.0f;
+    angle += _delta.delta * speed;
+
+    auto& testNode = _baseModel.meshNodes[1];
+    testNode->localTransform = glm::rotate(glm::mat4{1.0f}, angle, glm::vec3(0.0f, 0.0f, 1.0f));
+
+
+    _baseModel.rootNode->UpdateMatrices(glm::mat4(1.0f));
 
     VkClearValue clearColor;
     clearColor.color = { { 0.3f, 0.3f, 0.3f, 1.0f } };
 
     VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(_init._drawImage.imageView, &clearColor, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR; // <-- СТИРАЕМ старый цвет
+    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 
     VkRenderingAttachmentInfo depthAttachment = vkinit::depth_attachment_info(_init._depthImage.imageView, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
-    depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR; // <-- СТИРАЕМ старую глубину
+    depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 
     VkRenderingInfo renderInfo = vkinit::rendering_info(_drawExtent, &colorAttachment, &depthAttachment);
@@ -647,19 +588,27 @@ void VK_APPLICATION::VulkanApplication::draw_meshes(VkCommandBuffer cmd, VkDescr
         0, nullptr
     );
 
-    for (const auto& mesh : testMeshes)
+    for (const auto& meshNode : _baseModel.meshNodes)
     {
-        // Биндим индексный буфер КОНКРЕТНОЙ модели (он один на весь меш)
-        vkCmdBindIndexBuffer(cmd, mesh->meshBuffers.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+        // Безопасность: проверяем, что к ноде действительно привязан меш
+        if (!meshNode->mesh) continue;
 
-        // ВНУТРЕННИЙ ЦИКЛ: Рисуем каждую отдельную часть (surface) этой модели
-        for (const auto& surface : mesh->surfaces)
+        auto& currentMesh = meshNode->mesh;
+
+        // Биндим индексный буфер конкретного меша, к которому привязана эта нода
+        vkCmdBindIndexBuffer(cmd, currentMesh->meshBuffers.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+
+        // ВНУТРЕННИЙ ЦИКЛ: Рисуем каждую отдельную часть (surface) этого меша
+        for (const auto& surface : currentMesh->surfaces)
         {
             GPUDrawPushConstants push_constants;
 
-            push_constants.worldMatrix = surface.transform;
+            // МАГИЯ НОД: Вместо единичной матрицы передаем честную,
+            // вычисленную с учетом всей иерархии матрицу этой конкретной ноды!
+            push_constants.worldMatrix = meshNode->worldTransform;
 
-            push_constants.vertexBuffer = mesh->meshBuffers.vertexBufferAddress;
+            // Достаем BDA адрес вершинного буфера из меша этой ноды
+            push_constants.vertexBuffer = currentMesh->meshBuffers.vertexBufferAddress;
 
             vkCmdPushConstants(cmd, _BasePipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &push_constants);
 
@@ -721,12 +670,24 @@ VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& 
     return globalDescriptor;
 }
 
-void VK_APPLICATION::VulkanApplication::made_move(){
+void VK_APPLICATION::VulkanApplication::update_time(){
     auto currentTime = std::chrono::high_resolution_clock::now();
-    auto deltaTime = std::chrono::duration_cast<std::chrono::duration<float>>(currentTime - _delta.lastFrameTime).count();
-    _delta.lastFrameTime = currentTime;
-    _delta.moveStep = deltaTime * _movement.speed;
 
+    static bool firstFrame = true;
+    if (firstFrame) {
+        _delta.lastFrameTime = currentTime;
+        _delta.delta = 0.016f;
+        _delta.moveStep = _delta.delta * _movement.speed;
+        firstFrame = false;
+        return;
+    }
+
+    _delta.delta = std::chrono::duration_cast<std::chrono::duration<float>>(currentTime - _delta.lastFrameTime).count();
+    _delta.lastFrameTime = currentTime;
+    _delta.moveStep = _delta.delta * _movement.speed;
+}
+
+void VK_APPLICATION::VulkanApplication::made_move(){
     if (_camera.isCameraActive) {
         int numkeys;
         const bool* keyboardState = SDL_GetKeyboardState(&numkeys);

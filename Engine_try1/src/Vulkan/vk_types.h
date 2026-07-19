@@ -25,6 +25,7 @@
 #include <gli/gli.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtx/string_cast.hpp>
+#include <bit>
 
 #include "transcoder/basisu_transcoder.h"
 
