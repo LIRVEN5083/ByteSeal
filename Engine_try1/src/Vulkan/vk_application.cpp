@@ -14,9 +14,12 @@ void VK_APPLICATION::VulkanApplication::cleanup(){
         _frames[i]._deletionQueue.flush();
     }
 
-    for (auto& mesh : _baseModel.Meshes) {
-        vkinit::destroy_buffer(mesh->meshBuffers.indexBuffer, _init._allocator);
-        vkinit::destroy_buffer(mesh->meshBuffers.vertexBuffer, _init._allocator);
+    _baseModel.destroy(_init, _textureManager);
+
+    if (_sceneDescriptorPool) vkDestroyDescriptorPool(_init._device, _sceneDescriptorPool, nullptr);
+    if (_gpuSceneDataDescriptorLayout != VK_NULL_HANDLE) {
+        vkDestroyDescriptorSetLayout(_init._device, _gpuSceneDataDescriptorLayout, nullptr);
+        _gpuSceneDataDescriptorLayout = VK_NULL_HANDLE;
     }
 
     vkDestroyPipelineLayout(_init._device, _BasePipelineLayout, nullptr);
@@ -25,14 +28,12 @@ void VK_APPLICATION::VulkanApplication::cleanup(){
     vkDestroyPipelineLayout(_init._device, _gridPipelineLayout, nullptr);
     vkDestroyPipeline(_init._device, _gridPipeline, nullptr);
 
+    _textureManager.DestroyAllocationData();
+
     for (int i = 0; i < FRAME_OVERLAP; i++) {
         vkinit::destroy_buffer(_frames[i].gpuSceneDataBuffer, _init._allocator);
 
         _frames[i]._frameDescriptors.destroy_pools(_init._device);
-    }
-
-    if (_gpuSceneDataDescriptorLayout != VK_NULL_HANDLE) {
-        vkDestroyDescriptorSetLayout(_init._device, _gpuSceneDataDescriptorLayout, nullptr);
     }
 
     for (int i = 0; i < FRAME_OVERLAP; i++) {
@@ -54,7 +55,7 @@ void VK_APPLICATION::VulkanApplication::run(){
 
     _delta.lastFrameTime = std::chrono::high_resolution_clock::now();
     _delta.startTime = std::chrono::high_resolution_clock::now();
-    _baseModel = load_glTF( _init, this,"../Model/low-poly_ak-108.glb");
+    _baseModel = load_glTF( _init, this, _textureManager,"../Model/genshin_impact_-_furina.glb");
 
     while (!bQuit) {
         while (SDL_PollEvent(&e)) {
@@ -348,22 +349,35 @@ void VK_APPLICATION::VulkanApplication::init_descriptors(){
         _gpuSceneDataDescriptorLayout = builder.build(_init._device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
     }
 
+    VkDescriptorPoolSize poolSize{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, (uint32_t)FRAME_OVERLAP };
+    VkDescriptorPoolCreateInfo poolInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
+    poolInfo.maxSets = FRAME_OVERLAP;
+    poolInfo.poolSizeCount = 1;
+    poolInfo.pPoolSizes = &poolSize;
+    // Создаем _sceneDescriptorPool (добавь это поле типа VkDescriptorPool в VulkanApplication.h)
+    vkCreateDescriptorPool(_init._device, &poolInfo, nullptr, &_sceneDescriptorPool);
+
     for (int i = 0; i < FRAME_OVERLAP; i++) {
-        // Выделяем память ОДИН раз
+        // Выделяем память под UBO (твой код)
         _frames[i].gpuSceneDataBuffer = vkinit::create_buffer(
-            sizeof(GPUSceneData),
-            _init._allocator,
-            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-            VMA_MEMORY_USAGE_CPU_TO_GPU
+            sizeof(GPUSceneData), _init._allocator,
+            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU
         );
 
-        std::vector<DescriptorAllocatorGrowable::PoolSizeRatio> frame_sizes = {
-            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3 },
-        };
+        // Аллоцируем постоянный сет для кадра напрямую из нашего пула сцены!
+        VkDescriptorSetAllocateInfo allocInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
+        allocInfo.descriptorPool = _sceneDescriptorPool;
+        allocInfo.descriptorSetCount = 1;
+        allocInfo.pSetLayouts = &_gpuSceneDataDescriptorLayout;
+        vkAllocateDescriptorSets(_init._device, &allocInfo, &_frames[i].sceneDescriptorSet);
 
-        _frames[i]._frameDescriptors = DescriptorAllocatorGrowable{};
-        _frames[i]._frameDescriptors.init(_init._device, 1000, frame_sizes);
+        // Привязываем буфер к этому дескриптору намертво прямо на старте
+        DescriptorWriter writer;
+        writer.write_buffer(0, _frames[i].gpuSceneDataBuffer.buffer, sizeof(GPUSceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+        writer.update_set(_init._device, _frames[i].sceneDescriptorSet);
     }
+
+    _textureManager.init(_init);
 }
 
 void VK_APPLICATION::VulkanApplication::init_grid_pipeline(){
@@ -442,13 +456,18 @@ void VK_APPLICATION::VulkanApplication::init_base_pipeline(){
     VkPushConstantRange bufferRange{};
     bufferRange.offset = 0;
     bufferRange.size = sizeof(GPUDrawPushConstants);
-    bufferRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    bufferRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;;
+
+    VkDescriptorSetLayout layouts[] = {
+        _gpuSceneDataDescriptorLayout,     // Будет отвечать за set = 0
+        _textureManager.GetTextureLayout() // Будет отвечать за set = 1
+    };
 
     VkPipelineLayoutCreateInfo pipeline_layout_info = vkinit::pipeline_layout_create_info();
     pipeline_layout_info.pPushConstantRanges = &bufferRange;
     pipeline_layout_info.pushConstantRangeCount = 1;
-    pipeline_layout_info.pSetLayouts = &_gpuSceneDataDescriptorLayout;
-    pipeline_layout_info.setLayoutCount = 1;
+    pipeline_layout_info.pSetLayouts = layouts;
+    pipeline_layout_info.setLayoutCount = 2;
     VK_CHECK(vkCreatePipelineLayout(_init._device, &pipeline_layout_info, nullptr, &_BasePipelineLayout));
 
     PipelineBuilder pipelineBuilder;
@@ -543,12 +562,13 @@ void VK_APPLICATION::VulkanApplication::draw_grid(VkCommandBuffer cmd, VkDescrip
 void VK_APPLICATION::VulkanApplication::draw_model(VkCommandBuffer cmd, VkDescriptorSet globalDescriptor){
     if (_baseModel.meshNodes.empty()) return;
 
+    /*
     float speed = 1.0f;
     angle += _delta.delta * speed;
 
     auto& testNode = _baseModel.meshNodes[1];
     testNode->localTransform = glm::rotate(glm::mat4{1.0f}, angle, glm::vec3(0.0f, 0.0f, 1.0f));
-
+    */
 
     _baseModel.rootNode->UpdateMatrices(glm::mat4(1.0f));
 
@@ -587,39 +607,53 @@ void VK_APPLICATION::VulkanApplication::draw_model(VkCommandBuffer cmd, VkDescri
     // Биндим пайплайн для 3D мешей (созданный с поддержкой формата глубины D32)
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _BasePipeline);
 
+    VkDescriptorSet setsToBind[] = {
+        globalDescriptor, // Твой покадровый UBO (set = 0)
+        _textureManager.GetTextureSet()                // Наш глобальный массив текстур (set = 1)
+    };
+
     vkCmdBindDescriptorSets(
         cmd,
         VK_PIPELINE_BIND_POINT_GRAPHICS,
         _BasePipelineLayout,
         0,
-        1,
-        &globalDescriptor,
+        2,
+        setsToBind,
         0, nullptr
     );
 
     for (const auto& meshNode : _baseModel.meshNodes)
     {
-        // Безопасность: проверяем, что к ноде действительно привязан меш
         if (!meshNode->mesh) continue;
 
         auto& currentMesh = meshNode->mesh;
 
-        // Биндим индексный буфер конкретного меша, к которому привязана эта нода
         vkCmdBindIndexBuffer(cmd, currentMesh->meshBuffers.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 
-        // ВНУТРЕННИЙ ЦИКЛ: Рисуем каждую отдельную часть (surface) этого меша
         for (const auto& surface : currentMesh->surfaces)
         {
             GPUDrawPushConstants push_constants;
 
-            // МАГИЯ НОД: Вместо единичной матрицы передаем честную,
-            // вычисленную с учетом всей иерархии матрицу этой конкретной ноды!
-            push_constants.worldMatrix = meshNode->worldTransform;
+            push_constants.render_matrix = meshNode->worldTransform;
 
-            // Достаем BDA адрес вершинного буфера из меша этой ноды
             push_constants.vertexBuffer = currentMesh->meshBuffers.vertexBufferAddress;
 
-            vkCmdPushConstants(cmd, _BasePipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &push_constants);
+            if (surface.material) {
+                push_constants.colorTextureID = surface.material->colorTextureID;
+                push_constants.metallicRoughnessTextureID = surface.material->metallicRoughnessTextureID;
+            } else {
+                push_constants.colorTextureID = 0;
+                push_constants.metallicRoughnessTextureID = 0;
+            }
+
+            vkCmdPushConstants(
+                cmd,
+                _BasePipelineLayout,
+                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                0,
+                sizeof(GPUDrawPushConstants),
+                &push_constants
+            );
 
             vkCmdDrawIndexed(
                 cmd,
@@ -687,13 +721,7 @@ VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& 
     GPUSceneData* sceneUniformData = (GPUSceneData*)allocInfo.pMappedData;
     *sceneUniformData = sceneData;
 
-    VkDescriptorSet globalDescriptor = currentFrame._frameDescriptors.allocate(_init._device, _gpuSceneDataDescriptorLayout);
-
-    DescriptorWriter writer;
-    writer.write_buffer(0, currentFrame.gpuSceneDataBuffer.buffer, sizeof(GPUSceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-    writer.update_set(_init._device, globalDescriptor);
-
-    return globalDescriptor;
+    return currentFrame.sceneDescriptorSet;
 }
 
 void VK_APPLICATION::VulkanApplication::update_time(){
