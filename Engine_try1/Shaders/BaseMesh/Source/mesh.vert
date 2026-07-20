@@ -2,6 +2,7 @@
 #extension GL_EXT_buffer_reference : require
 
 layout (location = 0) out vec4 outColor;
+layout (location = 1) out vec2 outUV;
 
 layout(set = 0, binding = 0) uniform SceneData {
     mat4 view;
@@ -30,6 +31,9 @@ layout( push_constant ) uniform constants
 {
 	mat4 render_matrix;
 	VertexBuffer vertexBuffer;
+
+	uint colorTextureID;
+	uint metallicRoughnessTextureID;
 } PushConstants;
 
 void main()
@@ -40,4 +44,5 @@ void main()
 	//output data
 	gl_Position = scene.viewproj * PushConstants.render_matrix *vec4(v.position, 1.0f);
 	outColor = v.color;
+	outUV = vec2(v.uv_x, v.uv_y);
 }

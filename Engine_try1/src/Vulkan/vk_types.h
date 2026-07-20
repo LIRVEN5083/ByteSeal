@@ -48,8 +48,11 @@ struct AllocatedBuffer {
 
 // push constants для работы
 struct GPUDrawPushConstants {
-    glm::mat4 worldMatrix;          // Обычная матрица преобразований
-    VkDeviceAddress vertexBuffer;   // Вершинный буфер который мы алоцировали и получили адресс дляс передачи
+    glm::mat4 render_matrix;          // Обычная матрица преобразований
+    VkDeviceAddress vertexBuffer;   // Вершинный буфер который мы алоцировали и получили адресс для передачи
+
+    uint32_t colorTextureID;
+    uint32_t metallicRoughnessTextureID;
 };
 
 struct GPUSceneData {

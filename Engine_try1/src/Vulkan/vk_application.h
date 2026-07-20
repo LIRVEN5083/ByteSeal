@@ -40,6 +40,8 @@ struct FrameData {
 
     // Наша новая система аллокации дескрипторов
     DescriptorAllocatorGrowable _frameDescriptors;
+
+    VkDescriptorSet sceneDescriptorSet;
 };
 
 namespace VK_APPLICATION {
@@ -64,7 +66,8 @@ namespace VK_APPLICATION {
 
         GPUSceneData sceneData;
         VkDescriptorSetLayout _gpuSceneDataDescriptorLayout;
-        DescriptorAllocatorGrowable globalDescriptorAllocator;
+        VkDescriptorPool _sceneDescriptorPool;
+
 
         CONTROLLER::Movement _movement;
         CONTROLLER::Camera _camera;
@@ -80,6 +83,8 @@ namespace VK_APPLICATION {
         Model _baseModel;
         // Для теста нодов
         float angle{0.0f};
+
+        TextureManager _textureManager;
 
         void renderLoop();
         void resize_swapchain();
