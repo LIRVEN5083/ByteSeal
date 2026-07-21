@@ -636,7 +636,7 @@ std::optional<std::shared_ptr<Node>> load_Node(fastgltf::Asset& asset, fastgltf:
     // fastgltf::getTransformMatrix автоматически собирает полноценную glm::mat4
     // вне зависимости от того, как записаны данные в файле (сразу матрицей или через Translation/Rotation/Scale)
     auto gltfMatrixData = fastgltf::getTransformMatrix(gltfNode);
-    currentEngineNode->localTransform = glm::transpose(glm::make_mat4(gltfMatrixData.data()));
+    currentEngineNode->localTransform = glm::make_mat4(gltfMatrixData.data());
 
     // 3. Рекурсивно спускаемся ко всем дочерним узлам (Children)
     for (size_t childIndex : gltfNode.children) {

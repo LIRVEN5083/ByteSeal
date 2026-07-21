@@ -570,6 +570,10 @@ void VK_APPLICATION::VulkanApplication::draw_model(VkCommandBuffer cmd, VkDescri
     testNode->localTransform = glm::rotate(glm::mat4{1.0f}, angle, glm::vec3(0.0f, 0.0f, 1.0f));
     */
 
+    _baseModel.rootNode->localTransform = glm::rotate(glm::mat4{1.0f}, glm::radians(180.0f), glm::vec3(1.0f, 0.0f, 0.0f)) *
+        glm::rotate(glm::mat4{1.0f}, glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    // glm::scale(glm::mat4{1.0f}, glm::vec3(100.0f, 100.0f, 100.0f));
+
     _baseModel.rootNode->UpdateMatrices(glm::mat4(1.0f));
 
     VkClearValue clearColor;
@@ -708,7 +712,7 @@ VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& 
 
     // Perspective projection
     float aspect = (float)_init._windowExtent.width / (float)_init._windowExtent.height;
-    sceneData.proj = glm::perspective(glm::radians(70.0f), aspect, 0.1f, 1000.0f);
+    sceneData.proj = glm::perspective(glm::radians(70.0f), aspect, 0.01f, 10000.0f);
     sceneData.proj[1][1] *= -1.0f;
 
     // proj * view

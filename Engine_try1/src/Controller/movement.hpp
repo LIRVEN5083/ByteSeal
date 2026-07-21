@@ -6,8 +6,8 @@
 
 namespace CONTROLLER{
     struct Movement{
-        float valueZ{2.0f};
-        float valueX{0.0f};
+        float valueZ{1.5f};
+        float valueX{-1.0f};
         float valueY{0.0f};
         float speed{5.0f};
     };
