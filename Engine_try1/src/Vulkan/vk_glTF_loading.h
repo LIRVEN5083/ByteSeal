@@ -136,3 +136,28 @@ std::optional<std::shared_ptr<Node>> load_Node(fastgltf::Asset& asset, fastgltf:
 
 Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init, VK_APPLICATION::VulkanApplication* engine,
                 TextureManager& textureManager, std::filesystem::path filePath);
+
+class ModelManager {
+public:
+    ModelManager(VK_INIT_ENGINE::_inited_engine& init, TextureManager& texManager)
+        : _init(init), _textureManager(texManager) {}
+
+    uint32_t LoadModel(const std::filesystem::path& filePath, VK_APPLICATION::VulkanApplication* engine);
+
+    // Геттер на модель
+    Model& GetModel(uint32_t id);
+
+    // Метод очистки моделей
+    void destroy_all();
+
+    bool empty();
+
+    uint32_t CountOfModels() { return _models.size(); }
+
+private:
+    VK_INIT_ENGINE::_inited_engine& _init;
+    TextureManager& _textureManager;
+
+    std::vector<Model> _models;
+    std::unordered_map<std::string, uint32_t> _path_to_id;
+};

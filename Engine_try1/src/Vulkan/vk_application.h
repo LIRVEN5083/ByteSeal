@@ -80,11 +80,17 @@ namespace VK_APPLICATION {
         VkPipelineLayout _BasePipelineLayout;
         VkPipeline _BasePipeline;
 
-        Model _baseModel;
+        std::vector<std::string> modelsToLoad = {
+            "../Model/genshin_impact_-_furina.glb",
+            "../Model/pudge_dota_2.glb",
+            "../Model/modular_environment.glb"
+        };
+
         // Для теста нодов
         float angle{0.0f};
 
         TextureManager _textureManager;
+        ModelManager _modelManager{_init, _textureManager};
 
         void renderLoop();
         void resize_swapchain();

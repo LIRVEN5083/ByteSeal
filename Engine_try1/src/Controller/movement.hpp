@@ -7,13 +7,13 @@
 namespace CONTROLLER{
     struct Movement{
         float valueZ{1.5f};
-        float valueX{-1.0f};
-        float valueY{0.0f};
+        float valueX{0.0f};
+        float valueY{-2.0f};
         float speed{5.0f};
     };
 
     struct Camera{
-        float yaw{0.0f};
+        float yaw{90.0f};
         float pitch{0.0f};
         float sensetivity{0.0f};
         glm::vec3 front{0.0f};

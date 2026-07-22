@@ -14,8 +14,6 @@ void VK_APPLICATION::VulkanApplication::cleanup(){
         _frames[i]._deletionQueue.flush();
     }
 
-    _baseModel.destroy(_init, _textureManager);
-
     if (_sceneDescriptorPool) vkDestroyDescriptorPool(_init._device, _sceneDescriptorPool, nullptr);
     if (_gpuSceneDataDescriptorLayout != VK_NULL_HANDLE) {
         vkDestroyDescriptorSetLayout(_init._device, _gpuSceneDataDescriptorLayout, nullptr);
@@ -28,6 +26,7 @@ void VK_APPLICATION::VulkanApplication::cleanup(){
     vkDestroyPipelineLayout(_init._device, _gridPipelineLayout, nullptr);
     vkDestroyPipeline(_init._device, _gridPipeline, nullptr);
 
+    _modelManager.destroy_all();
     _textureManager.DestroyAllocationData();
 
     for (int i = 0; i < FRAME_OVERLAP; i++) {
@@ -55,7 +54,10 @@ void VK_APPLICATION::VulkanApplication::run(){
 
     _delta.lastFrameTime = std::chrono::high_resolution_clock::now();
     _delta.startTime = std::chrono::high_resolution_clock::now();
-    _baseModel = load_glTF( _init, this, _textureManager,"../Model/genshin_impact_-_furina.glb");
+
+    for (std::string& model : modelsToLoad){
+        _modelManager.LoadModel(model, this);
+    }
 
     while (!bQuit) {
         while (SDL_PollEvent(&e)) {
@@ -560,8 +562,6 @@ void VK_APPLICATION::VulkanApplication::draw_grid(VkCommandBuffer cmd, VkDescrip
 }
 
 void VK_APPLICATION::VulkanApplication::draw_model(VkCommandBuffer cmd, VkDescriptorSet globalDescriptor){
-    if (_baseModel.meshNodes.empty()) return;
-
     /*
     float speed = 1.0f;
     angle += _delta.delta * speed;
@@ -570,11 +570,23 @@ void VK_APPLICATION::VulkanApplication::draw_model(VkCommandBuffer cmd, VkDescri
     testNode->localTransform = glm::rotate(glm::mat4{1.0f}, angle, glm::vec3(0.0f, 0.0f, 1.0f));
     */
 
-    _baseModel.rootNode->localTransform = glm::rotate(glm::mat4{1.0f}, glm::radians(180.0f), glm::vec3(1.0f, 0.0f, 0.0f)) *
-        glm::rotate(glm::mat4{1.0f}, glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    //_baseModel.rootNode->localTransform = glm::rotate(glm::mat4{1.0f}, glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
     // glm::scale(glm::mat4{1.0f}, glm::vec3(100.0f, 100.0f, 100.0f));
 
-    _baseModel.rootNode->UpdateMatrices(glm::mat4(1.0f));
+    //_baseModel.rootNode->UpdateMatrices(glm::mat4(1.0f));
+
+    Model furina = _modelManager.GetModel(1);
+    furina.rootNode->localTransform = glm::translate(glm::mat4{1.0f}, glm::vec3(2.0f, 0.0f, 0.0f)) *
+        glm::rotate(glm::mat4{1.0f}, glm::radians(180.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+
+    Model pudge = _modelManager.GetModel(2);
+    pudge.rootNode->localTransform =  glm::translate(glm::mat4{1.0f}, glm::vec3(-1.0f, 0.0f, 0.0f)) *
+        glm::rotate(glm::mat4{1.0f}, glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+
+    Model caffe = _modelManager.GetModel(3);
+    caffe.rootNode->localTransform = glm::scale(glm::mat4{1.0f}, glm::vec3(0.01f, 0.01f, 0.01f)) *
+        glm::rotate(glm::mat4{1.0f}, glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+
 
     VkClearValue clearColor;
     clearColor.color = { { 0.3f, 0.3f, 0.3f, 1.0f } };
@@ -588,85 +600,82 @@ void VK_APPLICATION::VulkanApplication::draw_model(VkCommandBuffer cmd, VkDescri
     depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 
     VkRenderingInfo renderInfo = vkinit::rendering_info(_drawExtent, &colorAttachment, &depthAttachment);
+
     vkCmdBeginRendering(cmd, &renderInfo);
 
-    // 3. Выставляем динамические Viewport и Scissor
-    VkViewport viewport = {};
-    viewport.x = 0;
-    viewport.y = 0;
-    viewport.width = _drawExtent.width;
-    viewport.height = _drawExtent.height;
-    viewport.minDepth = 0.f;
-    viewport.maxDepth = 1.f;
+    VkViewport viewport = { 0.0f, 0.0f, (float)_drawExtent.width, (float)_drawExtent.height, 0.f, 1.f };
     vkCmdSetViewport(cmd, 0, 1, &viewport);
 
-    VkRect2D scissor = {};
-    scissor.offset.x = 0;
-    scissor.offset.y = 0;
-    scissor.extent.width = _drawExtent.width;
-    scissor.extent.height = _drawExtent.height;
+    VkRect2D scissor = { {0, 0}, _drawExtent };
     vkCmdSetScissor(cmd, 0, 1, &scissor);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // Биндим пайплайн для 3D мешей (созданный с поддержкой формата глубины D32)
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _BasePipeline);
+    if (!_modelManager.empty()){
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _BasePipeline);
 
-    VkDescriptorSet setsToBind[] = {
-        globalDescriptor, // Твой покадровый UBO (set = 0)
-        _textureManager.GetTextureSet()                // Наш глобальный массив текстур (set = 1)
-    };
+        VkDescriptorSet setsToBind[] = {
+            globalDescriptor,
+            _textureManager.GetTextureSet()
+        };
 
-    vkCmdBindDescriptorSets(
-        cmd,
-        VK_PIPELINE_BIND_POINT_GRAPHICS,
-        _BasePipelineLayout,
-        0,
-        2,
-        setsToBind,
-        0, nullptr
-    );
+        vkCmdBindDescriptorSets(
+            cmd,
+            VK_PIPELINE_BIND_POINT_GRAPHICS,
+            _BasePipelineLayout,
+            0,
+            2,
+            setsToBind,
+            0, nullptr
+        );
 
-    for (const auto& meshNode : _baseModel.meshNodes)
-    {
-        if (!meshNode->mesh) continue;
+        for (uint32_t modelIdx = 1; modelIdx <= _modelManager.CountOfModels(); modelIdx++){
+            const Model& currentModel = _modelManager.GetModel(modelIdx);
 
-        auto& currentMesh = meshNode->mesh;
+            _modelManager.GetModel(modelIdx).rootNode->UpdateMatrices(glm::mat4(1.0f));
 
-        vkCmdBindIndexBuffer(cmd, currentMesh->meshBuffers.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+            for (const auto& meshNode : currentModel.meshNodes)
+            {
+                if (!meshNode->mesh) continue;
 
-        for (const auto& surface : currentMesh->surfaces)
-        {
-            GPUDrawPushConstants push_constants;
+                auto& currentMesh = meshNode->mesh;
 
-            push_constants.render_matrix = meshNode->worldTransform;
+                vkCmdBindIndexBuffer(cmd, currentMesh->meshBuffers.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 
-            push_constants.vertexBuffer = currentMesh->meshBuffers.vertexBufferAddress;
+                for (const auto& surface : currentMesh->surfaces)
+                {
+                    GPUDrawPushConstants push_constants;
 
-            if (surface.material) {
-                push_constants.colorTextureID = surface.material->colorTextureID;
-                push_constants.metallicRoughnessTextureID = surface.material->metallicRoughnessTextureID;
-            } else {
-                push_constants.colorTextureID = 0;
-                push_constants.metallicRoughnessTextureID = 0;
+                    push_constants.render_matrix = meshNode->worldTransform;
+
+                    push_constants.vertexBuffer = currentMesh->meshBuffers.vertexBufferAddress;
+
+                    if (surface.material) {
+                        push_constants.colorTextureID = surface.material->colorTextureID;
+                        push_constants.metallicRoughnessTextureID = surface.material->metallicRoughnessTextureID;
+                    } else {
+                        push_constants.colorTextureID = 0;
+                        push_constants.metallicRoughnessTextureID = 0;
+                    }
+
+                    vkCmdPushConstants(
+                        cmd,
+                        _BasePipelineLayout,
+                        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                        0,
+                        sizeof(GPUDrawPushConstants),
+                        &push_constants
+                    );
+
+                    vkCmdDrawIndexed(
+                        cmd,
+                        surface.count,
+                        1,
+                        surface.startIndex,
+                        0,
+                        0
+                    );
+                }
             }
-
-            vkCmdPushConstants(
-                cmd,
-                _BasePipelineLayout,
-                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-                0,
-                sizeof(GPUDrawPushConstants),
-                &push_constants
-            );
-
-            vkCmdDrawIndexed(
-                cmd,
-                surface.count,
-                1,
-                surface.startIndex,
-                0,
-                0
-            );
         }
     }
     vkCmdEndRendering(cmd);
@@ -760,6 +769,7 @@ void VK_APPLICATION::VulkanApplication::update_imgui(){
 
 void VK_APPLICATION::VulkanApplication::made_move(){
     if (_camera.isCameraActive) {
+        //std::cout<<"X: "<< _movement.valueX <<"\t"<<"Y: "<<_movement.valueY<<"\t"<<"Z: "<<_movement.valueZ<<"\n";
         int numkeys;
         const bool* keyboardState = SDL_GetKeyboardState(&numkeys);
 

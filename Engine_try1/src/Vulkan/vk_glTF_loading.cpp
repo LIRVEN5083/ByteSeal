@@ -137,8 +137,6 @@ void TextureManager::DestroyAllocationData(){
         FreeTexture(defaultTexture);
     }
 
-    // Теперь, когда ВСЕ картинки моделей и сама заглушка честно удалены через vmaDestroyImage,
-    // этот пул гарантированно пустой, и ассерт m_pMetadata->IsEmpty() закроется молча!
     if (_textureArena) {
         vmaDestroyPool(_allocator, _textureArena);
         _textureArena = VK_NULL_HANDLE;
@@ -787,4 +785,45 @@ Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init, VK_APPLICATION::VulkanApp
 
     return loadedModel;
 
+}
+
+uint32_t ModelManager::LoadModel(const std::filesystem::path& filePath, VK_APPLICATION::VulkanApplication* engine) {
+    std::string key = filePath.lexically_normal().string();
+
+    // Защита от дублирования загруженных моделей
+    auto it = _path_to_id.find(key);
+    if (it != _path_to_id.end()) {
+        return it->second;
+    }
+
+    // Загружаем модель
+    Model newModel = load_glTF(_init, engine, _textureManager, filePath);
+
+    // Сохраняем в векторе
+    _models.push_back(std::move(newModel));
+    // Сохраняем ID
+    uint32_t newId = static_cast<uint32_t>(_models.size() - 1);
+
+    // Храним ключ по которому сверяем загружена модель или нет
+    _path_to_id[key] = newId;
+
+    return newId;
+}
+
+Model& ModelManager::GetModel(uint32_t id){
+    id -= 1;
+    return _models[id];
+}
+
+void ModelManager::destroy_all(){
+    for (auto& model : _models) {
+        model.destroy(_init, _textureManager);
+    }
+    _models.clear();
+    _path_to_id.clear();
+}
+
+bool ModelManager::empty(){
+    if (_models.empty()) return true;
+    return false;
 }
