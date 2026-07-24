@@ -56,8 +56,10 @@ void VK_APPLICATION::VulkanApplication::run(){
     _delta.startTime = std::chrono::high_resolution_clock::now();
 
     for (std::string& model : modelsToLoad){
-        _modelManager.LoadModel(model, this);
+        _modelManager.LoadModel(model, this, _confDynamic.lifetime, _confDynamic.useArena);
     }
+
+    _modelManager.destroy_model(2);
 
     while (!bQuit) {
         while (SDL_PollEvent(&e)) {
@@ -579,9 +581,11 @@ void VK_APPLICATION::VulkanApplication::draw_model(VkCommandBuffer cmd, VkDescri
     furina.rootNode->localTransform = glm::translate(glm::mat4{1.0f}, glm::vec3(2.0f, 0.0f, 0.0f)) *
         glm::rotate(glm::mat4{1.0f}, glm::radians(180.0f), glm::vec3(1.0f, 0.0f, 0.0f));
 
+    /*
     Model pudge = _modelManager.GetModel(2);
     pudge.rootNode->localTransform =  glm::translate(glm::mat4{1.0f}, glm::vec3(-1.0f, 0.0f, 0.0f)) *
         glm::rotate(glm::mat4{1.0f}, glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+    */
 
     Model caffe = _modelManager.GetModel(3);
     caffe.rootNode->localTransform = glm::scale(glm::mat4{1.0f}, glm::vec3(0.01f, 0.01f, 0.01f)) *
@@ -629,6 +633,10 @@ void VK_APPLICATION::VulkanApplication::draw_model(VkCommandBuffer cmd, VkDescri
         );
 
         for (uint32_t modelIdx = 1; modelIdx <= _modelManager.CountOfModels(); modelIdx++){
+            if (!_modelManager.has_model(modelIdx)) {
+                continue;
+            }
+
             const Model& currentModel = _modelManager.GetModel(modelIdx);
 
             _modelManager.GetModel(modelIdx).rootNode->UpdateMatrices(glm::mat4(1.0f));

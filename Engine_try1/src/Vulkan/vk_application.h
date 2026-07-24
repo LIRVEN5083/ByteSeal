@@ -92,6 +92,9 @@ namespace VK_APPLICATION {
         TextureManager _textureManager;
         ModelManager _modelManager{_init, _textureManager};
 
+        StaticModelConf _confStatic;
+        DynamicModelConf _confDynamic;
+
         void renderLoop();
         void resize_swapchain();
         void destroy_swapchain();
