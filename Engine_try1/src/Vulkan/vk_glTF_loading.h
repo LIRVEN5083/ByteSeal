@@ -17,9 +17,57 @@
 #include <fastgltf/tools.hpp>
 #include <iostream>
 
+// Делим ебанные обьекты по типу аллокации
+// И времени их существования на сцене
+
+// Static - arena-allocator
+// Dynamic - динамическое выделение
+enum class ModelLifetime : uint8_t{
+    Static,
+    Dynamic
+};
+
+// push constants для работы
+struct GPUDrawPushConstants {
+    glm::mat4 render_matrix;          // Обычная матрица преобразований
+    VkDeviceAddress vertexBuffer;   // Вершинный буфер который мы алоцировали и получили адресс для передачи
+
+    uint32_t colorTextureID;
+    uint32_t metallicRoughnessTextureID;
+};
+
+struct GPUSceneData {
+    glm::mat4 view;
+    glm::mat4 proj;
+    glm::mat4 viewproj;
+    glm::vec4 ambientColor;
+    glm::vec4 sunlightDirection; // w for sun power
+    glm::vec4 sunlightColor;
+};
+
+struct Vertex {
+
+    glm::vec3 position;
+    float uv_x;
+    glm::vec3 normal;
+    float uv_y;
+    glm::vec4 color;
+};
+
+struct GPUMeshBuffers {
+
+    AllocatedBuffer indexBuffer;
+    AllocatedBuffer vertexBuffer;
+    VkDeviceAddress vertexBufferAddress;
+
+    ModelLifetime lifetime{ ModelLifetime::Dynamic };
+};
+
 struct GPUTexture {
     AllocatedImage image;
     uint32_t globalIndex{ 0 };
+
+    ModelLifetime lifetime{ ModelLifetime::Dynamic };
 };
 
 struct MaterialAsset {
@@ -36,7 +84,7 @@ public:
 
     void init(VK_INIT_ENGINE::_inited_engine& _init);
 
-    GPUTexture AllocateTexture(VkImageCreateInfo imageInfo, VkImageViewCreateInfo viewInfo);
+    GPUTexture AllocateTexture(VkImageCreateInfo imageInfo, VkImageViewCreateInfo viewInfo, bool useArena = false);
 
     void FreeTexture(const GPUTexture& texture);
     void DestroyAllocationData();
@@ -115,6 +163,9 @@ struct Model{
     std::vector<GPUTexture> loadedTextures;
     std::vector<std::shared_ptr<MaterialAsset>> materials;
 
+    ModelLifetime lifetime{ ModelLifetime::Dynamic };
+    bool bIsValid{ false };
+
     void destroy(VK_INIT_ENGINE::_inited_engine& _init ,TextureManager& textureManager);
 };
 
@@ -124,35 +175,46 @@ namespace VK_APPLICATION{
 }
 
 // Аллокация буферов под вершины
-GPUMeshBuffers upload_meshes(VK_INIT_ENGINE::_inited_engine& _init, std::span<uint32_t> indices, std::span<Vertex> vertices);
+GPUMeshBuffers upload_meshes(VK_INIT_ENGINE::_inited_engine& _init, std::span<uint32_t> indices, std::span<Vertex> vertices,
+    ModelLifetime lifetime = ModelLifetime::Dynamic);
+
+
+
+
 
 std::optional<GPUTexture> load_image(VK_INIT_ENGINE::_inited_engine& _init, TextureManager& textureManager,
-                                            const unsigned char* pixelData, uint32_t width, uint32_t height, VkFormat format);
+                                            const unsigned char* pixelData, uint32_t width, uint32_t height, VkFormat format, bool useArena = false);
 
 std::optional<std::vector<std::shared_ptr<MeshAsset>>> load_Meshes(VK_INIT_ENGINE::_inited_engine& _init,
-                    fastgltf::Asset& asset, const std::vector<std::shared_ptr<MaterialAsset>>& materials);
+                    fastgltf::Asset& asset, const std::vector<std::shared_ptr<MaterialAsset>>& materials,
+                    ModelLifetime lifetime = ModelLifetime::Dynamic, bool useArena = false);
 
 std::optional<std::shared_ptr<Node>> load_Node(fastgltf::Asset& asset, fastgltf::Node& gltfNode, Model& outModel);
 
 Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init, VK_APPLICATION::VulkanApplication* engine,
-                TextureManager& textureManager, std::filesystem::path filePath);
+                TextureManager& textureManager, std::filesystem::path filePath, ModelLifetime lifetime = ModelLifetime::Dynamic, bool useArena = false);
 
 class ModelManager {
 public:
     ModelManager(VK_INIT_ENGINE::_inited_engine& init, TextureManager& texManager)
         : _init(init), _textureManager(texManager) {}
 
-    uint32_t LoadModel(const std::filesystem::path& filePath, VK_APPLICATION::VulkanApplication* engine);
+    uint32_t LoadModel(const std::filesystem::path& filePath, VK_APPLICATION::VulkanApplication* engine,
+        ModelLifetime lifetime, bool useArena);
 
     // Геттер на модель
     Model& GetModel(uint32_t id);
 
-    // Метод очистки моделей
-    void destroy_all();
-
     bool empty();
 
     uint32_t CountOfModels() { return _models.size(); }
+
+    bool has_model(uint32_t id);
+
+    // Метод очистки моделей
+    void destroy_model(uint32_t id);
+    void destroy_dynamic_models();
+    void destroy_all();
 
 private:
     VK_INIT_ENGINE::_inited_engine& _init;
@@ -160,4 +222,14 @@ private:
 
     std::vector<Model> _models;
     std::unordered_map<std::string, uint32_t> _path_to_id;
+};
+
+struct StaticModelConf{
+    bool useArena{true};
+    ModelLifetime lifetime{ ModelLifetime::Static };
+};
+
+struct DynamicModelConf{
+    bool useArena{false};
+    ModelLifetime lifetime{ ModelLifetime::Dynamic };
 };

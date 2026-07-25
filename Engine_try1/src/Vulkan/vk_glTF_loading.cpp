@@ -79,7 +79,7 @@ void TextureManager::init(VK_INIT_ENGINE::_inited_engine& _init){
     create_default_white_texture(_init);
 }
 
-GPUTexture TextureManager::AllocateTexture(VkImageCreateInfo imageInfo, VkImageViewCreateInfo viewInfo){
+GPUTexture TextureManager::AllocateTexture(VkImageCreateInfo imageInfo, VkImageViewCreateInfo viewInfo, bool useArena){
     GPUTexture texture{};
 
     // Получить bindless индекс
@@ -93,8 +93,15 @@ GPUTexture TextureManager::AllocateTexture(VkImageCreateInfo imageInfo, VkImageV
     }
 
     VmaAllocationCreateInfo poolAllocInfo{};
-    poolAllocInfo.pool = _textureArena;
     poolAllocInfo.usage = VMA_MEMORY_USAGE_AUTO;
+    if (useArena){
+        poolAllocInfo.pool = _textureArena;
+    }
+    else
+    {
+        poolAllocInfo.pool = VK_NULL_HANDLE;
+    }
+
     vmaCreateImage(_allocator, &imageInfo, &poolAllocInfo, &texture.image.image, &texture.image.allocation, nullptr);
 
     viewInfo.image = texture.image.image;
@@ -153,7 +160,6 @@ void TextureManager::create_default_white_texture(VK_INIT_ENGINE::_inited_engine
     int32_t whitePixel = 0xFFFFFFFF;
     size_t dataSize = sizeof(whitePixel);
 
-    // 2. Создаем временный Staging-буфер
     AllocatedBuffer stagingBuffer = vkinit::create_buffer(
         dataSize,
         _init._allocator,
@@ -167,11 +173,10 @@ void TextureManager::create_default_white_texture(VK_INIT_ENGINE::_inited_engine
     memcpy(data, &whitePixel, dataSize);
     vmaUnmapMemory(_init._allocator, stagingBuffer.allocation);
 
-    // 3. Инфо для текстуры 1х1 на GPU
     VkImageCreateInfo imgInfo{ VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
     imgInfo.imageType = VK_IMAGE_TYPE_2D;
     imgInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
-    imgInfo.extent = { 1, 1, 1 }; // Размер 1х1 пиксель
+    imgInfo.extent = { 1, 1, 1 };
     imgInfo.mipLevels = 1;
     imgInfo.arrayLayers = 1;
     imgInfo.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -185,17 +190,14 @@ void TextureManager::create_default_white_texture(VK_INIT_ENGINE::_inited_engine
     viewInfo.subresourceRange.levelCount = 1;
     viewInfo.subresourceRange.layerCount = 1;
 
-    // AllocateTexture гарантированно выдаст этой текстуре globalIndex = 0,
-    // так как это самая первая аллокация при старте менеджера!
-    defaultTexture = AllocateTexture(imgInfo, viewInfo);
+    defaultTexture = AllocateTexture(imgInfo, viewInfo, true);
 
-    // 4. Заливаем пиксель на GPU через твой submit_immediate
     vkinit::submit_immediate([&](VkCommandBuffer cmd) {
 
         VkImageMemoryBarrier barrier{ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
         barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-        barrier.image = defaultTexture.image.image; // Используем твою структуру с AllocatedImage
+        barrier.image = defaultTexture.image.image;
         barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
         barrier.subresourceRange.levelCount = 1;
         barrier.subresourceRange.layerCount = 1;
@@ -240,103 +242,21 @@ void Node::UpdateMatrices(const glm::mat4& parentMatrix){
     }
 }
 
-std::optional<AllocatedImage> load_image(VK_INIT_ENGINE::_inited_engine& _init, fastgltf::Asset& asset,
-                                         fastgltf::Image& image){
-    AllocatedImage newImage {};
-
-    int width, height, nrChannels;
-
-    std::visit(
-        fastgltf::visitor {
-            [](auto& arg) {},
-            [&](fastgltf::sources::URI& filePath) {
-                assert(filePath.fileByteOffset == 0); // We don't support offsets with stbi.
-                assert(filePath.uri.isLocalPath()); // We're only capable of loading
-                                                    // local files.
-
-                const std::string path(filePath.uri.path().begin(),
-                    filePath.uri.path().end()); // Thanks C++.
-                unsigned char* data = stbi_load(path.c_str(), &width, &height, &nrChannels, 4);
-                if (data) {
-                    VkExtent3D imagesize;
-                    imagesize.width = width;
-                    imagesize.height = height;
-                    imagesize.depth = 1;
-
-                    newImage = vkinit::create_image(data, imagesize, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT, _init,false);
-
-                    stbi_image_free(data);
-                }
-            },
-            [&](fastgltf::sources::Vector& vector) {
-                unsigned char* data = stbi_load_from_memory(
-                    reinterpret_cast<const stbi_uc*>(vector.bytes.data()),
-                    static_cast<int>(vector.bytes.size()),
-                    &width, &height, &nrChannels, 4);
-                if (data) {
-                    VkExtent3D imagesize;
-                    imagesize.width = width;
-                    imagesize.height = height;
-                    imagesize.depth = 1;
-
-                    newImage = vkinit::create_image(data, imagesize, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT, _init,false);
-
-                    stbi_image_free(data);
-                }
-            },
-            [&](fastgltf::sources::BufferView& view) {
-                auto& bufferView = asset.bufferViews[view.bufferViewIndex];
-                auto& buffer = asset.buffers[bufferView.bufferIndex];
-
-                std::visit(fastgltf::visitor { // We only care about VectorWithMime here, because we
-                                               // specify LoadExternalBuffers, meaning all buffers
-                                               // are already loaded into a vector.
-                               [](auto& arg) {},
-                               [&](fastgltf::sources::Vector& vector) {
-                                   unsigned char* data = stbi_load_from_memory(
-                                       reinterpret_cast<const stbi_uc*>(vector.bytes.data() + bufferView.byteOffset),
-                                       static_cast<int>(bufferView.byteLength),
-                                       &width, &height, &nrChannels, 4);
-                                   if (data) {
-                                       VkExtent3D imagesize;
-                                       imagesize.width = width;
-                                       imagesize.height = height;
-                                       imagesize.depth = 1;
-
-                                       newImage = vkinit::create_image(data, imagesize, VK_FORMAT_R8G8B8A8_UNORM,
-                                           VK_IMAGE_USAGE_SAMPLED_BIT, _init,false);
-
-                                       stbi_image_free(data);
-                                   }
-                               } },
-                    buffer.data);
-            },
-        },
-        image.data);
-
-    // if any of the attempts to load the data failed, we havent written the image
-    // so handle is null
-    if (newImage.image == VK_NULL_HANDLE) {
-        return {};
-    } else {
-        return newImage;
-    }
-}
-
 void Model::destroy(VK_INIT_ENGINE::_inited_engine& _init, TextureManager& textureManager){
     for (auto& tex : loadedTextures) {
-        // Пропускаем заглушки с ID = 0, их удалять нельзя, ими владеет менеджер!
-        if (tex.globalIndex != 0) {
-            textureManager.FreeTexture(tex);
-        }
+        if (tex.globalIndex == 0) continue;
+        textureManager.FreeTexture(tex);
     }
     loadedTextures.clear();
     materials.clear();
 
-    // 2. Освобождаем буферы геометрии мешей
     for (auto& mesh : Meshes) {
-        vmaDestroyBuffer(_init._allocator, mesh->meshBuffers.indexBuffer.buffer, mesh->meshBuffers.indexBuffer.allocation);
-        vmaDestroyBuffer(_init._allocator, mesh->meshBuffers.vertexBuffer.buffer, mesh->meshBuffers.vertexBuffer.allocation);
+        if (mesh->meshBuffers.indexBuffer.buffer != VK_NULL_HANDLE) {
+            vmaDestroyBuffer(_init._allocator, mesh->meshBuffers.indexBuffer.buffer, mesh->meshBuffers.indexBuffer.allocation);
+        }
+        if (mesh->meshBuffers.vertexBuffer.buffer != VK_NULL_HANDLE) {
+            vmaDestroyBuffer(_init._allocator, mesh->meshBuffers.vertexBuffer.buffer, mesh->meshBuffers.vertexBuffer.allocation);
+        }
     }
     Meshes.clear();
     meshNodes.clear();
@@ -344,7 +264,7 @@ void Model::destroy(VK_INIT_ENGINE::_inited_engine& _init, TextureManager& textu
 }
 
 GPUMeshBuffers upload_meshes(VK_INIT_ENGINE::_inited_engine& _init, std::span<uint32_t> indices,
-                             std::span<Vertex> vertices){
+                             std::span<Vertex> vertices, ModelLifetime lifetime){
     // Размер масивов с данными, чтобы программа знала точное количество
     const size_t vertexBufferSize = vertices.size() * sizeof(Vertex);
     const size_t indexBufferSize = indices.size() * sizeof(uint32_t);
@@ -408,12 +328,14 @@ GPUMeshBuffers upload_meshes(VK_INIT_ENGINE::_inited_engine& _init, std::span<ui
     // Уничтожаем Staging Buffer
     vkinit::destroy_buffer(staging, _init._allocator);
 
+    newSurface.lifetime = lifetime;
+
     // Возвращаем
     return newSurface;
 }
 
 std::optional<GPUTexture> load_image(VK_INIT_ENGINE::_inited_engine& _init, TextureManager& textureManager,
-    const unsigned char* pixelData, uint32_t width, uint32_t height, VkFormat format){
+    const unsigned char* pixelData, uint32_t width, uint32_t height, VkFormat format, bool useArena){
     size_t dataSize = static_cast<size_t>(width) * height * 4; // Предпокаем RGBA8
 
     AllocatedBuffer stagingBuffer = vkinit::create_buffer(
@@ -448,7 +370,7 @@ std::optional<GPUTexture> load_image(VK_INIT_ENGINE::_inited_engine& _init, Text
     viewInfo.subresourceRange.layerCount = 1;
 
     // Выделяем память из VMA Арены и регистрируем в Bindless-сет
-    GPUTexture outTexture = textureManager.AllocateTexture(imgInfo, viewInfo);
+    GPUTexture outTexture = textureManager.AllocateTexture(imgInfo, viewInfo, useArena);
 
     // Отправляем команды копирования на GPU через submit_immediate
     vkinit::submit_immediate([&](VkCommandBuffer cmd) {
@@ -494,7 +416,8 @@ std::optional<GPUTexture> load_image(VK_INIT_ENGINE::_inited_engine& _init, Text
 }
 
 std::optional<std::vector<std::shared_ptr<MeshAsset>>> load_Meshes(VK_INIT_ENGINE::_inited_engine& _init,
-                            fastgltf::Asset& asset, const std::vector<std::shared_ptr<MaterialAsset>>& materials){
+                            fastgltf::Asset& asset, const std::vector<std::shared_ptr<MaterialAsset>>& materials,
+                            ModelLifetime lifetime, bool useArena){
     std::vector<std::shared_ptr<MeshAsset>> meshes;
     std::vector<uint32_t> indices;
     std::vector<Vertex> vertices;
@@ -601,7 +524,7 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> load_Meshes(VK_INIT_ENGIN
         }
 
         // Загружаем буферы в Vulkan для конкретно этого меша
-        newMeshAsset->meshBuffers = upload_meshes(_init, indices, vertices);
+        newMeshAsset->meshBuffers = upload_meshes(_init, indices, vertices, lifetime);
         meshes.push_back(newMeshAsset);
     }
 
@@ -649,10 +572,19 @@ std::optional<std::shared_ptr<Node>> load_Node(fastgltf::Asset& asset, fastgltf:
 }
 
 Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init, VK_APPLICATION::VulkanApplication* engine,
-                TextureManager& textureManager, std::filesystem::path filePath){
+                TextureManager& textureManager, std::filesystem::path filePath, ModelLifetime lifetime, bool useArena){
     // Возвращаемая модель
     Model loadedModel;
+    loadedModel.lifetime = lifetime;
+    loadedModel.bIsValid = true;
     std::cout << "Loading GLTF: " << filePath << std::endl;
+    std::cout<< "Model type: ";
+    if (lifetime == ModelLifetime::Dynamic){
+        std::cout<<"Dynamic\n";
+    }
+    else if (lifetime == ModelLifetime::Static){
+        std::cout<<"Static\n";
+    }
     // Чтение данных
     auto data = fastgltf::GltfDataBuffer::FromPath(filePath.string());
     if (!data) {
@@ -705,20 +637,22 @@ Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init, VK_APPLICATION::VulkanApp
 
         // Если пиксели успешно раскодированы — отправляем их в нашу изолированную load_image
         if (pixelData) {
-            auto gpuTex = load_image(_init, textureManager, pixelData, width, height, VK_FORMAT_R8G8B8A8_SRGB);
+            auto gpuTex = load_image(_init, textureManager, pixelData, width, height, VK_FORMAT_R8G8B8A8_SRGB, useArena);
 
             stbi_image_free(pixelData);
 
             if (gpuTex.has_value()){
+                gpuTex.value().lifetime = lifetime;
                 loadedModel.loadedTextures.push_back(gpuTex.value());
                 continue;
             }
         }
         else {
-            std::cout << "CRITICAL: fastgltf/stbi failed to load image data for one of the textures!\n";
+            std::cout << "ERROR: fastgltf/stbi failed to load image data for one of the textures!\n";
         }
         GPUTexture dummyTex{};
         dummyTex.globalIndex = 0;
+        dummyTex.lifetime = ModelLifetime::Static;
         loadedModel.loadedTextures.push_back(dummyTex);
     }
 
@@ -757,7 +691,7 @@ Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init, VK_APPLICATION::VulkanApp
     }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Загрузка мешей
-    auto meshesOpt = load_Meshes(_init, gltf, loadedModel.materials);
+    auto meshesOpt = load_Meshes(_init, gltf, loadedModel.materials, lifetime, useArena);
     if (meshesOpt.has_value()) {
         loadedModel.Meshes = std::move(meshesOpt.value());
     } else {
@@ -787,7 +721,7 @@ Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init, VK_APPLICATION::VulkanApp
 
 }
 
-uint32_t ModelManager::LoadModel(const std::filesystem::path& filePath, VK_APPLICATION::VulkanApplication* engine) {
+uint32_t ModelManager::LoadModel(const std::filesystem::path& filePath, VK_APPLICATION::VulkanApplication* engine, ModelLifetime lifetime, bool useArena) {
     std::string key = filePath.lexically_normal().string();
 
     // Защита от дублирования загруженных моделей
@@ -796,34 +730,125 @@ uint32_t ModelManager::LoadModel(const std::filesystem::path& filePath, VK_APPLI
         return it->second;
     }
 
+    uint32_t targetIndex = uint32_t(-1);
+
+    // Ищем свободное место
+    for (size_t i = 0; i < _models.size(); ++i) {
+        if (!_models[i].bIsValid) { // Если нашли пустую дыру в массиве
+            targetIndex = static_cast<uint32_t>(i);
+            break;
+        }
+    }
+
     // Загружаем модель
-    Model newModel = load_glTF(_init, engine, _textureManager, filePath);
+    Model newModel = load_glTF(_init, engine, _textureManager, filePath, lifetime,useArena);
+    newModel.lifetime = lifetime;
+    newModel.bIsValid = true;
 
-    // Сохраняем в векторе
-    _models.push_back(std::move(newModel));
-    // Сохраняем ID
-    uint32_t newId = static_cast<uint32_t>(_models.size() - 1);
+    uint32_t externalId = 0;
 
+    if (targetIndex == uint32_t(-1)) {
+        // Если дыр в массиве не было - пушим в конец
+        _models.push_back(std::move(newModel));
+
+        // Размер вектора и есть ID новой модели (от 1)
+        externalId = static_cast<uint32_t>(_models.size());
+    } else {
+        // Если нашли дыру — сажаем модель на старое место
+        _models[targetIndex] = std::move(newModel);
+
+        // Индекс от 1 поэтому так
+        externalId = targetIndex + 1;
+    }
     // Храним ключ по которому сверяем загружена модель или нет
-    _path_to_id[key] = newId;
+    _path_to_id[key] = externalId;
 
-    return newId;
+    return externalId;
 }
 
 Model& ModelManager::GetModel(uint32_t id){
-    id -= 1;
-    return _models[id];
-}
+     uint32_t arrayIndex = id - 1;
 
-void ModelManager::destroy_all(){
-    for (auto& model : _models) {
-        model.destroy(_init, _textureManager);
-    }
-    _models.clear();
-    _path_to_id.clear();
+    assert(arrayIndex < _models.size() && "Array index out of bounds for the model array!");
+    assert(_models[arrayIndex].bIsValid && "Attempting to access a remote model by ID!");
+
+    return _models[arrayIndex];
 }
 
 bool ModelManager::empty(){
     if (_models.empty()) return true;
     return false;
+}
+
+bool ModelManager::has_model(uint32_t id){
+    uint32_t arrayIndex = id - 1;
+    if (arrayIndex >= _models.size()){
+        return false;
+    }
+    else{
+        return _models.at(arrayIndex).bIsValid;
+    }
+}
+
+void ModelManager:: destroy_model(uint32_t id){
+    uint32_t arrayIndex = id - 1;
+
+    if (arrayIndex >= _models.size() || !_models[arrayIndex].bIsValid) {
+        return;
+    }
+
+    if (_models[arrayIndex].lifetime == ModelLifetime::Static) {
+        std::cerr << "CRITICAL ERROR: Attempt to remove a static scene model during gameplay!\n";
+        return;
+    }
+
+    // Вызываем очистку динамических ресурсов на GPU
+    _models.at(arrayIndex).destroy(_init, _textureManager);
+    _models.at(arrayIndex).bIsValid = false;
+
+    // БЕЗОПАСНОЕ УДАЛЕНИЕ ИЗ МАПЫ:
+    std::string keyToRemove = "";
+    for (const auto& [path, modelId] : _path_to_id) {
+        if (modelId == id) {
+            keyToRemove = path;
+            break;
+        }
+    }
+
+    if (!keyToRemove.empty()) {
+        _path_to_id.erase(keyToRemove);
+    }
+}
+
+void ModelManager::destroy_dynamic_models() {
+    for (size_t i = 0; i < _models.size(); ++i) {
+        if (_models[i].bIsValid && _models[i].lifetime == ModelLifetime::Dynamic) {
+
+            _models[i].destroy(_init, _textureManager);
+            _models[i].bIsValid = false; // Ячейка свободна
+
+            uint32_t externalId = static_cast<uint32_t>(i + 1);
+
+            // Удаляем из мапы
+            for (auto it = _path_to_id.begin(); it != _path_to_id.end(); ++it) {
+                if (it->second == externalId) {
+                    _path_to_id.erase(it);
+                    break;
+                }
+            }
+        }
+    }
+}
+
+
+void ModelManager::destroy_all(){
+    for (auto& model : _models) {
+        // Чистим модель ТОЛЬКО если этот слот сейчас занят живым объектом
+        if (model.bIsValid) {
+            model.destroy(_init, _textureManager);
+            model.bIsValid = false; // На всякий случай сбрасываем флаг
+        }
+    }
+    _models.clear();
+    _path_to_id.clear();
 }
