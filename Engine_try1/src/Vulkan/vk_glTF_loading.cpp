@@ -79,8 +79,10 @@ void TextureManager::init(VK_INIT_ENGINE::_inited_engine& _init){
     create_default_white_texture(_init);
 }
 
-GPUTexture TextureManager::AllocateTexture(VkImageCreateInfo imageInfo, VkImageViewCreateInfo viewInfo, bool useArena){
+GPUTexture TextureManager::AllocateTexture(VkImageCreateInfo imageInfo, VkImageViewCreateInfo viewInfo, ModelLifetime lifetime){
     GPUTexture texture{};
+    texture.lifetime = lifetime;
+
 
     // Получить bindless индекс
     if (!_freeIndices.empty()) {
@@ -94,10 +96,10 @@ GPUTexture TextureManager::AllocateTexture(VkImageCreateInfo imageInfo, VkImageV
 
     VmaAllocationCreateInfo poolAllocInfo{};
     poolAllocInfo.usage = VMA_MEMORY_USAGE_AUTO;
-    if (useArena){
+    if (lifetime == ModelLifetime::Static){
         poolAllocInfo.pool = _textureArena;
     }
-    else
+    else if (lifetime == ModelLifetime::Dynamic)
     {
         poolAllocInfo.pool = VK_NULL_HANDLE;
     }
@@ -141,8 +143,13 @@ void TextureManager::FreeTexture(const GPUTexture& texture){
 void TextureManager::DestroyAllocationData(){
     if (_defaultSampler) vkDestroySampler(_device, _defaultSampler, nullptr);
     if (defaultTexture.image.imageView != VK_NULL_HANDLE) {
-        FreeTexture(defaultTexture);
+        vkDestroyImageView(_device, defaultTexture.image.imageView, nullptr);
     }
+    if (defaultTexture.image.image != VK_NULL_HANDLE) {
+        vmaDestroyImage(_allocator, defaultTexture.image.image, defaultTexture.image.allocation);
+        defaultTexture.image.image = VK_NULL_HANDLE;
+    }
+
 
     if (_textureArena) {
         vmaDestroyPool(_allocator, _textureArena);
@@ -190,7 +197,7 @@ void TextureManager::create_default_white_texture(VK_INIT_ENGINE::_inited_engine
     viewInfo.subresourceRange.levelCount = 1;
     viewInfo.subresourceRange.layerCount = 1;
 
-    defaultTexture = AllocateTexture(imgInfo, viewInfo, true);
+    defaultTexture = AllocateTexture(imgInfo, viewInfo, ModelLifetime::Static);
 
     vkinit::submit_immediate([&](VkCommandBuffer cmd) {
 
@@ -242,7 +249,7 @@ void Node::UpdateMatrices(const glm::mat4& parentMatrix){
     }
 }
 
-void Model::destroy(VK_INIT_ENGINE::_inited_engine& _init, TextureManager& textureManager){
+void Model::destroy(VK_INIT_ENGINE::_inited_engine& _init, MeshManager& meshManager, TextureManager& textureManager){
     for (auto& tex : loadedTextures) {
         if (tex.globalIndex == 0) continue;
         textureManager.FreeTexture(tex);
@@ -251,20 +258,64 @@ void Model::destroy(VK_INIT_ENGINE::_inited_engine& _init, TextureManager& textu
     materials.clear();
 
     for (auto& mesh : Meshes) {
-        if (mesh->meshBuffers.indexBuffer.buffer != VK_NULL_HANDLE) {
-            vmaDestroyBuffer(_init._allocator, mesh->meshBuffers.indexBuffer.buffer, mesh->meshBuffers.indexBuffer.allocation);
-        }
-        if (mesh->meshBuffers.vertexBuffer.buffer != VK_NULL_HANDLE) {
-            vmaDestroyBuffer(_init._allocator, mesh->meshBuffers.vertexBuffer.buffer, mesh->meshBuffers.vertexBuffer.allocation);
-        }
+        meshManager.FreeMesh(mesh->meshBuffers);
     }
+
     Meshes.clear();
     meshNodes.clear();
     rootNode.reset();
 }
 
-GPUMeshBuffers upload_meshes(VK_INIT_ENGINE::_inited_engine& _init, std::span<uint32_t> indices,
-                             std::span<Vertex> vertices, ModelLifetime lifetime){
+void MeshManager::init(VK_INIT_ENGINE::_inited_engine& _init){
+    _device = _init._device;
+    _allocator = _init._allocator;
+
+    VkBufferCreateInfo dummyInfo{ VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+    dummyInfo.size = 1024;
+    dummyInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+                      VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
+                      VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+
+    VmaAllocationCreateInfo dummyAllocInfo{};
+    dummyAllocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+
+    uint32_t memoryTypeIndex;
+    vmaFindMemoryTypeIndexForBufferInfo(_allocator, &dummyInfo, &dummyAllocInfo, &memoryTypeIndex);
+
+    VmaPoolCreateInfo poolCreateInfo{};
+    poolCreateInfo.memoryTypeIndex = memoryTypeIndex;
+    poolCreateInfo.blockSize = MAX_ARENA_SIZE; // Выделяем память
+    poolCreateInfo.minBlockCount = 1;
+    poolCreateInfo.maxBlockCount = 1;
+
+    vmaCreatePool(_allocator, &poolCreateInfo, &_meshArena);
+}
+
+void MeshManager::DestroyAllocationData(){
+
+    if (_meshArena != VK_NULL_HANDLE) {
+        vmaDestroyPool(_allocator, _meshArena);
+        _meshArena = VK_NULL_HANDLE;
+    }
+}
+
+void MeshManager::FreeMesh(const GPUMeshBuffers& buffers){
+    if (buffers.vertexBuffer.buffer == VK_NULL_HANDLE || buffers.indexBuffer.buffer == VK_NULL_HANDLE) {
+        return;
+    }
+
+    if (buffers.lifetime == ModelLifetime::Static){
+        vmaDestroyBuffer(_allocator, buffers.vertexBuffer.buffer, buffers.vertexBuffer.allocation);
+        vmaDestroyBuffer(_allocator, buffers.indexBuffer.buffer, buffers.indexBuffer.allocation);
+    }
+    else if (buffers.lifetime == ModelLifetime::Dynamic){
+        vkinit::destroy_buffer(buffers.vertexBuffer, _allocator);
+        vkinit::destroy_buffer(buffers.indexBuffer, _allocator);
+    }
+}
+
+GPUMeshBuffers MeshManager::upload_meshes(VK_INIT_ENGINE::_inited_engine& _init, std::span<uint32_t> indices,
+                                          std::span<Vertex> vertices, ModelLifetime lifetime){
     // Размер масивов с данными, чтобы программа знала точное количество
     const size_t vertexBufferSize = vertices.size() * sizeof(Vertex);
     const size_t indexBufferSize = indices.size() * sizeof(uint32_t);
@@ -274,19 +325,47 @@ GPUMeshBuffers upload_meshes(VK_INIT_ENGINE::_inited_engine& _init, std::span<ui
     // 2. Буфер вершин
     // 3. Адресс на всю эту бурмалду
     GPUMeshBuffers newSurface;
+    newSurface.lifetime = lifetime;
 
-    // Создание вершинного буфера
-    newSurface.vertexBuffer = vkinit::create_buffer(vertexBufferSize, _init._allocator, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-        VMA_MEMORY_USAGE_GPU_ONLY);
+    // Создание информации кто читает вершинный буфер
+    VkBufferCreateInfo vertexBufferInfo{ VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+    vertexBufferInfo.size = vertexBufferSize;
+    vertexBufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+
+    // Создание информации кто читает индескный буфер
+    VkBufferCreateInfo indexBufferInfo{ VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+    indexBufferInfo.size = indexBufferSize;
+    indexBufferInfo.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+
+    // Чтение только GPU
+    VmaAllocationCreateInfo allocCreateInfo{};
+    allocCreateInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+
+    // Статическая память
+    if (lifetime == ModelLifetime::Static && _meshArena != VK_NULL_HANDLE) {
+
+        // Нарезаем память из выделенного при старте пула
+        allocCreateInfo.pool = _meshArena;
+
+        // Создаем под-буферы внутри Арены мешей
+        vmaCreateBuffer(_init._allocator, &vertexBufferInfo, &allocCreateInfo, &newSurface.vertexBuffer.buffer, &newSurface.vertexBuffer.allocation, nullptr);
+        vmaCreateBuffer(_init._allocator, &indexBufferInfo, &allocCreateInfo, &newSurface.indexBuffer.buffer, &newSurface.indexBuffer.allocation, nullptr);
+    }
+    // Динамическая память
+    else {
+        // Аллоцируем абсолютно новую память
+        allocCreateInfo.pool = VK_NULL_HANDLE; // Используем уже обычный VMA
+
+        // Используем старую реализацию из vk-guide для создания буфера через VMA
+        newSurface.vertexBuffer = vkinit::create_buffer(vertexBufferSize, _init._allocator, vertexBufferInfo.usage, VMA_MEMORY_USAGE_GPU_ONLY);
+        newSurface.indexBuffer = vkinit::create_buffer(indexBufferSize, _init._allocator, indexBufferInfo.usage, VMA_MEMORY_USAGE_GPU_ONLY);
+    }
 
     // Находим адресс к вершиному буферу
     VkBufferDeviceAddressInfo deviceAdressInfo{ .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,.buffer = newSurface.vertexBuffer.buffer };
-    // Заносим этот адресс в нашу структуру
+    // Заносим этот адресс в структуру
     newSurface.vertexBufferAddress = vkGetBufferDeviceAddress(_init._device, &deviceAdressInfo);
 
-    // Создаём буфер индексов
-    newSurface.indexBuffer = vkinit::create_buffer(indexBufferSize, _init._allocator, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-        VMA_MEMORY_USAGE_GPU_ONLY);
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Дальше типичная реализация Staging buffer, т.е системы копирования данных и передачи их в видеокарту напрямую
@@ -335,7 +414,7 @@ GPUMeshBuffers upload_meshes(VK_INIT_ENGINE::_inited_engine& _init, std::span<ui
 }
 
 std::optional<GPUTexture> load_image(VK_INIT_ENGINE::_inited_engine& _init, TextureManager& textureManager,
-    const unsigned char* pixelData, uint32_t width, uint32_t height, VkFormat format, bool useArena){
+    const unsigned char* pixelData, uint32_t width, uint32_t height, VkFormat format, ModelLifetime lifetime){
     size_t dataSize = static_cast<size_t>(width) * height * 4; // Предпокаем RGBA8
 
     AllocatedBuffer stagingBuffer = vkinit::create_buffer(
@@ -370,7 +449,7 @@ std::optional<GPUTexture> load_image(VK_INIT_ENGINE::_inited_engine& _init, Text
     viewInfo.subresourceRange.layerCount = 1;
 
     // Выделяем память из VMA Арены и регистрируем в Bindless-сет
-    GPUTexture outTexture = textureManager.AllocateTexture(imgInfo, viewInfo, useArena);
+    GPUTexture outTexture = textureManager.AllocateTexture(imgInfo, viewInfo, lifetime);
 
     // Отправляем команды копирования на GPU через submit_immediate
     vkinit::submit_immediate([&](VkCommandBuffer cmd) {
@@ -416,8 +495,9 @@ std::optional<GPUTexture> load_image(VK_INIT_ENGINE::_inited_engine& _init, Text
 }
 
 std::optional<std::vector<std::shared_ptr<MeshAsset>>> load_Meshes(VK_INIT_ENGINE::_inited_engine& _init,
-                            fastgltf::Asset& asset, const std::vector<std::shared_ptr<MaterialAsset>>& materials,
-                            ModelLifetime lifetime, bool useArena){
+                            MeshManager& meshManager, fastgltf::Asset& asset,
+                            const std::vector<std::shared_ptr<MaterialAsset>>& materials,
+                            ModelLifetime lifetime){
     std::vector<std::shared_ptr<MeshAsset>> meshes;
     std::vector<uint32_t> indices;
     std::vector<Vertex> vertices;
@@ -524,7 +604,7 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> load_Meshes(VK_INIT_ENGIN
         }
 
         // Загружаем буферы в Vulkan для конкретно этого меша
-        newMeshAsset->meshBuffers = upload_meshes(_init, indices, vertices, lifetime);
+        newMeshAsset->meshBuffers = meshManager.upload_meshes(_init, indices, vertices, lifetime);
         meshes.push_back(newMeshAsset);
     }
 
@@ -572,7 +652,8 @@ std::optional<std::shared_ptr<Node>> load_Node(fastgltf::Asset& asset, fastgltf:
 }
 
 Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init, VK_APPLICATION::VulkanApplication* engine,
-                TextureManager& textureManager, std::filesystem::path filePath, ModelLifetime lifetime, bool useArena){
+                MeshManager& meshManager, TextureManager& textureManager, std::filesystem::path filePath,
+                ModelLifetime lifetime, bool useArena){
     // Возвращаемая модель
     Model loadedModel;
     loadedModel.lifetime = lifetime;
@@ -637,7 +718,7 @@ Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init, VK_APPLICATION::VulkanApp
 
         // Если пиксели успешно раскодированы — отправляем их в нашу изолированную load_image
         if (pixelData) {
-            auto gpuTex = load_image(_init, textureManager, pixelData, width, height, VK_FORMAT_R8G8B8A8_SRGB, useArena);
+            auto gpuTex = load_image(_init, textureManager, pixelData, width, height, VK_FORMAT_R8G8B8A8_SRGB, lifetime);
 
             stbi_image_free(pixelData);
 
@@ -691,7 +772,7 @@ Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init, VK_APPLICATION::VulkanApp
     }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Загрузка мешей
-    auto meshesOpt = load_Meshes(_init, gltf, loadedModel.materials, lifetime, useArena);
+    auto meshesOpt = load_Meshes(_init, meshManager, gltf, loadedModel.materials, lifetime);
     if (meshesOpt.has_value()) {
         loadedModel.Meshes = std::move(meshesOpt.value());
     } else {
@@ -741,7 +822,7 @@ uint32_t ModelManager::LoadModel(const std::filesystem::path& filePath, VK_APPLI
     }
 
     // Загружаем модель
-    Model newModel = load_glTF(_init, engine, _textureManager, filePath, lifetime,useArena);
+    Model newModel = load_glTF(_init, engine, _meshManager, _textureManager, filePath, lifetime,useArena);
     newModel.lifetime = lifetime;
     newModel.bIsValid = true;
 
@@ -803,7 +884,7 @@ void ModelManager:: destroy_model(uint32_t id){
     }
 
     // Вызываем очистку динамических ресурсов на GPU
-    _models.at(arrayIndex).destroy(_init, _textureManager);
+    _models.at(arrayIndex).destroy(_init, _meshManager, _textureManager);
     _models.at(arrayIndex).bIsValid = false;
 
     // БЕЗОПАСНОЕ УДАЛЕНИЕ ИЗ МАПЫ:
@@ -824,7 +905,7 @@ void ModelManager::destroy_dynamic_models() {
     for (size_t i = 0; i < _models.size(); ++i) {
         if (_models[i].bIsValid && _models[i].lifetime == ModelLifetime::Dynamic) {
 
-            _models[i].destroy(_init, _textureManager);
+            _models[i].destroy(_init, _meshManager, _textureManager);
             _models[i].bIsValid = false; // Ячейка свободна
 
             uint32_t externalId = static_cast<uint32_t>(i + 1);
@@ -844,8 +925,8 @@ void ModelManager::destroy_dynamic_models() {
 void ModelManager::destroy_all(){
     for (auto& model : _models) {
         // Чистим модель ТОЛЬКО если этот слот сейчас занят живым объектом
-        if (model.bIsValid) {
-            model.destroy(_init, _textureManager);
+        if (model.bIsValid){
+            model.destroy(_init, _meshManager, _textureManager);
             model.bIsValid = false; // На всякий случай сбрасываем флаг
         }
     }
