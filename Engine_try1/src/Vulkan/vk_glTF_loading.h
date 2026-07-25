@@ -78,13 +78,37 @@ struct MaterialAsset {
     glm::vec4 baseColorFactor{ 1.0f };
 };
 
+class MeshManager{
+public:
+
+    const uint64_t MAX_ARENA_SIZE = 512 * 1024 * 1024;
+
+    // Создание арены
+    void init(VK_INIT_ENGINE::_inited_engine& _init);
+
+    // Удаление ВСЕХ мешей
+    void DestroyAllocationData();
+
+    // Удаление выбранного меша
+    void FreeMesh(const GPUMeshBuffers& buffers);
+
+    // Аллокация буферов под вершины
+    GPUMeshBuffers upload_meshes(VK_INIT_ENGINE::_inited_engine& _init, std::span<uint32_t> indices, std::span<Vertex> vertices,
+        ModelLifetime lifetime = ModelLifetime::Dynamic);
+private:
+    VkDevice _device{ VK_NULL_HANDLE };
+    VmaAllocator _allocator{ VK_NULL_HANDLE };
+
+    VmaPool _meshArena;
+};
+
 class TextureManager{
 public:
     const uint32_t MAX_BINDLESS_TEXTURES = 1000;
 
     void init(VK_INIT_ENGINE::_inited_engine& _init);
 
-    GPUTexture AllocateTexture(VkImageCreateInfo imageInfo, VkImageViewCreateInfo viewInfo, bool useArena = false);
+    GPUTexture AllocateTexture(VkImageCreateInfo imageInfo, VkImageViewCreateInfo viewInfo, ModelLifetime lifetime = ModelLifetime::Dynamic);
 
     void FreeTexture(const GPUTexture& texture);
     void DestroyAllocationData();
@@ -93,7 +117,6 @@ public:
 
     VkDescriptorSet GetTextureSet() const { return _textureSet; }
     VkDescriptorSetLayout GetTextureLayout() const { return _textureLayout; }
-
 private:
     GPUTexture defaultTexture;
 
@@ -166,7 +189,7 @@ struct Model{
     ModelLifetime lifetime{ ModelLifetime::Dynamic };
     bool bIsValid{ false };
 
-    void destroy(VK_INIT_ENGINE::_inited_engine& _init ,TextureManager& textureManager);
+    void destroy(VK_INIT_ENGINE::_inited_engine& _init, MeshManager& meshManager, TextureManager& textureManager);
 };
 
 //forward declaration
@@ -174,30 +197,37 @@ namespace VK_APPLICATION{
     class VulkanApplication;
 }
 
-// Аллокация буферов под вершины
-GPUMeshBuffers upload_meshes(VK_INIT_ENGINE::_inited_engine& _init, std::span<uint32_t> indices, std::span<Vertex> vertices,
-    ModelLifetime lifetime = ModelLifetime::Dynamic);
 
 
 
 
-
+// Парсинг текстур и их аллокация
 std::optional<GPUTexture> load_image(VK_INIT_ENGINE::_inited_engine& _init, TextureManager& textureManager,
-                                            const unsigned char* pixelData, uint32_t width, uint32_t height, VkFormat format, bool useArena = false);
+                                            const unsigned char* pixelData, uint32_t width, uint32_t height,
+                                            VkFormat format, ModelLifetime lifetime = ModelLifetime::Dynamic);
 
+// Парсинг мешей и их аллокация
 std::optional<std::vector<std::shared_ptr<MeshAsset>>> load_Meshes(VK_INIT_ENGINE::_inited_engine& _init,
-                    fastgltf::Asset& asset, const std::vector<std::shared_ptr<MaterialAsset>>& materials,
-                    ModelLifetime lifetime = ModelLifetime::Dynamic, bool useArena = false);
+                    MeshManager& meshManager, fastgltf::Asset& asset,
+                    const std::vector<std::shared_ptr<MaterialAsset>>& materials,
+                    ModelLifetime lifetime = ModelLifetime::Dynamic);
 
+// Парсинг Node
 std::optional<std::shared_ptr<Node>> load_Node(fastgltf::Asset& asset, fastgltf::Node& gltfNode, Model& outModel);
 
+// Обьединение всего парсинга модели
 Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init, VK_APPLICATION::VulkanApplication* engine,
-                TextureManager& textureManager, std::filesystem::path filePath, ModelLifetime lifetime = ModelLifetime::Dynamic, bool useArena = false);
+                MeshManager& meshManager, TextureManager& textureManager, std::filesystem::path filePath,
+                ModelLifetime lifetime = ModelLifetime::Dynamic, bool useArena = false);
+
+
+
+
 
 class ModelManager {
 public:
-    ModelManager(VK_INIT_ENGINE::_inited_engine& init, TextureManager& texManager)
-        : _init(init), _textureManager(texManager) {}
+    ModelManager(VK_INIT_ENGINE::_inited_engine& init, MeshManager& meshManager, TextureManager& texManager)
+        : _init(init), _meshManager(meshManager), _textureManager(texManager) {}
 
     uint32_t LoadModel(const std::filesystem::path& filePath, VK_APPLICATION::VulkanApplication* engine,
         ModelLifetime lifetime, bool useArena);
@@ -218,6 +248,7 @@ public:
 
 private:
     VK_INIT_ENGINE::_inited_engine& _init;
+    MeshManager& _meshManager;
     TextureManager& _textureManager;
 
     std::vector<Model> _models;

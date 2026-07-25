@@ -90,7 +90,8 @@ namespace VK_APPLICATION {
         float angle{0.0f};
 
         TextureManager _textureManager;
-        ModelManager _modelManager{_init, _textureManager};
+        MeshManager _meshManager;
+        ModelManager _modelManager{_init, _meshManager, _textureManager};
 
         StaticModelConf _confStatic;
         DynamicModelConf _confDynamic;

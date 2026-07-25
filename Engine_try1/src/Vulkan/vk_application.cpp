@@ -28,6 +28,7 @@ void VK_APPLICATION::VulkanApplication::cleanup(){
 
     _modelManager.destroy_all();
     _textureManager.DestroyAllocationData();
+    _meshManager.DestroyAllocationData();
 
     for (int i = 0; i < FRAME_OVERLAP; i++) {
         vkinit::destroy_buffer(_frames[i].gpuSceneDataBuffer, _init._allocator);
@@ -56,10 +57,10 @@ void VK_APPLICATION::VulkanApplication::run(){
     _delta.startTime = std::chrono::high_resolution_clock::now();
 
     for (std::string& model : modelsToLoad){
-        _modelManager.LoadModel(model, this, _confDynamic.lifetime, _confDynamic.useArena);
+        _modelManager.LoadModel(model, this, _confStatic.lifetime, _confStatic.useArena);
     }
 
-    _modelManager.destroy_model(2);
+    //_modelManager.destroy_all();
 
     while (!bQuit) {
         while (SDL_PollEvent(&e)) {
@@ -381,6 +382,7 @@ void VK_APPLICATION::VulkanApplication::init_descriptors(){
         writer.update_set(_init._device, _frames[i].sceneDescriptorSet);
     }
 
+    _meshManager.init(_init);
     _textureManager.init(_init);
 }
 
@@ -577,15 +579,15 @@ void VK_APPLICATION::VulkanApplication::draw_model(VkCommandBuffer cmd, VkDescri
 
     //_baseModel.rootNode->UpdateMatrices(glm::mat4(1.0f));
 
+
     Model furina = _modelManager.GetModel(1);
     furina.rootNode->localTransform = glm::translate(glm::mat4{1.0f}, glm::vec3(2.0f, 0.0f, 0.0f)) *
         glm::rotate(glm::mat4{1.0f}, glm::radians(180.0f), glm::vec3(1.0f, 0.0f, 0.0f));
 
-    /*
     Model pudge = _modelManager.GetModel(2);
     pudge.rootNode->localTransform =  glm::translate(glm::mat4{1.0f}, glm::vec3(-1.0f, 0.0f, 0.0f)) *
         glm::rotate(glm::mat4{1.0f}, glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-    */
+
 
     Model caffe = _modelManager.GetModel(3);
     caffe.rootNode->localTransform = glm::scale(glm::mat4{1.0f}, glm::vec3(0.01f, 0.01f, 0.01f)) *
