@@ -66,6 +66,7 @@ struct GPUMeshBuffers {
 struct GPUTexture {
     AllocatedImage image;
     uint32_t globalIndex{ 0 };
+    uint32_t mipLevels;
 
     ModelLifetime lifetime{ ModelLifetime::Dynamic };
 };

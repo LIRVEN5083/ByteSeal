@@ -81,4 +81,6 @@ namespace vkinit {
     AllocatedImage create_image(void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, VK_INIT_ENGINE::_inited_engine& _init, bool mipmapped = false);
     // Удаление изображение из GPU
     void destroy_image(const AllocatedImage& img, VK_INIT_ENGINE::_inited_engine& _init);
+
+    void generate_mipmaps(VkCommandBuffer cmd, VkImage image, int32_t texWidth, int32_t texHeight, uint32_t mipLevels);
 }
