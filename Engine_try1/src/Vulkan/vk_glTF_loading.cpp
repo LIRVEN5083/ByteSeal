@@ -66,15 +66,42 @@ void TextureManager::init(VK_INIT_ENGINE::_inited_engine& _init){
     // СОЗДАНИЕ VMA-ARENA
     vmaCreatePool(_init._allocator, &poolCreateInfo, &_textureArena);
 
+    VkPhysicalDeviceProperties properties{};
+    vkGetPhysicalDeviceProperties(_init._chosenGPU, &properties);
+
     VkSamplerCreateInfo samplerInfo{ VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
     samplerInfo.magFilter = VK_FILTER_LINEAR;
     samplerInfo.minFilter = VK_FILTER_LINEAR;
+
+    // MIPMAP_MODE_LINEAR активирует трилинейную фильтрацию
     samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+
     samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
     samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
     samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    samplerInfo.maxAnisotropy = 1.0f;
-    vkCreateSampler(_init._device, &samplerInfo, nullptr, &_defaultSampler);
+
+    // Границы переключения уровней детализации (Level of Detail)
+    samplerInfo.minLod = 0.0f;
+
+    // Константа VK_LOD_CLAMP_NONE указывает Vulkan автоматически адаптироваться под любой размер текстуры.
+    samplerInfo.maxLod = VK_LOD_CLAMP_NONE;
+
+    samplerInfo.mipLodBias = 0.0f;
+
+    if (properties.limits.maxSamplerAnisotropy > 1.0f) {
+        samplerInfo.anisotropyEnable = VK_TRUE;
+        samplerInfo.maxAnisotropy = properties.limits.maxSamplerAnisotropy;
+    } else {
+        samplerInfo.anisotropyEnable = VK_FALSE;
+        samplerInfo.maxAnisotropy = 1.0f;
+    }
+
+    samplerInfo.compareEnable = VK_FALSE;
+    samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
+    samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+    samplerInfo.unnormalizedCoordinates = VK_FALSE;
+
+    vkCreateSampler(_device, &samplerInfo, nullptr, &_defaultSampler);
 
     create_default_white_texture(_init);
 }
@@ -83,6 +110,9 @@ GPUTexture TextureManager::AllocateTexture(VkImageCreateInfo imageInfo, VkImageV
     GPUTexture texture{};
     texture.lifetime = lifetime;
 
+    texture.mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(imageInfo.extent.width, imageInfo.extent.height)))) + 1;
+    imageInfo.mipLevels = texture.mipLevels;
+    imageInfo.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
     // Получить bindless индекс
     if (!_freeIndices.empty()) {
@@ -91,6 +121,7 @@ GPUTexture TextureManager::AllocateTexture(VkImageCreateInfo imageInfo, VkImageV
     } else {
         texture.globalIndex = _nextIndex++;
         if (texture.globalIndex >= MAX_BINDLESS_TEXTURES) {
+            fmt::print("CRITICAL ERROR: Texture index out of range!");
         }
     }
 
@@ -107,6 +138,7 @@ GPUTexture TextureManager::AllocateTexture(VkImageCreateInfo imageInfo, VkImageV
     vmaCreateImage(_allocator, &imageInfo, &poolAllocInfo, &texture.image.image, &texture.image.allocation, nullptr);
 
     viewInfo.image = texture.image.image;
+    viewInfo.subresourceRange.levelCount = texture.mipLevels;
     vkCreateImageView(_device, &viewInfo, nullptr, &texture.image.imageView);
 
     VkDescriptorImageInfo descriptorImgInfo{};
@@ -195,7 +227,6 @@ void TextureManager::create_default_white_texture(VK_INIT_ENGINE::_inited_engine
     viewInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
     viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     viewInfo.subresourceRange.levelCount = 1;
-    viewInfo.subresourceRange.layerCount = 1;
 
     defaultTexture = AllocateTexture(imgInfo, viewInfo, ModelLifetime::Static);
 
@@ -221,12 +252,7 @@ void TextureManager::create_default_white_texture(VK_INIT_ENGINE::_inited_engine
 
         vkCmdCopyBufferToImage(cmd, stagingBuffer.buffer, defaultTexture.image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
 
-        barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-        barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-
-        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+        vkinit::generate_mipmaps(cmd, defaultTexture.image.image, 1, 1, defaultTexture.mipLevels);
 
     }, _init);
 
@@ -458,7 +484,7 @@ std::optional<GPUTexture> load_image(VK_INIT_ENGINE::_inited_engine& _init, Text
         barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
         barrier.image = outTexture.image.image;
         barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        barrier.subresourceRange.levelCount = 1;
+        barrier.subresourceRange.levelCount = outTexture.mipLevels;
         barrier.subresourceRange.layerCount = 1;
         barrier.srcAccessMask = 0;
         barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
@@ -471,20 +497,13 @@ std::optional<GPUTexture> load_image(VK_INIT_ENGINE::_inited_engine& _init, Text
         VkBufferImageCopy copyRegion{};
         copyRegion.bufferOffset = 0;
         copyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        copyRegion.imageSubresource.mipLevel = 0;
         copyRegion.imageSubresource.layerCount = 1;
         copyRegion.imageExtent = imgInfo.extent;
 
         vkCmdCopyBufferToImage(cmd, stagingBuffer.buffer, outTexture.image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
 
-        barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-        barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-
-        vkCmdPipelineBarrier(cmd,
-            VK_PIPELINE_STAGE_TRANSFER_BIT,
-            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-            0, 0, nullptr, 0, nullptr, 1, &barrier);
+        vkinit::generate_mipmaps(cmd, outTexture.image.image, width, height, outTexture.mipLevels);
 
     }, _init);
 
