@@ -256,6 +256,47 @@ private:
     std::unordered_map<std::string, uint32_t> _path_to_id;
 };
 
+
+struct RenderObject{
+    VkBuffer indexBuffer;
+    VkDeviceAddress vertexBufferAddress;
+    uint32_t indexCount;
+    uint32_t firstIndex;
+
+    VkPipeline pipeline;
+    VkPipelineLayout pipelineLayout;
+    uint32_t colorTextureID;
+    uint32_t metallicRoughnessTextureID;
+
+    glm::mat4 render_matrix;
+
+    // Ключ для сортировки
+    uint64_t sortKey{0};
+};
+
+class RenderSystem{
+public:
+    RenderSystem(VK_INIT_ENGINE::_inited_engine& init) : _init(init){}
+
+    void Allocate(size_t count);
+
+    // Создание ключа для RenderObject
+    void Submit (RenderObject ro);
+
+    // Сортировка по ключу
+    void PrepareFrame();
+
+    // TODO: Временная затычка с DESCRIPTOR SET, потом буду нормально передовать
+    void DrawForward(VkCommandBuffer cmd, VkExtent2D drawExtent,
+        VkDescriptorSet globalDescriptor, VkDescriptorSet bindlessTextureSet);
+
+    // Очистка очереди
+    void ClearQueue() { _mainDrawQueue.clear(); }
+private:
+    VK_INIT_ENGINE::_inited_engine& _init;
+    std::vector<RenderObject> _mainDrawQueue;
+};
+
 struct StaticModelConf{
     bool useArena{true};
     ModelLifetime lifetime{ ModelLifetime::Static };

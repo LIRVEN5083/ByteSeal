@@ -49,18 +49,14 @@ void VK_APPLICATION::VulkanApplication::run(){
     init_commands();
     init_descriptors();
     init_grid_pipeline();
+    init_scene();
     init_base_pipeline();
+
     SDL_Event e;
     bool bQuit = false;
 
     _delta.lastFrameTime = std::chrono::high_resolution_clock::now();
     _delta.startTime = std::chrono::high_resolution_clock::now();
-
-    for (std::string& model : modelsToLoad){
-        _modelManager.LoadModel(model, this, _confStatic.lifetime, _confStatic.useArena);
-    }
-
-    //_modelManager.destroy_all();
 
     while (!bQuit) {
         while (SDL_PollEvent(&e)) {
@@ -174,8 +170,19 @@ void VK_APPLICATION::VulkanApplication::renderLoop(){
     vkutil::transition_image(cmd, _init._drawImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     vkutil::transition_image(cmd, _init._depthImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
-    draw_model(cmd, globalDescriptor);
+    _renderSystem.Allocate(7000);
+    // Сборка сцены
+    _activeScene->CullingAndSubmit(_renderSystem, _BasePipeline, _BasePipelineLayout);
+
+    // Отрисовка RenderObject
+    _renderSystem.PrepareFrame();
+    VkDescriptorSet bindlessSet = _textureManager.GetTextureSet();
+    _renderSystem.DrawForward(cmd, _drawExtent, globalDescriptor, bindlessSet);
+    _renderSystem.ClearQueue();
+
+    // Захардкоженная сетка
     draw_grid(cmd, globalDescriptor);
+    // Захардкоженный интерефейс
     draw_imgui(cmd);
 
     vkutil::transition_image(cmd, _init._drawImage.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
@@ -381,9 +388,6 @@ void VK_APPLICATION::VulkanApplication::init_descriptors(){
         writer.write_buffer(0, _frames[i].gpuSceneDataBuffer.buffer, sizeof(GPUSceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
         writer.update_set(_init._device, _frames[i].sceneDescriptorSet);
     }
-
-    _meshManager.init(_init);
-    _textureManager.init(_init);
 }
 
 void VK_APPLICATION::VulkanApplication::init_grid_pipeline(){
@@ -520,13 +524,62 @@ void VK_APPLICATION::VulkanApplication::init_commands(){
     }
 }
 
+void VK_APPLICATION::VulkanApplication::init_scene(){
+    // Инициализация менеджеров
+    _meshManager.init(_init);
+    _textureManager.init(_init);
+    _activeScene = std::make_unique<Scene>(_modelManager);
+
+    uint32_t pudgeAsset  = _modelManager.LoadModel(modelsToLoad.at(0), this, _confStatic.lifetime, _confStatic.useArena);
+
+    /*
+    auto* pudge = _activeScene->CreateEntity("Pudge", pudgeAsset);
+    pudge->rotation = glm::vec3(90.0f, 0.0f, 0.0f);
+    pudge->scale = glm::vec3(0.01f, 0.01f, 0.01f);
+    */
+
+
+    int countX = 5; // Сколько Пуджей по ширине
+    int countY = 10; // Сколько Пуджей по высоте
+    int countZ = 7; // Сколько Пуджей по глубине
+
+    float stepX = 3.0f; // Шаг между ними по горизонтали (в метрах)
+    float stepY = 1.5f; // Шаг между ними по вертикали
+    float stepZ = 2.0f; // Шаг между ними в глубину
+
+    // Вычисляем смещение, чтобы центрировать куб относительно (0,0,0)
+    float offsetX = ((countX - 1) * stepX) / 2.0f;
+    float offsetY = ((countY - 1) * stepY) / 2.0f;
+    float offsetZ = ((countZ - 1) * stepZ) / 2.0f;
+
+    int pudgeCounter = 0;
+
+    for (int x = 0; x < countX; ++x) {
+        for (int y = 0; y < countY; ++y) {
+            for (int z = 0; z < countZ; ++z) {
+
+                auto* pudgeInstance = _activeScene->CreateEntity("", pudgeAsset);
+
+                float posX = (x * stepX) - offsetX;
+                float posY = (y * stepY) - offsetY + 2.0f;
+                float posZ = (z * stepZ) - offsetZ;
+
+                pudgeInstance->position = glm::vec3(posX, posY, posZ);
+
+                pudgeInstance->scale = glm::vec3(0.01f, 0.01f, 0.01f);
+                pudgeInstance->rotation = glm::vec3(90.0f, 0.0f, 0.0f);
+            }
+        }
+    }
+}
+
 void VK_APPLICATION::VulkanApplication::draw_grid(VkCommandBuffer cmd, VkDescriptorSet globalDescriptor){
     VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(_init._drawImage.imageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD; // <-- СОХРАНЯЕМ цвет машины!
+    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
     colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 
     VkRenderingAttachmentInfo depthAttachment = vkinit::depth_attachment_info(_init._depthImage.imageView, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
-    depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD; // <-- СОХРАНЯЕМ глубину машины!
+    depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
     depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 
     VkRenderingInfo renderInfo = vkinit::rendering_info(_drawExtent, &colorAttachment, &depthAttachment);
@@ -565,14 +618,13 @@ void VK_APPLICATION::VulkanApplication::draw_grid(VkCommandBuffer cmd, VkDescrip
     vkCmdEndRendering(cmd);
 }
 
+/*
 void VK_APPLICATION::VulkanApplication::draw_model(VkCommandBuffer cmd, VkDescriptorSet globalDescriptor){
-    /*
     float speed = 1.0f;
     angle += _delta.delta * speed;
 
     auto& testNode = _baseModel.meshNodes[1];
     testNode->localTransform = glm::rotate(glm::mat4{1.0f}, angle, glm::vec3(0.0f, 0.0f, 1.0f));
-    */
 
     //_baseModel.rootNode->localTransform = glm::rotate(glm::mat4{1.0f}, glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
     // glm::scale(glm::mat4{1.0f}, glm::vec3(100.0f, 100.0f, 100.0f));
@@ -690,6 +742,7 @@ void VK_APPLICATION::VulkanApplication::draw_model(VkCommandBuffer cmd, VkDescri
     }
     vkCmdEndRendering(cmd);
 }
+*/
 
 void VK_APPLICATION::VulkanApplication::draw_imgui(VkCommandBuffer cmd){
     VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(_init._drawImage.imageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
@@ -709,6 +762,14 @@ void VK_APPLICATION::VulkanApplication::draw_imgui(VkCommandBuffer cmd){
 }
 
 VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& currentFrame){
+    /*
+    // TODO: HARDCODED DATA
+    float PudgeRotateSpeed = 5.0f;
+    if (auto* enemy = _activeScene->GetEntity(2)){
+        enemy->rotation.z += _delta.delta * PudgeRotateSpeed;
+    }
+    */
+
     // Z-up
     glm::vec3 up = {0.0f, 0.0f, 1.0f};
 
@@ -765,16 +826,46 @@ void VK_APPLICATION::VulkanApplication::update_time(){
 }
 
 void VK_APPLICATION::VulkanApplication::update_imgui(){
-    // 1. Запуск нового кадра ImGui
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplSDL3_NewFrame();
     ImGui::NewFrame();
 
-    // 2. ВЫЗОВ DEMO-ОКНА (Оно само соберёт весь интерфейс)
     ImGui::ShowDemoWindow();
 
-    // 3. Финализация расчетов геометрии интерфейса
+    draw_fps_overlay();
+
     ImGui::Render();
+}
+
+void VK_APPLICATION::VulkanApplication::draw_fps_overlay(){
+    float fps = (_delta.delta > 0.0f) ? (1.0f / _delta.delta) : 0.0f;
+
+    static float smoothedFps = 60.0f;
+    smoothedFps = glm::mix(smoothedFps, fps, 0.05f);
+
+    ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoDecoration |
+                                   ImGuiWindowFlags_AlwaysAutoResize |
+                                   ImGuiWindowFlags_NoSavedSettings |
+                                   ImGuiWindowFlags_NoFocusOnAppearing |
+                                   ImGuiWindowFlags_NoNav |
+                                   ImGuiWindowFlags_NoMove;
+
+    int windowWidth = 0;
+    int windowHeight = 0;
+    SDL_GetWindowSize(_init._window, &windowWidth, &windowHeight);
+
+    float padding = 10.0f;
+    float posX = static_cast<float>(windowWidth) - padding;
+    float posY = padding;
+
+    ImGui::SetNextWindowPos(ImVec2(posX, posY), ImGuiCond_Always, ImVec2(1.0f, 0.0f));
+    ImGui::SetNextWindowBgAlpha(0.35f);
+
+    if (ImGui::Begin("##FPS_Overlay", nullptr, windowFlags)) {
+        ImGui::Text("FPS: %.1f", smoothedFps);
+        ImGui::Text("MS: %.2f ms", _delta.delta * 1000.0f);
+    }
+    ImGui::End();
 }
 
 void VK_APPLICATION::VulkanApplication::made_move(){

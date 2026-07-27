@@ -1,8 +1,6 @@
 #pragma once
 #include "vk_descriptors.h"
-#include "vk_images.h"
-#include "vk_pipelines.h"
-#include "vk_glTF_loading.h"
+#include "vk_scene.h"
 
 // Очередь удаления
 // Короче мы используем функцию для создание и пишем лямбду на удаление.
@@ -81,9 +79,7 @@ namespace VK_APPLICATION {
         VkPipeline _BasePipeline;
 
         std::vector<std::string> modelsToLoad = {
-            "../Model/genshin_impact_-_furina.glb",
-            "../Model/pudge_dota_2.glb",
-            "../Model/modular_environment.glb"
+            "../Model/pudge_dota_2.glb"
         };
 
         // Для теста нодов
@@ -92,6 +88,9 @@ namespace VK_APPLICATION {
         TextureManager _textureManager;
         MeshManager _meshManager;
         ModelManager _modelManager{_init, _meshManager, _textureManager};
+        RenderSystem _renderSystem{_init};
+        // Храним нашу сцену в виде умного указателя
+        std::unique_ptr<Scene> _activeScene;
 
         StaticModelConf _confStatic;
         DynamicModelConf _confDynamic;
@@ -104,14 +103,16 @@ namespace VK_APPLICATION {
         void init_grid_pipeline();
         void init_base_pipeline();
         void init_commands();
+        void init_scene();
 
         void draw_grid(VkCommandBuffer cmd, VkDescriptorSet globalDescriptor);
-        void draw_model(VkCommandBuffer cmd, VkDescriptorSet globalDescriptor);
+        //void draw_model(VkCommandBuffer cmd, VkDescriptorSet globalDescriptor);
         void draw_imgui(VkCommandBuffer cmd);
 
         VkDescriptorSet update_scene_data(FrameData& currentFrame);
         void update_time();
         void update_imgui();
+        void draw_fps_overlay();
         void made_move();
     };
 }
