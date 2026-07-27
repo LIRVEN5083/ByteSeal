@@ -227,17 +227,19 @@ void TextureManager::create_default_white_texture(VK_INIT_ENGINE::_inited_engine
     viewInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
     viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     viewInfo.subresourceRange.levelCount = 1;
+    viewInfo.subresourceRange.layerCount = 1;
 
     defaultTexture = AllocateTexture(imgInfo, viewInfo, ModelLifetime::Static);
 
     vkinit::submit_immediate([&](VkCommandBuffer cmd) {
-
         VkImageMemoryBarrier barrier{ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
         barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
         barrier.image = defaultTexture.image.image;
         barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        barrier.subresourceRange.baseMipLevel = 0;
         barrier.subresourceRange.levelCount = 1;
+        barrier.subresourceRange.baseArrayLayer = 0;
         barrier.subresourceRange.layerCount = 1;
         barrier.srcAccessMask = 0;
         barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
@@ -247,12 +249,32 @@ void TextureManager::create_default_white_texture(VK_INIT_ENGINE::_inited_engine
         VkBufferImageCopy copyRegion{};
         copyRegion.bufferOffset = 0;
         copyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        copyRegion.imageSubresource.mipLevel = 0;
+        copyRegion.imageSubresource.baseArrayLayer = 0;
         copyRegion.imageSubresource.layerCount = 1;
         copyRegion.imageExtent = imgInfo.extent;
 
         vkCmdCopyBufferToImage(cmd, stagingBuffer.buffer, defaultTexture.image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
 
-        vkinit::generate_mipmaps(cmd, defaultTexture.image.image, 1, 1, defaultTexture.mipLevels);
+        VkImageMemoryBarrier shaderBarrier{ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
+        shaderBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        shaderBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        shaderBarrier.image = defaultTexture.image.image;
+        shaderBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        shaderBarrier.subresourceRange.baseMipLevel = 0;
+        shaderBarrier.subresourceRange.levelCount = 1;
+        shaderBarrier.subresourceRange.baseArrayLayer = 0;
+        shaderBarrier.subresourceRange.layerCount = 1;
+        shaderBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        shaderBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+        vkCmdPipelineBarrier(cmd,
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+            0, 0, nullptr, 0, nullptr, 1, &shaderBarrier
+        );
+
+
 
     }, _init);
 
@@ -831,7 +853,6 @@ uint32_t ModelManager::LoadModel(const std::filesystem::path& filePath, VK_APPLI
     }
 
     uint32_t targetIndex = uint32_t(-1);
-
     // Ищем свободное место
     for (size_t i = 0; i < _models.size(); ++i) {
         if (!_models[i].bIsValid) { // Если нашли пустую дыру в массиве
@@ -846,19 +867,17 @@ uint32_t ModelManager::LoadModel(const std::filesystem::path& filePath, VK_APPLI
     newModel.bIsValid = true;
 
     uint32_t externalId = 0;
-
     if (targetIndex == uint32_t(-1)) {
-        // Если дыр в массиве не было - пушим в конец
-        _models.push_back(std::move(newModel));
-
         // Размер вектора и есть ID новой модели (от 1)
         externalId = static_cast<uint32_t>(_models.size());
+
+        // Если дыр в массиве не было - пушим в конец
+        _models.push_back(std::move(newModel));
     } else {
         // Если нашли дыру — сажаем модель на старое место
         _models[targetIndex] = std::move(newModel);
 
-        // Индекс от 1 поэтому так
-        externalId = targetIndex + 1;
+        externalId = targetIndex;
     }
     // Храним ключ по которому сверяем загружена модель или нет
     _path_to_id[key] = externalId;
@@ -867,12 +886,7 @@ uint32_t ModelManager::LoadModel(const std::filesystem::path& filePath, VK_APPLI
 }
 
 Model& ModelManager::GetModel(uint32_t id){
-     uint32_t arrayIndex = id - 1;
-
-    assert(arrayIndex < _models.size() && "Array index out of bounds for the model array!");
-    assert(_models[arrayIndex].bIsValid && "Attempting to access a remote model by ID!");
-
-    return _models[arrayIndex];
+    return _models.at(id);
 }
 
 bool ModelManager::empty(){
@@ -881,30 +895,27 @@ bool ModelManager::empty(){
 }
 
 bool ModelManager::has_model(uint32_t id){
-    uint32_t arrayIndex = id - 1;
-    if (arrayIndex >= _models.size()){
+    if (id >= _models.size()){
         return false;
     }
     else{
-        return _models.at(arrayIndex).bIsValid;
+        return _models.at(id).bIsValid;
     }
 }
 
 void ModelManager:: destroy_model(uint32_t id){
-    uint32_t arrayIndex = id - 1;
-
-    if (arrayIndex >= _models.size() || !_models[arrayIndex].bIsValid) {
+    if (id >= _models.size() || !_models[id].bIsValid) {
         return;
     }
 
-    if (_models[arrayIndex].lifetime == ModelLifetime::Static) {
+    if (_models[id].lifetime == ModelLifetime::Static) {
         std::cerr << "CRITICAL ERROR: Attempt to remove a static scene model during gameplay!\n";
         return;
     }
 
     // Вызываем очистку динамических ресурсов на GPU
-    _models.at(arrayIndex).destroy(_init, _meshManager, _textureManager);
-    _models.at(arrayIndex).bIsValid = false;
+    _models.at(id).destroy(_init, _meshManager, _textureManager);
+    _models.at(id).bIsValid = false;
 
     // БЕЗОПАСНОЕ УДАЛЕНИЕ ИЗ МАПЫ:
     std::string keyToRemove = "";
@@ -951,4 +962,83 @@ void ModelManager::destroy_all(){
     }
     _models.clear();
     _path_to_id.clear();
+}
+
+
+void RenderSystem::Allocate(size_t count){
+    _mainDrawQueue.reserve(count);
+}
+
+void RenderSystem::Submit(RenderObject ro){
+    uint64_t pipelineBits = reinterpret_cast<uint64_t>(ro.pipeline) & 0xFFFFFFFF;
+    uint64_t bufferBits = reinterpret_cast<uint64_t>(ro.indexBuffer) & 0xFFFFFFFF;
+    ro.sortKey = (pipelineBits << 32) | bufferBits;
+
+    _mainDrawQueue.push_back(ro);
+}
+
+void RenderSystem::PrepareFrame(){
+    std::sort(_mainDrawQueue.begin(), _mainDrawQueue.end(), [](const RenderObject& a, const RenderObject& b) {
+            return a.sortKey < b.sortKey;
+        });
+}
+
+void RenderSystem::DrawForward(VkCommandBuffer cmd, VkExtent2D drawExtent, VkDescriptorSet globalDescriptor,
+    VkDescriptorSet bindlessTextureSet){
+
+    if (_mainDrawQueue.empty()) return;
+
+    VkClearValue clearColor;
+    clearColor.color = { { 0.3f, 0.3f, 0.3f, 1.0f } };
+
+    VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(_init._drawImage.imageView, &clearColor, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
+    VkRenderingAttachmentInfo depthAttachment = vkinit::depth_attachment_info(_init._depthImage.imageView, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+    depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
+    VkRenderingInfo renderInfo = vkinit::rendering_info(drawExtent, &colorAttachment, &depthAttachment);
+
+    vkCmdBeginRendering(cmd, &renderInfo);
+
+    VkViewport viewport = { 0.0f, 0.0f, (float)drawExtent.width, (float)drawExtent.height, 0.0f, 1.f };
+    vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+    VkRect2D scissor = { {0, 0}, drawExtent };
+    vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+    VkDescriptorSet setsToBind[] = {
+        globalDescriptor,
+        bindlessTextureSet
+    };
+
+    VkPipeline currentPipeline = VK_NULL_HANDLE;
+    VkBuffer currentIndexBuffer = VK_NULL_HANDLE;
+
+    for (const RenderObject& object : _mainDrawQueue) {
+        if (object.pipeline != currentPipeline) {
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.pipeline);
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.pipelineLayout, 0, 2, setsToBind, 0, nullptr);
+            currentPipeline = object.pipeline;
+        }
+
+        if (object.indexBuffer != currentIndexBuffer) {
+            vkCmdBindIndexBuffer(cmd, object.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+            currentIndexBuffer = object.indexBuffer;
+        }
+
+        GPUDrawPushConstants push_constants;
+        push_constants.render_matrix = object.render_matrix;
+        push_constants.vertexBuffer = object.vertexBufferAddress;
+        push_constants.colorTextureID = object.colorTextureID;
+        push_constants.metallicRoughnessTextureID = object.metallicRoughnessTextureID;
+
+        vkCmdPushConstants(cmd, object.pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(GPUDrawPushConstants), &push_constants);
+
+        vkCmdDrawIndexed(cmd, object.indexCount, 1, object.firstIndex, 0, 0);
+    }
+
+    vkCmdEndRendering(cmd);
 }

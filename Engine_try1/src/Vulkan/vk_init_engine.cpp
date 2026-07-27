@@ -93,7 +93,7 @@ void VK_INIT_ENGINE::VulkanInitEngine::create_swapchain(uint32_t width, uint32_t
         // .use_default_format_selection() - типо хер его, просто заполнение структуры на формат SwapChain
         .set_desired_format(VkSurfaceFormatKHR{ .format = ready_init._swapchainImageFormat, .colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR })
         // use vsync present mode - флажок FIFO_KHR - означает у нас будет крайне жёсткая верт.синхронизация
-        .set_desired_present_mode(VK_PRESENT_MODE_FIFO_KHR)
+        .set_desired_present_mode(VK_PRESENT_MODE_MAILBOX_KHR)
         // Это размер буфера. Ну тип можно поставить FULL HD но оно же тип будет образаться и растягиваться от размера окна
         .set_desired_extent(width, height)
         // DST_BIT - картинка может быть приемником для копирования. SRC_BIT - картинка может быть источником для копирования
@@ -281,10 +281,13 @@ VK_INIT_ENGINE::VulkanInitEngine::VulkanInitEngine(bool Validation_layers){
     features12.runtimeDescriptorArray = VK_TRUE;
     features12.bufferDeviceAddress = VK_TRUE;
 
+    VkPhysicalDeviceFeatures baseFeatures{};
+    baseFeatures.samplerAnisotropy = VK_TRUE;
 
     vkb::PhysicalDeviceSelector selector{ vkb_inst };
     vkb::PhysicalDevice physicalDevice = selector
     .set_minimum_version(1, 3)
+    .set_required_features(baseFeatures)
     .set_required_features_13(features)
     .set_required_features_12(features12)
     .set_surface(this->ready_init._surface)
