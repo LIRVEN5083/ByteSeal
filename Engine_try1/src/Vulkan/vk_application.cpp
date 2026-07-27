@@ -838,10 +838,13 @@ void VK_APPLICATION::VulkanApplication::update_imgui(){
 }
 
 void VK_APPLICATION::VulkanApplication::draw_fps_overlay(){
-    float fps = (_delta.delta > 0.0f) ? (1.0f / _delta.delta) : 0.0f;
+    float fps = (_delta.delta > 0.00001f && std::isfinite(_delta.delta)) ? (1.0f / _delta.delta) : 0.0f;
 
     static float smoothedFps = 60.0f;
-    smoothedFps = glm::mix(smoothedFps, fps, 0.05f);
+
+    if (std::isfinite(fps) && fps > 0.0f) {
+        smoothedFps = glm::mix(smoothedFps, fps, 0.05f);
+    }
 
     ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoDecoration |
                                    ImGuiWindowFlags_AlwaysAutoResize |
@@ -863,7 +866,7 @@ void VK_APPLICATION::VulkanApplication::draw_fps_overlay(){
 
     if (ImGui::Begin("##FPS_Overlay", nullptr, windowFlags)) {
         ImGui::Text("FPS: %.1f", smoothedFps);
-        ImGui::Text("MS: %.2f ms", _delta.delta * 1000.0f);
+        ImGui::Text("MS: %.2f ms", std::isfinite(_delta.delta) ? (_delta.delta * 1000.0f) : 0.0f);
     }
     ImGui::End();
 }
