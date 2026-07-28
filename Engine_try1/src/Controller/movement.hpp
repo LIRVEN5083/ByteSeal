@@ -34,4 +34,7 @@ namespace CONTROLLER{
 
     void DecreaseSpeed(float& speed);
 
+    void update_time(Movement& _movement, Delta& _delta);
+
+    void made_move(Movement& _movement, Camera& _camera, Delta& _delta);
 }

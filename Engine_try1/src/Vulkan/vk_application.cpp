@@ -120,10 +120,10 @@ void VK_APPLICATION::VulkanApplication::run(){
             resize_swapchain();
         }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        update_imgui();
-        update_time();
+        VK_GUI::update_imgui(_init, _delta);
+        CONTROLLER::update_time(_movement, _delta);
         renderLoop();
-        made_move();
+        CONTROLLER::made_move(_movement, _camera, _delta);
     }
 }
 
@@ -183,7 +183,7 @@ void VK_APPLICATION::VulkanApplication::renderLoop(){
     // Захардкоженная сетка
     draw_grid(cmd, globalDescriptor);
     // Захардкоженный интерефейс
-    draw_imgui(cmd);
+    VK_GUI::draw_imgui(_init, cmd, _drawExtent);
 
     vkutil::transition_image(cmd, _init._drawImage.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
     // Переводим текущую картинку Swapchain в режим приемника копирования
@@ -744,23 +744,6 @@ void VK_APPLICATION::VulkanApplication::draw_model(VkCommandBuffer cmd, VkDescri
 }
 */
 
-void VK_APPLICATION::VulkanApplication::draw_imgui(VkCommandBuffer cmd){
-    VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(_init._drawImage.imageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD; // <-- СОХРАНЯЕМ цвет машины!
-    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-
-    VkRenderingAttachmentInfo depthAttachment = vkinit::depth_attachment_info(_init._depthImage.imageView, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
-    depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD; // <-- СОХРАНЯЕМ глубину машины!
-    depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-
-    VkRenderingInfo renderInfo = vkinit::rendering_info(_drawExtent, &colorAttachment, nullptr);
-    vkCmdBeginRendering(cmd, &renderInfo);
-
-    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
-
-    vkCmdEndRendering(cmd);
-}
-
 VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& currentFrame){
     /*
     // TODO: HARDCODED DATA
@@ -806,106 +789,5 @@ VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& 
     *sceneUniformData = sceneData;
 
     return currentFrame.sceneDescriptorSet;
-}
-
-void VK_APPLICATION::VulkanApplication::update_time(){
-    auto currentTime = std::chrono::high_resolution_clock::now();
-
-    static bool firstFrame = true;
-    if (firstFrame) {
-        _delta.lastFrameTime = currentTime;
-        _delta.delta = 0.016f;
-        _delta.moveStep = _delta.delta * _movement.speed;
-        firstFrame = false;
-        return;
-    }
-
-    _delta.delta = std::chrono::duration_cast<std::chrono::duration<float>>(currentTime - _delta.lastFrameTime).count();
-    _delta.lastFrameTime = currentTime;
-    _delta.moveStep = _delta.delta * _movement.speed;
-}
-
-void VK_APPLICATION::VulkanApplication::update_imgui(){
-    ImGui_ImplVulkan_NewFrame();
-    ImGui_ImplSDL3_NewFrame();
-    ImGui::NewFrame();
-
-    ImGui::ShowDemoWindow();
-
-    draw_fps_overlay();
-
-    ImGui::Render();
-}
-
-void VK_APPLICATION::VulkanApplication::draw_fps_overlay(){
-    float fps = (_delta.delta > 0.00001f && std::isfinite(_delta.delta)) ? (1.0f / _delta.delta) : 0.0f;
-
-    static float smoothedFps = 60.0f;
-
-    if (std::isfinite(fps) && fps > 0.0f) {
-        smoothedFps = glm::mix(smoothedFps, fps, 0.05f);
-    }
-
-    ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoDecoration |
-                                   ImGuiWindowFlags_AlwaysAutoResize |
-                                   ImGuiWindowFlags_NoSavedSettings |
-                                   ImGuiWindowFlags_NoFocusOnAppearing |
-                                   ImGuiWindowFlags_NoNav |
-                                   ImGuiWindowFlags_NoMove;
-
-    int windowWidth = 0;
-    int windowHeight = 0;
-    SDL_GetWindowSize(_init._window, &windowWidth, &windowHeight);
-
-    float padding = 10.0f;
-    float posX = static_cast<float>(windowWidth) - padding;
-    float posY = padding;
-
-    ImGui::SetNextWindowPos(ImVec2(posX, posY), ImGuiCond_Always, ImVec2(1.0f, 0.0f));
-    ImGui::SetNextWindowBgAlpha(0.35f);
-
-    if (ImGui::Begin("##FPS_Overlay", nullptr, windowFlags)) {
-        ImGui::Text("FPS: %.1f", smoothedFps);
-        ImGui::Text("MS: %.2f ms", std::isfinite(_delta.delta) ? (_delta.delta * 1000.0f) : 0.0f);
-    }
-    ImGui::End();
-}
-
-void VK_APPLICATION::VulkanApplication::made_move(){
-    if (_camera.isCameraActive) {
-        //std::cout<<"X: "<< _movement.valueX <<"\t"<<"Y: "<<_movement.valueY<<"\t"<<"Z: "<<_movement.valueZ<<"\n";
-        int numkeys;
-        const bool* keyboardState = SDL_GetKeyboardState(&numkeys);
-
-        if (keyboardState[SDL_SCANCODE_W]) {
-            _movement.valueY += _camera.Wfront.y * _delta.moveStep;
-            _movement.valueX += _camera.Wfront.x * _delta.moveStep;
-        }
-        if (keyboardState[SDL_SCANCODE_S]) {
-            _movement.valueY -= _camera.Wfront.y * _delta.moveStep;
-            _movement.valueX -= _camera.Wfront.x * _delta.moveStep;
-        }
-
-        if (keyboardState[SDL_SCANCODE_A]) {
-            _movement.valueY -= _camera.right.y * _delta.moveStep;
-            _movement.valueX -= _camera.right.x * _delta.moveStep;
-        }
-        if (keyboardState[SDL_SCANCODE_D]) {
-            _movement.valueY += _camera.right.y * _delta.moveStep;
-            _movement.valueX += _camera.right.x * _delta.moveStep;
-        }
-        if (keyboardState[SDL_SCANCODE_SPACE]) {
-            _movement.valueZ += 1.0f * _delta.moveStep;
-        }
-        if (keyboardState[SDL_SCANCODE_LSHIFT]) {
-            _movement.valueZ -= 1.0f * _delta.moveStep;
-        }
-        if (keyboardState[SDL_SCANCODE_E]) {
-            CONTROLLER::IncreaseSpeed(_movement.speed);
-        }
-        if (keyboardState[SDL_SCANCODE_Q]) {
-            CONTROLLER::DecreaseSpeed(_movement.speed);
-        }
-    }
 }
 

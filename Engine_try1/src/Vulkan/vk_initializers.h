@@ -1,14 +1,10 @@
 #pragma once
 
-
 #include "vk_types.h"
-#include "vk_init_engine.h"
+
+#include "vk_imgui.h"
 #include "vk_images.h"
 #include "vk_pipelines.h"
-
-namespace VK_INIT_ENGINE {
-    struct _inited_engine;
-}
 
 namespace vkinit {
 
