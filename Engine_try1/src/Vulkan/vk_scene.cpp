@@ -1,4 +1,6 @@
 #include "vk_scene.h"
+#include "vk_glTF_loading.h"
+
 
 glm::mat4 GameEntity::GetLocalMatrix() const {
     glm::mat4 translationMat = glm::translate(glm::mat4{1.0f}, position);
@@ -54,7 +56,51 @@ void Scene::DestroyEntity(uint32_t id){
     _idToIndex.erase(it);
 }
 
+void Scene::DestroyAllEntites(){
+    _entities.clear();
+    _idToIndex.clear();
+    _nextEntityId = 1;
+}
+
+void Scene::DestroyAllDynamicEntites(){
+    std::erase_if(_entities, [this](const GameEntity& entity) {
+            if (_modelManager.has_model(entity.modelAssetId)) {
+                return _modelManager.GetModel(entity.modelAssetId).lifetime == ModelLifetime::Dynamic;
+            }
+            return false;
+        });
+
+    _idToIndex.clear();
+    for (size_t i = 0; i < _entities.size(); ++i) {
+        _idToIndex[_entities[i].id] = i;
+    }
+}
+
+void Scene::DestroyEntitiesByModel(uint32_t modelAssetId){
+    std::erase_if(_entities, [this, modelAssetId](const GameEntity& entity) {
+        // Проверяем, совпадает ли ID модели
+        if (entity.modelAssetId == modelAssetId) {
+            if (_modelManager.has_model(modelAssetId)) {
+                const Model& model = _modelManager.GetModel(modelAssetId);
+                // Если модель статическая, то её удалить НАХУЙ БЛЯТЬ нельзя!
+                if (model.lifetime == ModelLifetime::Static) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        return false;
+    });
+
+    _idToIndex.clear();
+    for (size_t i = 0; i < _entities.size(); ++i) {
+        _idToIndex[_entities[i].id] = i;
+    }
+}
+
 void Scene::CullingAndSubmit(RenderSystem& renderSystem, VkPipeline defaultPipeline, VkPipelineLayout defaultLayout){
+    if (_entities.empty()) return;
+
     for (const auto& entity : _entities) {
         if (!entity.bIsVisible) continue;
 
@@ -64,6 +110,7 @@ void Scene::CullingAndSubmit(RenderSystem& renderSystem, VkPipeline defaultPipel
         // Запрашиваем структуру модели
         if (!_modelManager.has_model(entity.modelAssetId)) continue;
         const Model& model = _modelManager.GetModel(entity.modelAssetId);
+        if (!model.bIsValid) continue;
 
         // Обходим внутренние ноды модели (саб-меши), если они есть
         for (const auto& meshNode : model.meshNodes) {

@@ -1,4 +1,7 @@
 #pragma once
+#include "vk_types.h"
+#include "vk_glTF_loading.h"
+#include "vk_scene.h"
 #include "vk_descriptors.h"
 #include "vk_scene.h"
 
@@ -91,6 +94,7 @@ namespace VK_APPLICATION {
         RenderSystem _renderSystem{_init};
         // Храним нашу сцену в виде умного указателя
         std::unique_ptr<Scene> _activeScene;
+        VK_GUI::GUI _gui;
 
         StaticModelConf _confStatic;
         DynamicModelConf _confDynamic;

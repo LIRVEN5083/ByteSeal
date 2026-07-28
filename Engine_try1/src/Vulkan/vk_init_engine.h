@@ -8,6 +8,10 @@
 
 constexpr unsigned int FRAME_OVERLAP = 2;
 
+namespace VK_GUI{
+    void apply_theme();
+}
+
 namespace VK_INIT_ENGINE{
 
     class VulkanInitEngine{

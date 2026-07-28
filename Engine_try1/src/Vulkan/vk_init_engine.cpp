@@ -216,6 +216,8 @@ void VK_INIT_ENGINE::VulkanInitEngine::init_imgui(){
     // this initializes the core structures of imgui
     ImGui::CreateContext();
 
+    VK_GUI::apply_theme();
+
     // Инициация IMGUI под SDL3 и при этом это чудо само подтянет текстуры шрифтов
     ImGui_ImplSDL3_InitForVulkan(ready_init._window);
 

@@ -68,6 +68,7 @@ struct GPUTexture {
     uint32_t globalIndex{ 0 };
     uint32_t mipLevels;
 
+    VkDescriptorSet imguiDescriptorSet{VK_NULL_HANDLE};
     ModelLifetime lifetime{ ModelLifetime::Dynamic };
 };
 
@@ -111,13 +112,14 @@ public:
 
     GPUTexture AllocateTexture(VkImageCreateInfo imageInfo, VkImageViewCreateInfo viewInfo, ModelLifetime lifetime = ModelLifetime::Dynamic);
 
-    void FreeTexture(const GPUTexture& texture);
+    void FreeTexture(GPUTexture& texture);
     void DestroyAllocationData();
 
     void create_default_white_texture(VK_INIT_ENGINE::_inited_engine& _init);
 
     VkDescriptorSet GetTextureSet() const { return _textureSet; }
     VkDescriptorSetLayout GetTextureLayout() const { return _textureLayout; }
+    VkSampler GetDefaultSampler() const {return _defaultSampler;}
 private:
     GPUTexture defaultTexture;
 
@@ -236,6 +238,8 @@ public:
     // Геттер на модель
     Model& GetModel(uint32_t id);
 
+    std::vector<Model>& GetModels();
+
     bool empty();
 
     uint32_t CountOfModels() { return _models.size(); }
@@ -247,6 +251,7 @@ public:
     void destroy_dynamic_models();
     void destroy_all();
 
+    VkSampler GetDefaultSampler() const{ return _textureManager.GetDefaultSampler(); }
 private:
     VK_INIT_ENGINE::_inited_engine& _init;
     MeshManager& _meshManager;
