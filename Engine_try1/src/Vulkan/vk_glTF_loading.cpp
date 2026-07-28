@@ -156,16 +156,27 @@ GPUTexture TextureManager::AllocateTexture(VkImageCreateInfo imageInfo, VkImageV
 
     vkUpdateDescriptorSets(_device, 1, &write, 0, nullptr);
 
+    texture.imguiDescriptorSet = ImGui_ImplVulkan_AddTexture(
+        _defaultSampler,
+        texture.image.imageView,
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+    );
+
     return texture;
 }
 
-void TextureManager::FreeTexture(const GPUTexture& texture){
+void TextureManager::FreeTexture(GPUTexture& texture){
     if (texture.image.imageView != VK_NULL_HANDLE) {
         vkDestroyImageView(_device, texture.image.imageView, nullptr);
     }
 
     if (texture.image.image != VK_NULL_HANDLE) {
         vmaDestroyImage(_allocator, texture.image.image, texture.image.allocation);
+    }
+
+    if (texture.imguiDescriptorSet != VK_NULL_HANDLE) {
+        ImGui_ImplVulkan_RemoveTexture(texture.imguiDescriptorSet);
+        texture.imguiDescriptorSet = VK_NULL_HANDLE;
     }
 
     // Возвращаем индекс в пул свободных для переиспользования
@@ -889,6 +900,10 @@ Model& ModelManager::GetModel(uint32_t id){
     return _models.at(id);
 }
 
+std::vector<Model>& ModelManager::GetModels(){
+    return _models;
+}
+
 bool ModelManager::empty(){
     if (_models.empty()) return true;
     return false;
@@ -912,6 +927,8 @@ void ModelManager:: destroy_model(uint32_t id){
         std::cerr << "CRITICAL ERROR: Attempt to remove a static scene model during gameplay!\n";
         return;
     }
+
+    vkDeviceWaitIdle(_init._device);
 
     // Вызываем очистку динамических ресурсов на GPU
     _models.at(id).destroy(_init, _meshManager, _textureManager);
@@ -953,6 +970,7 @@ void ModelManager::destroy_dynamic_models() {
 
 
 void ModelManager::destroy_all(){
+    vkDeviceWaitIdle(_init._device);
     for (auto& model : _models) {
         // Чистим модель ТОЛЬКО если этот слот сейчас занят живым объектом
         if (model.bIsValid){
@@ -986,8 +1004,6 @@ void RenderSystem::PrepareFrame(){
 void RenderSystem::DrawForward(VkCommandBuffer cmd, VkExtent2D drawExtent, VkDescriptorSet globalDescriptor,
     VkDescriptorSet bindlessTextureSet){
 
-    if (_mainDrawQueue.empty()) return;
-
     VkClearValue clearColor;
     clearColor.color = { { 0.3f, 0.3f, 0.3f, 1.0f } };
 
@@ -1002,6 +1018,11 @@ void RenderSystem::DrawForward(VkCommandBuffer cmd, VkExtent2D drawExtent, VkDes
     VkRenderingInfo renderInfo = vkinit::rendering_info(drawExtent, &colorAttachment, &depthAttachment);
 
     vkCmdBeginRendering(cmd, &renderInfo);
+
+    if (_mainDrawQueue.empty()) {
+        vkCmdEndRendering(cmd);
+        return;
+    }
 
     VkViewport viewport = { 0.0f, 0.0f, (float)drawExtent.width, (float)drawExtent.height, 0.0f, 1.f };
     vkCmdSetViewport(cmd, 0, 1, &viewport);

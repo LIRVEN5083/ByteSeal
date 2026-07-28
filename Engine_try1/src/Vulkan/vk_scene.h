@@ -1,5 +1,12 @@
 #pragma once
-#include "vk_glTF_loading.h"
+
+class ModelManager;
+class RenderSystem;
+#include <stdint.h>
+#include <unordered_map>
+#include <glm/glm.hpp>
+#include <string>
+#include <vulkan/vulkan.h>
 
 struct GameEntity {
     uint32_t id{ 0 };
@@ -27,6 +34,9 @@ public:
     GameEntity* GetEntity(uint32_t id);
 
     void DestroyEntity(uint32_t id);
+    void DestroyAllEntites();
+    void DestroyAllDynamicEntites();
+    void DestroyEntitiesByModel(uint32_t modelAssetId);
 
     void CullingAndSubmit(RenderSystem& renderSystem, VkPipeline defaultPipeline, VkPipelineLayout defaultLayout);
 
@@ -37,10 +47,4 @@ private:
     std::unordered_map<uint32_t, size_t> _idToIndex;
 
     uint32_t _nextEntityId{ 1 };
-};
-
-struct EntityConfig {
-    std::string modelPath;
-    std::string entityName;
-    glm::vec3 initialPosition;
 };

@@ -120,7 +120,7 @@ void VK_APPLICATION::VulkanApplication::run(){
             resize_swapchain();
         }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        VK_GUI::update_imgui(_init, _delta);
+        _gui.update_imgui(_init, _delta, _modelManager, _activeScene);
         CONTROLLER::update_time(_movement, _delta);
         renderLoop();
         CONTROLLER::made_move(_movement, _camera, _delta);
@@ -170,6 +170,8 @@ void VK_APPLICATION::VulkanApplication::renderLoop(){
     vkutil::transition_image(cmd, _init._drawImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     vkutil::transition_image(cmd, _init._depthImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
+    _renderSystem.ClearQueue();
+
     _renderSystem.Allocate(7000);
     // Сборка сцены
     _activeScene->CullingAndSubmit(_renderSystem, _BasePipeline, _BasePipelineLayout);
@@ -178,12 +180,11 @@ void VK_APPLICATION::VulkanApplication::renderLoop(){
     _renderSystem.PrepareFrame();
     VkDescriptorSet bindlessSet = _textureManager.GetTextureSet();
     _renderSystem.DrawForward(cmd, _drawExtent, globalDescriptor, bindlessSet);
-    _renderSystem.ClearQueue();
 
     // Захардкоженная сетка
     draw_grid(cmd, globalDescriptor);
     // Захардкоженный интерефейс
-    VK_GUI::draw_imgui(_init, cmd, _drawExtent);
+    _gui.draw_imgui(_init, cmd, _drawExtent);
 
     vkutil::transition_image(cmd, _init._drawImage.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
     // Переводим текущую картинку Swapchain в режим приемника копирования
