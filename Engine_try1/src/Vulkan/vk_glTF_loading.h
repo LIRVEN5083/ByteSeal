@@ -219,7 +219,7 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> load_Meshes(VK_INIT_ENGIN
 std::optional<std::shared_ptr<Node>> load_Node(fastgltf::Asset& asset, fastgltf::Node& gltfNode, Model& outModel);
 
 // Обьединение всего парсинга модели
-Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init, VK_APPLICATION::VulkanApplication* engine,
+Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init,
                 MeshManager& meshManager, TextureManager& textureManager, std::filesystem::path filePath,
                 ModelLifetime lifetime = ModelLifetime::Dynamic, bool useArena = false);
 
@@ -232,8 +232,7 @@ public:
     ModelManager(VK_INIT_ENGINE::_inited_engine& init, MeshManager& meshManager, TextureManager& texManager)
         : _init(init), _meshManager(meshManager), _textureManager(texManager) {}
 
-    uint32_t LoadModel(const std::filesystem::path& filePath, VK_APPLICATION::VulkanApplication* engine,
-        ModelLifetime lifetime, bool useArena);
+    uint32_t LoadModel(const std::filesystem::path& filePath, ModelLifetime lifetime, bool useArena);
 
     // Геттер на модель
     Model& GetModel(uint32_t id);
@@ -311,3 +310,6 @@ struct DynamicModelConf{
     bool useArena{false};
     ModelLifetime lifetime{ ModelLifetime::Dynamic };
 };
+
+inline StaticModelConf _confStatic;
+inline DynamicModelConf _confDynamic;

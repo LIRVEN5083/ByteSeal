@@ -30,6 +30,7 @@
 #include "imgui.h"
 #include "imgui_impl_sdl3.h"
 #include "imgui_impl_vulkan.h"
+#include "imgui_internal.h"
 
 #include "transcoder/basisu_transcoder.h"
 #include "../Controller/movement.hpp"

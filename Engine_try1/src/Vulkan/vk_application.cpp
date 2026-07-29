@@ -531,7 +531,7 @@ void VK_APPLICATION::VulkanApplication::init_scene(){
     _textureManager.init(_init);
     _activeScene = std::make_unique<Scene>(_modelManager);
 
-    uint32_t pudgeAsset  = _modelManager.LoadModel(modelsToLoad.at(0), this, _confStatic.lifetime, _confStatic.useArena);
+    uint32_t pudgeAsset  = _modelManager.LoadModel(modelsToLoad.at(0), _confStatic.lifetime, _confStatic.useArena);
 
     /*
     auto* pudge = _activeScene->CreateEntity("Pudge", pudgeAsset);

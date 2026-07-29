@@ -703,7 +703,7 @@ std::optional<std::shared_ptr<Node>> load_Node(fastgltf::Asset& asset, fastgltf:
     return currentEngineNode;
 }
 
-Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init, VK_APPLICATION::VulkanApplication* engine,
+Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init,
                 MeshManager& meshManager, TextureManager& textureManager, std::filesystem::path filePath,
                 ModelLifetime lifetime, bool useArena){
     // Возвращаемая модель
@@ -854,7 +854,7 @@ Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init, VK_APPLICATION::VulkanApp
 
 }
 
-uint32_t ModelManager::LoadModel(const std::filesystem::path& filePath, VK_APPLICATION::VulkanApplication* engine, ModelLifetime lifetime, bool useArena) {
+uint32_t ModelManager::LoadModel(const std::filesystem::path& filePath, ModelLifetime lifetime, bool useArena) {
     std::string key = filePath.lexically_normal().string();
 
     // Защита от дублирования загруженных моделей
@@ -873,7 +873,7 @@ uint32_t ModelManager::LoadModel(const std::filesystem::path& filePath, VK_APPLI
     }
 
     // Загружаем модель
-    Model newModel = load_glTF(_init, engine, _meshManager, _textureManager, filePath, lifetime,useArena);
+    Model newModel = load_glTF(_init, _meshManager, _textureManager, filePath, lifetime,useArena);
     newModel.lifetime = lifetime;
     newModel.bIsValid = true;
 

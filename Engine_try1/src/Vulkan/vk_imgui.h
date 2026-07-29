@@ -3,6 +3,7 @@
 #include "vk_glTF_loading.h"
 #include "vk_initializers.h"
 #include "vk_scene.h"
+#include "../Utils/File_loader.h"
 
 namespace VK_GUI{
     // TODO: Тема навайбкожена
