@@ -531,7 +531,7 @@ void VK_APPLICATION::VulkanApplication::init_scene(){
     _textureManager.init(_init);
     _activeScene = std::make_unique<Scene>(_modelManager);
 
-    uint32_t pudgeAsset  = _modelManager.LoadModel(modelsToLoad.at(0), _confStatic.lifetime, _confStatic.useArena);
+    //uint32_t pudgeAsset  = _modelManager.LoadModel(modelsToLoad.at(0), _confStatic.lifetime, _confStatic.useArena);
 
     /*
     auto* pudge = _activeScene->CreateEntity("Pudge", pudgeAsset);
@@ -539,7 +539,7 @@ void VK_APPLICATION::VulkanApplication::init_scene(){
     pudge->scale = glm::vec3(0.01f, 0.01f, 0.01f);
     */
 
-
+    /*
     int countX = 5; // Сколько Пуджей по ширине
     int countY = 10; // Сколько Пуджей по высоте
     int countZ = 7; // Сколько Пуджей по глубине
@@ -572,6 +572,7 @@ void VK_APPLICATION::VulkanApplication::init_scene(){
             }
         }
     }
+    */
 }
 
 void VK_APPLICATION::VulkanApplication::draw_grid(VkCommandBuffer cmd, VkDescriptorSet globalDescriptor){

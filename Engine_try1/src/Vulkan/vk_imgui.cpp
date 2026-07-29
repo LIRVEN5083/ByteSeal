@@ -80,21 +80,59 @@ void VK_GUI::apply_theme(){
     colors[ImGuiCol_TabUnfocusedActive]     = ImVec4(0.18f, 0.18f, 0.18f, 1.00f);
 
     // Линии графиков, подсветок текста и докинг-маркеров
-    //colors[ImGuiCol_DockingPreview]         = ImVec4(0.21f, 0.47f, 0.76f, 0.70f);
-    //colors[ImGuiCol_DockingEmptyBg]         = ImVec4(0.10f, 0.10f, 0.10f, 1.00f);
+    // colors[ImGuiCol_DockingPreview]         = ImVec4(0.21f, 0.47f, 0.76f, 0.70f);
+    // colors[ImGuiCol_DockingEmptyBg]         = ImVec4(0.10f, 0.10f, 0.10f, 1.00f);
     colors[ImGuiCol_PlotLines]              = ImVec4(0.61f, 0.61f, 0.61f, 1.00f);
     colors[ImGuiCol_PlotLinesHovered]       = ImVec4(1.00f, 0.43f, 0.35f, 1.00f);
     colors[ImGuiCol_TextSelectedBg]         = ImVec4(0.21f, 0.47f, 0.76f, 0.35f);
     colors[ImGuiCol_NavHighlight]           = ImVec4(0.21f, 0.47f, 0.76f, 1.00f);
+
+    // DND borders
+    colors[ImGuiCol_DragDropTarget]         = ImVec4(1.0f, 0.0f, 0.3f, 1.00f);
 }
 
 void VK_GUI::GUI::draw_model_list_overlay(VK_INIT_ENGINE::_inited_engine& _init, ModelManager& _modelManager, std::unique_ptr<Scene>& _scene){
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// Drag and drop
+    static bool shouldSpawnDroppedEntity = false;
+    static uint32_t droppedModelIdToSpawn = 0;
+    static int entityCounter = 0;
+
+    ImGuiViewport* ImViewport = ImGui::GetMainViewport();
+    ImGuiWindowFlags bgFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
+                               ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoSavedSettings |
+                               ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoBringToFrontOnFocus;
+
+    if (ImGui::GetDragDropPayload() != nullptr) {
+        // Если что-то тащат, окно активно для мыши
+    } else {
+        bgFlags |= ImGuiWindowFlags_NoInputs;
+    }
+
+    ImGui::SetNextWindowPos(ImViewport->WorkPos);
+    ImGui::SetNextWindowSize(ImViewport->WorkSize);
+
+    ImGui::Begin("BackgroundDropZone", nullptr, bgFlags);
+
+    ImGui::Dummy(ImGui::GetContentRegionAvail());
+
+    if (ImGui::BeginDragDropTarget()) {
+        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("DND_MODEL_ID")) {
+            droppedModelIdToSpawn = *(const uint32_t*)payload->Data;
+            shouldSpawnDroppedEntity = true;
+        }
+        ImGui::EndDragDropTarget();
+    }
+    ImGui::End();
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// Window manager logic
+
     ImGuiWindowFlags flags = ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoCollapse;
 
     ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
     ImGui::SetNextWindowBgAlpha(1.0f);
 
-    // Локальные переменные для отслеживания кликнутой модели между кадрами
     bool triggerFileDialog = false;
     static int contextMenuModelId = -1;
     bool openModelPopup = false;
@@ -114,7 +152,7 @@ void VK_GUI::GUI::draw_model_list_overlay(VK_INIT_ENGINE::_inited_engine& _init,
         }
 
         ImGui::Separator();
-        ImGui::TextDisabled("Loaded models (Right-Click for options):");
+        ImGui::TextDisabled("Loaded models (Drag to Viewport / Right-Click):");
 
         ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.11f, 0.11f, 0.11f, 1.00f));
 
@@ -128,7 +166,7 @@ void VK_GUI::GUI::draw_model_list_overlay(VK_INIT_ENGINE::_inited_engine& _init,
 
                 for (uint32_t i = 0; i < models.size(); ++i) {
                     Model& model = models[i];
-                    if (!model.bIsValid) continue;
+                    if (!model.bIsValid) continue; // Безопасно, так как мы внутри цикла, а не между Begin/End
 
                     ImGui::PushID(i);
 
@@ -136,11 +174,19 @@ void VK_GUI::GUI::draw_model_list_overlay(VK_INIT_ENGINE::_inited_engine& _init,
                     std::string label = "Model [" + std::to_string(i) + "] (" + lifetimeStr + ")";
 
                     bool isSelected = (selectedModelId == static_cast<int>(i));
-                    if (ImGui::Selectable(label.c_str(), isSelected)) {
+                    if (ImGui::Selectable(label.c_str(), isSelected, ImGuiSelectableFlags_AllowOverlap)) {
                         selectedModelId = i;
                     }
 
-                    // Вместо мгновенного открытия поп-апа внутри цикла, просто запоминаем индекс
+                    if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
+                        uint32_t modelIdPayload = i;
+
+                        ImGui::SetDragDropPayload("DND_MODEL_ID", &modelIdPayload, sizeof(uint32_t));
+                        ImGui::Text("Spawning: Model [%u]", i);
+
+                        ImGui::EndDragDropSource();
+                    }
+
                     if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
                         contextMenuModelId = static_cast<int>(i);
                         openModelPopup = true;
@@ -150,23 +196,21 @@ void VK_GUI::GUI::draw_model_list_overlay(VK_INIT_ENGINE::_inited_engine& _init,
                 }
             }
 
-            // Открываем контекстное меню модели гарантированно стабильно
             if (openModelPopup) {
                 ImGui::OpenPopup("ModelContextMenu");
             }
 
-            // === 1. ИСПРАВЛЕННОЕ КОНТЕКСТНОЕ МЕНЮ МОДЕЛИ (БЕЗ ДЁРГАНЬЯ) ===
+            // ПРАВИЛО: EndPopup() вызывается ТОЛЬКО если BeginPopup вернул true
             if (ImGui::BeginPopup("ModelContextMenu")) {
                 auto& models = _modelManager.GetModels();
 
-                // Проверяем валидность индекса, так как вектор мог измениться
                 if (contextMenuModelId >= 0 && contextMenuModelId < static_cast<int>(models.size())) {
                     Model& model = models[contextMenuModelId];
 
                     if (ImGui::MenuItem("Inspector")) {
                         selectedModelId = contextMenuModelId;
                         showInspector = true;
-                        contextMenuModelId = -1; // Сбрасываем контекст
+                        contextMenuModelId = -1;
                     }
 
                     ImGui::Separator();
@@ -181,7 +225,7 @@ void VK_GUI::GUI::draw_model_list_overlay(VK_INIT_ENGINE::_inited_engine& _init,
                         if (selectedModelId == contextMenuModelId) {
                             selectedModelId = -1;
                         }
-                        contextMenuModelId = -1; // Сбрасываем контекст
+                        contextMenuModelId = -1;
                     }
 
                     if (isStatic) ImGui::EndDisabled();
@@ -190,8 +234,8 @@ void VK_GUI::GUI::draw_model_list_overlay(VK_INIT_ENGINE::_inited_engine& _init,
             }
 
             if (ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows) &&
-            ImGui::IsMouseClicked(ImGuiMouseButton_Right) &&
-            !ImGui::IsAnyItemHovered())
+                ImGui::IsMouseClicked(ImGuiMouseButton_Right) &&
+                !ImGui::IsAnyItemHovered())
             {
                 ImGui::OpenPopup("EmptySpaceContextMenu");
             }
@@ -203,14 +247,16 @@ void VK_GUI::GUI::draw_model_list_overlay(VK_INIT_ENGINE::_inited_engine& _init,
                 ImGui::EndPopup();
             }
 
+            ImGui::EndChild(); // Закрываем ChildArea, так как мы вошли в условие BeginChild
         }
-        ImGui::EndChild();
+        else {
+        }
+
         ImGui::PopStyleColor();
     }
     ImGui::End();
 
     static bool delayedTrigger = false;
-
     if (triggerFileDialog) {
         delayedTrigger = true;
     }
@@ -220,6 +266,20 @@ void VK_GUI::GUI::draw_model_list_overlay(VK_INIT_ENGINE::_inited_engine& _init,
         std::string path = UTILS::OpenModelDialog();
         if (!path.empty()) {
             _modelManager.LoadModel(path, _confDynamic.lifetime, _confDynamic.useArena);
+        }
+    }
+
+    if (shouldSpawnDroppedEntity) {
+        shouldSpawnDroppedEntity = false;
+
+        std::string entityName = "Entity_Model_" + std::to_string(droppedModelIdToSpawn) + "_" + std::to_string(entityCounter++);
+        GameEntity* newEntity = _scene->CreateEntity(entityName, droppedModelIdToSpawn);
+
+        if (newEntity) {
+            fmt::print("[Safe Spawn] Success! Created entity: {}\n", entityName);
+            newEntity->position = glm::vec3(0.0f, 0.0f, 0.0f);
+            newEntity->rotation = glm::vec3(0.0f, 0.0f, 0.0f);
+            newEntity->scale    = glm::vec3(1.0f, 1.0f, 1.0f);
         }
     }
 }
