@@ -1,3 +1,6 @@
 [submodule "Engine_try1/src/external/draco"]
 	path = Engine_try1/src/external/draco
 	url = https://github.com/google/draco
+[submodule "Engine_try1/src/external/nfd-extended"]
+	path = Engine_try1/src/external/nfd-extended
+	url = https://github.com/btzy/nativefiledialog-extended.git
