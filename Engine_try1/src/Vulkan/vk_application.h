@@ -96,9 +96,6 @@ namespace VK_APPLICATION {
         std::unique_ptr<Scene> _activeScene;
         VK_GUI::GUI _gui;
 
-        StaticModelConf _confStatic;
-        DynamicModelConf _confDynamic;
-
         void renderLoop();
         void resize_swapchain();
         void destroy_swapchain();

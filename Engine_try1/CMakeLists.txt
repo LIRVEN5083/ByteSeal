@@ -15,6 +15,9 @@ set(DRACO_BUILD_TESTS OFF CACHE BOOL "Disable Draco tests" FORCE)
 set(DRACO_TESTS OFF CACHE BOOL "Disable Draco tests" FORCE)
 set(DRACO_BUILD_SHARED OFF CACHE BOOL "Disable Draco shared library" FORCE)
 
+set(NFD_BUILD_TESTS OFF CACHE INTERNAL "")
+set(NFD_BUILD_EXAMPLES OFF CACHE INTERNAL "")
+
 find_package(Vulkan REQUIRED)
 
 if(WIN32)
@@ -24,6 +27,11 @@ else()
     find_package(SDL3 REQUIRED CONFIG)
     set(SDL3_INCLUDE_DIR "")
     set(SDL3_LINK_TARGET SDL3::SDL3-shared)
+endif()
+
+if(UNIX AND NOT APPLE)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(GTK3 REQUIRED gtk+-3.0)
 endif()
 
 add_executable(${PROJECT_NAME}
@@ -37,6 +45,7 @@ add_executable(${PROJECT_NAME}
         src/Vulkan/vk_application.cpp
         src/Vulkan/vk_glTF_loading.cpp
         src/Controller/movement.cpp
+        src/Utils/File_loader.cpp
         src/Vulkan/vk_scene.cpp
         src/Vulkan/vk_imgui.cpp
 
@@ -67,7 +76,7 @@ if(MINGW)
     )
 endif()
 
-
+add_subdirectory(src/external/nfd-extended)
 add_subdirectory(src/external/fastgltf)
 add_subdirectory(src/external/draco)
 
@@ -93,6 +102,8 @@ target_include_directories(${PROJECT_NAME} PUBLIC
      ${CMAKE_CURRENT_SOURCE_DIR}/src/external/basisu
 
      ${CMAKE_CURRENT_SOURCE_DIR}/src/external/gli
+
+     ${CMAKE_CURRENT_SOURCE_DIR}/src/external/nfd-extended/src/include
 
      ${Vulkan_INCLUDE_DIRS}
 )
@@ -123,6 +134,7 @@ target_link_libraries(${PROJECT_NAME}
     ${SDL3_LINK_TARGET}
     draco_static
     fastgltf::fastgltf
+    nfd
 )
 
 if(WIN32)

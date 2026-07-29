@@ -91,9 +91,13 @@ void VK_GUI::apply_theme(){
 void VK_GUI::GUI::draw_model_list_overlay(VK_INIT_ENGINE::_inited_engine& _init, ModelManager& _modelManager, std::unique_ptr<Scene>& _scene){
     ImGuiWindowFlags flags = ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoCollapse;
 
-
     ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
     ImGui::SetNextWindowBgAlpha(1.0f);
+
+    // Локальные переменные для отслеживания кликнутой модели между кадрами
+    bool triggerFileDialog = false;
+    static int contextMenuModelId = -1;
+    bool openModelPopup = false;
 
     if (ImGui::Begin("ModelManager", nullptr, flags)) {
 
@@ -131,54 +135,93 @@ void VK_GUI::GUI::draw_model_list_overlay(VK_INIT_ENGINE::_inited_engine& _init,
                     std::string lifetimeStr = (model.lifetime == ModelLifetime::Static) ? "Static" : "Dynamic";
                     std::string label = "Model [" + std::to_string(i) + "] (" + lifetimeStr + ")";
 
-                    // Selectable теперь занимает всю ширину строки, кнопка больше не мешает
                     bool isSelected = (selectedModelId == static_cast<int>(i));
                     if (ImGui::Selectable(label.c_str(), isSelected)) {
                         selectedModelId = i;
                     }
 
-                    // ЕДИНЫЙ КОНТЕКСТНЫЙ МЕНЮ ДЛЯ МОДЕЛИ ПО ПКМ
-                    bool shouldBreak = false;
-                    if (ImGui::BeginPopupContextItem("ModelContextMenu")) {
-
-                        if (ImGui::MenuItem("Inspector")) {
-                            selectedModelId = i;
-                            showInspector = true;
-                        }
-
-                        ImGui::Separator(); // Небольшая черта между опциями
-
-                        // Защита удаления статической модели прямо в контекстном меню
-                        bool isStatic = (model.lifetime == ModelLifetime::Static);
-                        if (isStatic) ImGui::BeginDisabled();
-
-                        if (ImGui::MenuItem("Delete")) {
-                            _scene->DestroyEntitiesByModel(i);
-                            _modelManager.destroy_model(i);
-
-                            if (selectedModelId == static_cast<int>(i)) {
-                                selectedModelId = -1;
-                            }
-                            shouldBreak = true; // Помечаем, что нужно прервать цикл
-                        }
-
-                        if (isStatic) ImGui::EndDisabled();
-
-                        ImGui::EndPopup();
+                    // Вместо мгновенного открытия поп-апа внутри цикла, просто запоминаем индекс
+                    if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+                        contextMenuModelId = static_cast<int>(i);
+                        openModelPopup = true;
                     }
 
                     ImGui::PopID();
-
-                    if (shouldBreak) {
-                        break; // Выходим из цикла отрисовки моделей, так как вектор изменился
-                    }
                 }
             }
+
+            // Открываем контекстное меню модели гарантированно стабильно
+            if (openModelPopup) {
+                ImGui::OpenPopup("ModelContextMenu");
+            }
+
+            // === 1. ИСПРАВЛЕННОЕ КОНТЕКСТНОЕ МЕНЮ МОДЕЛИ (БЕЗ ДЁРГАНЬЯ) ===
+            if (ImGui::BeginPopup("ModelContextMenu")) {
+                auto& models = _modelManager.GetModels();
+
+                // Проверяем валидность индекса, так как вектор мог измениться
+                if (contextMenuModelId >= 0 && contextMenuModelId < static_cast<int>(models.size())) {
+                    Model& model = models[contextMenuModelId];
+
+                    if (ImGui::MenuItem("Inspector")) {
+                        selectedModelId = contextMenuModelId;
+                        showInspector = true;
+                        contextMenuModelId = -1; // Сбрасываем контекст
+                    }
+
+                    ImGui::Separator();
+
+                    bool isStatic = (model.lifetime == ModelLifetime::Static);
+                    if (isStatic) ImGui::BeginDisabled();
+
+                    if (ImGui::MenuItem("Delete")) {
+                        _scene->DestroyEntitiesByModel(contextMenuModelId);
+                        _modelManager.destroy_model(contextMenuModelId);
+
+                        if (selectedModelId == contextMenuModelId) {
+                            selectedModelId = -1;
+                        }
+                        contextMenuModelId = -1; // Сбрасываем контекст
+                    }
+
+                    if (isStatic) ImGui::EndDisabled();
+                }
+                ImGui::EndPopup();
+            }
+
+            if (ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows) &&
+            ImGui::IsMouseClicked(ImGuiMouseButton_Right) &&
+            !ImGui::IsAnyItemHovered())
+            {
+                ImGui::OpenPopup("EmptySpaceContextMenu");
+            }
+
+            if (ImGui::BeginPopup("EmptySpaceContextMenu")) {
+                if (ImGui::MenuItem("Load model")) {
+                    triggerFileDialog = true;
+                }
+                ImGui::EndPopup();
+            }
+
         }
         ImGui::EndChild();
         ImGui::PopStyleColor();
     }
     ImGui::End();
+
+    static bool delayedTrigger = false;
+
+    if (triggerFileDialog) {
+        delayedTrigger = true;
+    }
+    else if (delayedTrigger) {
+        delayedTrigger = false;
+
+        std::string path = UTILS::OpenModelDialog();
+        if (!path.empty()) {
+            _modelManager.LoadModel(path, _confDynamic.lifetime, _confDynamic.useArena);
+        }
+    }
 }
 
 void VK_GUI::GUI::draw_fps_overlay(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER::Delta _delta){

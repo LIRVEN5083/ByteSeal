@@ -79,6 +79,7 @@ void VK_INIT_ENGINE::VulkanInitEngine::init_cleanup(){
     if (ready_init._window != nullptr) {
         SDL_DestroyWindow(ready_init._window);
     }
+    NFD::Quit();
     SDL_Quit();
 }
 
@@ -324,6 +325,10 @@ VK_INIT_ENGINE::VulkanInitEngine::VulkanInitEngine(bool Validation_layers){
     VkCommandBufferAllocateInfo cmdAllocInfo = vkinit::command_buffer_allocate_info(ready_init._immCommandPool, 1);
 
     VK_CHECK(vkAllocateCommandBuffers(ready_init._device, &cmdAllocInfo, &ready_init._immCommandBuffer));
+
+    if (NFD::Init() != NFD_OKAY) {
+        std::cerr << "Failed to init NFD: " << NFD::GetError() << std::endl;
+    }
 
     init_swapchain();
 
