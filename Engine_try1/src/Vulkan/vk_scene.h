@@ -2,6 +2,9 @@
 
 class ModelManager;
 class RenderSystem;
+struct GPUSceneData;
+struct AABB;
+
 #include <stdint.h>
 #include <unordered_map>
 #include <glm/glm.hpp>
@@ -11,6 +14,7 @@ class RenderSystem;
 struct GameEntity {
     uint32_t id{ 0 };
     std::string name;
+    std::string type;
 
     // Трансформация объекта на сцене
     // Эта данные нам понадобятся в IMGUI
@@ -23,6 +27,37 @@ struct GameEntity {
     bool bIsVisible{ true };
 
     glm::mat4 GetLocalMatrix() const;
+
+    AABB GetWorldAABB(ModelManager& modelManager) const;
+};
+
+class Ray {
+public:
+    Ray() = default;
+    Ray(const glm::vec3& origin, const glm::vec3& direction);
+
+    // создает луч из экранных координат мыши
+    static Ray FromScreen(float screenX, float screenY,
+                          float screenWidth, float screenHeight,
+                          const GPUSceneData& sceneData);
+
+    // Алгоритм Смита (Smith's AABB/Ray intersection)
+    bool IntersectsAABB(const AABB& box, float& outDist) const;
+
+    const glm::vec3& GetOrigin() const { return _origin; }
+    const glm::vec3& GetDirection() const { return _direction; }
+
+    glm::vec3 GetPoint(float distance) const { return _origin + _direction * distance; }
+
+private:
+    glm::vec3 _origin{ 0.0f };
+    glm::vec3 _direction{ 0.0f, 0.0f, 1.0f };
+};
+
+struct RaycastHit {
+    bool hit{ false };
+    float distance{ std::numeric_limits<float>::max() };
+    GameEntity* entity{ nullptr };
 };
 
 class Scene{
@@ -39,6 +74,8 @@ public:
     void DestroyEntitiesByModel(uint32_t modelAssetId);
 
     void CullingAndSubmit(RenderSystem& renderSystem, VkPipeline defaultPipeline, VkPipelineLayout defaultLayout);
+
+    RaycastHit Raycast(const Ray& ray);
 
 private:
     ModelManager& _modelManager;

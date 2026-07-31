@@ -200,6 +200,8 @@ struct Model{
     ModelLifetime lifetime{ ModelLifetime::Dynamic };
     bool bIsValid{ false };
 
+    AABB localAABB;
+
     void destroy(VK_INIT_ENGINE::_inited_engine& _init, MeshManager& meshManager, TextureManager& textureManager);
 };
 
@@ -263,6 +265,9 @@ public:
     void destroy_all();
 
     VkSampler GetDefaultSampler() const{ return _textureManager.GetDefaultSampler(); }
+
+    AABB GetModelAABB(uint32_t id);
+
 private:
     VK_INIT_ENGINE::_inited_engine& _init;
     MeshManager& _meshManager;

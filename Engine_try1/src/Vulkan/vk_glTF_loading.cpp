@@ -956,6 +956,7 @@ Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init,
     glm::mat4 normalizationMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(scaleFactor)) *
                                     glm::translate(glm::mat4(1.0f), modelPivotOffset);
 
+    // Ебанное Y-up экспортируемые glTF формат
     glm::mat4 gltfToZUp = glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
 
     // Накладываем исправления на наш временный корень bakeRoot
@@ -963,19 +964,37 @@ Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init,
 
     bakeRoot->UpdateMatrices(glm::mat4(1.0f));
 
+    glm::vec3 finalMin(std::numeric_limits<float>::max());
+    glm::vec3 finalMax(-std::numeric_limits<float>::max());
+    bool hasMeshes = false;
+
     for (auto& meshNode : loadedModel.meshNodes) {
         if (meshNode->mesh) {
             // Переносим запеченную Z-Up матрицу в локальную матрицу ноды меша
             meshNode->localTransform = meshNode->worldTransform;
             meshNode->worldTransform = glm::mat4(1.0f);
 
-            // Заодно фиксируем правильный локальный AABB меша в Z-Up
+            // ОДИН РАЗ трансформируем локальный AABB меша в пространство Z-Up
             meshNode->mesh->localAABB = transformAABB(meshNode->mesh->localAABB, meshNode->localTransform);
 
-            // Изолируем ноду — у нее больше нет родителей из glTF файла, она самодостаточна
+            // СРАЗУ добавляем этот трансформированный куб в общую копилку модели
+            finalMin = glm::min(finalMin, meshNode->mesh->localAABB.min);
+            finalMax = glm::max(finalMax, meshNode->mesh->localAABB.max);
+            hasMeshes = true;
+
+            // Изолируем Node - у нее больше нет родителей из glTF файла, она самодостаточна
             meshNode->parent = nullptr;
             meshNode->children.clear();
         }
+    }
+
+    // Запись AABB
+    if (hasMeshes) {
+        loadedModel.localAABB.min = finalMin;
+        loadedModel.localAABB.max = finalMax;
+    } else {
+        loadedModel.localAABB.min = glm::vec3(0.0f);
+        loadedModel.localAABB.max = glm::vec3(0.0f);
     }
 
     // Создаем чистый финальный rootNode для нашей модели, у которого localTransform = identity
@@ -988,6 +1007,7 @@ Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init,
 
     // Финальный локальный апдейт модели в чистом Z-Up пространстве движка
     loadedModel.rootNode->UpdateMatrices(glm::mat4(1.0f));
+
 
     loadedModel.bIsValid = true;
     std::cout << "Model successfully isolated & baked into native Z-Up!\n";
@@ -1121,6 +1141,13 @@ void ModelManager::destroy_all(){
     }
     _models.clear();
     _path_to_id.clear();
+}
+
+AABB ModelManager::GetModelAABB(uint32_t id){
+    if (!has_model(id)) {
+        return AABB{ glm::vec3(-1.0f), glm::vec3(1.0f) };
+    }
+    return GetModel(id).localAABB;
 }
 
 

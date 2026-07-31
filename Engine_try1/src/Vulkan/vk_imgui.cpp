@@ -317,6 +317,76 @@ void VK_GUI::GUI::draw_fps_overlay(VK_INIT_ENGINE::_inited_engine& _init, CONTRO
     ImGui::End();
 }
 
+void VK_GUI::GUI::draw_context_menu_trs(VK_INIT_ENGINE::_inited_engine& _init, std::unique_ptr<Scene>& _scene,
+    const GPUSceneData& sceneData){
+    if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) && !ImGui::GetIO().WantCaptureMouse) {
+        fmt::print("ПКМ нажат! WantCaptureMouse: {}\n", ImGui::GetIO().WantCaptureMouse);
+
+        ImVec2 mousePos = ImGui::GetMousePos();
+
+        float screenWidth  = static_cast<float>(_init._windowExtent.width);
+        float screenHeight = static_cast<float>(_init._windowExtent.height);
+
+        std::cout << "\n================= НОВЫЙ КЛИК =================" << std::endl;
+        std::cout << "Координаты мыши ImGui: X: " << mousePos.x << ", Y: " << mousePos.y << std::endl;
+        std::cout << "Разрешение окна Vulkan: " << screenWidth << "x" << screenHeight << std::endl;
+
+        // Строим луч и пускаем в сцену
+        Ray ray = Ray::FromScreen(mousePos.x, mousePos.y, screenWidth, screenHeight, sceneData);
+
+        std::cout << "Луч создан:" << std::endl;
+        std::cout << "  - Origin: (" << ray.GetOrigin().x << ", " << ray.GetOrigin().y << ", " << ray.GetOrigin().z << ")" << std::endl;
+        std::cout << "  - Direction: (" << ray.GetDirection().x << ", " << ray.GetDirection().y << ", " << ray.GetDirection().z << ")" << std::endl;
+
+
+        RaycastHit hit = _scene->Raycast(ray);
+
+        if (hit.hit && hit.entity != nullptr) {
+            std::cout<< " на дистанции: " << hit.distance << std::endl;
+            selectedEntityId = static_cast<int>(hit.entity->id);
+            mouseClickPos = mousePos; // Запоминаем координаты курсора
+            showContextMenu = true;
+        } else {
+            std::cout << "[ФЕЙЛ] Луч пролетел мимо всех объектов сцены." << std::endl;
+
+            selectedEntityId = -1;
+            showContextMenu = false;
+        }
+    }
+
+    // 2. ОТРИСОВКА БЛОКА TRS
+    if (showContextMenu && selectedEntityId != -1) {
+        GameEntity* entity = _scene->GetEntity(static_cast<uint32_t>(selectedEntityId));
+
+        if (entity) {
+            // Спавним окно ровно в месте клика
+            ImGui::SetNextWindowPos(mouseClickPos, ImGuiCond_Appearing);
+
+            ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar |
+                                     ImGuiWindowFlags_NoResize |
+                                     ImGuiWindowFlags_AlwaysAutoResize |
+                                     ImGuiWindowFlags_NoSavedSettings;
+
+            if (ImGui::Begin("##TRS_ContextMenu", &showContextMenu, flags)) {
+                ImGui::TextColored(ImVec4(0.3f, 0.8f, 1.0f, 1.0f), "Entity: %s", entity->name.c_str());
+                ImGui::Text("ID: %u | Type: %s", entity->id, entity->type.c_str());
+                ImGui::Separator();
+
+                // Просто выводим TRS данные для теста
+                ImGui::Text("T: %.2f, %.2f, %.2f", entity->position.x, entity->position.y, entity->position.z);
+                ImGui::Text("R: %.2f, %.2f, %.2f", entity->rotation.x, entity->rotation.y, entity->rotation.z);
+                ImGui::Text("S: %.2f, %.2f, %.2f", entity->scale.x, entity->scale.y, entity->scale.z);
+
+                // Скрываем блок, если кликнули левой кнопкой мыши мимо него
+                if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !ImGui::IsWindowHovered()) {
+                    showContextMenu = false;
+                }
+            }
+            ImGui::End();
+        }
+    }
+}
+
 void VK_GUI::GUI::draw_imgui(VK_INIT_ENGINE::_inited_engine& _init, VkCommandBuffer cmd, VkExtent2D _drawExtent){
     VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(_init._drawImage.imageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
@@ -334,7 +404,7 @@ void VK_GUI::GUI::draw_imgui(VK_INIT_ENGINE::_inited_engine& _init, VkCommandBuf
     vkCmdEndRendering(cmd);
 }
 
-void VK_GUI::GUI::update_imgui(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER::Delta& _delta, ModelManager& _modelManager, std::unique_ptr<Scene>& _scene){
+void VK_GUI::GUI::update_imgui(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER::Delta& _delta, ModelManager& _modelManager, std::unique_ptr<Scene>& _scene, const GPUSceneData& sceneData){
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplSDL3_NewFrame();
     ImGui::NewFrame();
@@ -344,6 +414,8 @@ void VK_GUI::GUI::update_imgui(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER
     draw_model_list_overlay(_init, _modelManager, _scene);
 
     draw_inspector_window(_init, _modelManager);
+
+    draw_context_menu_trs(_init, _scene, sceneData);
 
     ImGui::Render();
 }
