@@ -103,42 +103,32 @@ void Scene::CullingAndSubmit(RenderSystem& renderSystem, VkPipeline defaultPipel
 
     for (const auto& entity : _entities) {
         if (!entity.bIsVisible) continue;
+        if (!_modelManager.has_model(entity.modelAssetId)) continue;
 
-        // Получаем данные о место нахождении обьекта
+        Model& model = _modelManager.GetModel(entity.modelAssetId);
+        if (!model.bIsValid || !model.rootNode) continue;
+
         glm::mat4 entityWorldMatrix = entity.GetLocalMatrix();
 
-        // Запрашиваем структуру модели
-        if (!_modelManager.has_model(entity.modelAssetId)) continue;
-        const Model& model = _modelManager.GetModel(entity.modelAssetId);
-        if (!model.bIsValid) continue;
+        model.rootNode->UpdateMatrices(entityWorldMatrix);
 
-        // Обходим внутренние ноды модели (саб-меши), если они есть
         for (const auto& meshNode : model.meshNodes) {
-            if (!meshNode || !meshNode->mesh) continue;
+            if (!meshNode->mesh) continue;
 
-            auto& mesh = meshNode->mesh;
-            for (const auto& surface : mesh->surfaces) {
-
-                // Формируем RenderObject для рендер-системы
+            for (const auto& surface : meshNode->mesh->surfaces) {
                 RenderObject ro;
-                ro.indexBuffer = mesh->meshBuffers.indexBuffer.buffer;
-                ro.vertexBufferAddress = mesh->meshBuffers.vertexBufferAddress;
+                ro.render_matrix = meshNode->worldTransform;
+
+                ro.indexBuffer = meshNode->mesh->meshBuffers.indexBuffer.buffer;
+                ro.vertexBufferAddress = meshNode->mesh->meshBuffers.vertexBufferAddress;
                 ro.indexCount = surface.count;
                 ro.firstIndex = surface.startIndex;
+
                 ro.pipeline = defaultPipeline;
                 ro.pipelineLayout = defaultLayout;
+                ro.colorTextureID = surface.material->colorTextureID;
+                ro.metallicRoughnessTextureID = surface.material->metallicRoughnessTextureID;
 
-                // Обходим материалы
-                if (surface.material) {
-                    ro.colorTextureID = surface.material->colorTextureID;
-                    ro.metallicRoughnessTextureID = surface.material->metallicRoughnessTextureID;
-                }
-
-                // Перемножение локальной ноды на внешние изменения
-                ro.render_matrix = entityWorldMatrix * meshNode->worldTransform;
-
-
-                // Отправляем в НАШУ СУПЕР ДУПЕР RENDER SYSTEM
                 renderSystem.Submit(ro);
             }
         }
