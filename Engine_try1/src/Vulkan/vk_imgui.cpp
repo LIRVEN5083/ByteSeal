@@ -320,70 +320,131 @@ void VK_GUI::GUI::draw_fps_overlay(VK_INIT_ENGINE::_inited_engine& _init, CONTRO
 void VK_GUI::GUI::draw_context_menu_trs(VK_INIT_ENGINE::_inited_engine& _init, std::unique_ptr<Scene>& _scene,
     const GPUSceneData& sceneData){
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) && !ImGui::GetIO().WantCaptureMouse) {
-        fmt::print("ПКМ нажат! WantCaptureMouse: {}\n", ImGui::GetIO().WantCaptureMouse);
 
         ImVec2 mousePos = ImGui::GetMousePos();
 
         float screenWidth  = static_cast<float>(_init._windowExtent.width);
         float screenHeight = static_cast<float>(_init._windowExtent.height);
 
-        std::cout << "\n================= НОВЫЙ КЛИК =================" << std::endl;
-        std::cout << "Координаты мыши ImGui: X: " << mousePos.x << ", Y: " << mousePos.y << std::endl;
-        std::cout << "Разрешение окна Vulkan: " << screenWidth << "x" << screenHeight << std::endl;
-
         // Строим луч и пускаем в сцену
         Ray ray = Ray::FromScreen(mousePos.x, mousePos.y, screenWidth, screenHeight, sceneData);
-
-        std::cout << "Луч создан:" << std::endl;
-        std::cout << "  - Origin: (" << ray.GetOrigin().x << ", " << ray.GetOrigin().y << ", " << ray.GetOrigin().z << ")" << std::endl;
-        std::cout << "  - Direction: (" << ray.GetDirection().x << ", " << ray.GetDirection().y << ", " << ray.GetDirection().z << ")" << std::endl;
-
 
         RaycastHit hit = _scene->Raycast(ray);
 
         if (hit.hit && hit.entity != nullptr) {
-            std::cout<< " на дистанции: " << hit.distance << std::endl;
             selectedEntityId = static_cast<int>(hit.entity->id);
             mouseClickPos = mousePos; // Запоминаем координаты курсора
             showContextMenu = true;
-        } else {
-            std::cout << "[ФЕЙЛ] Луч пролетел мимо всех объектов сцены." << std::endl;
 
+            ImGui::OpenPopup("ModelContextMenu");
+        } else {
             selectedEntityId = -1;
             showContextMenu = false;
         }
     }
 
-    // 2. ОТРИСОВКА БЛОКА TRS
-    if (showContextMenu && selectedEntityId != -1) {
+    static bool showTrsWindow = false;
+
+    ImGui::SetNextWindowPos(mouseClickPos, ImGuiCond_Appearing);
+
+    if (ImGui::BeginPopup("ModelContextMenu")) {
         GameEntity* entity = _scene->GetEntity(static_cast<uint32_t>(selectedEntityId));
 
         if (entity) {
-            // Спавним окно ровно в месте клика
-            ImGui::SetNextWindowPos(mouseClickPos, ImGuiCond_Appearing);
+            ImGui::TextDisabled("Entity ID: %d", selectedEntityId);
+            ImGui::Separator();
 
-            ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar |
-                                     ImGuiWindowFlags_NoResize |
-                                     ImGuiWindowFlags_AlwaysAutoResize |
-                                     ImGuiWindowFlags_NoSavedSettings;
+            if (ImGui::MenuItem("TRS")) {
+                showTrsWindow = true;
+                showContextMenu = false;
+                ImGui::CloseCurrentPopup();
+            }
+        }
+        ImGui::EndPopup();
+    }
 
-            if (ImGui::Begin("##TRS_ContextMenu", &showContextMenu, flags)) {
-                ImGui::TextColored(ImVec4(0.3f, 0.8f, 1.0f, 1.0f), "Entity: %s", entity->name.c_str());
-                ImGui::Text("ID: %u | Type: %s", entity->id, entity->type.c_str());
+    if (showTrsWindow) {
+        ImGui::SetNextWindowSize(ImVec2(350, 400), ImGuiCond_FirstUseEver);
+
+        if (ImGui::Begin("TRS Properties", &showTrsWindow)) {
+            GameEntity* entity = _scene->GetEntity(static_cast<uint32_t>(selectedEntityId));
+
+            if (entity) {
+                ImGui::Text("Editing Entity ID: %d", selectedEntityId);
                 ImGui::Separator();
 
-                // Просто выводим TRS данные для теста
-                ImGui::Text("T: %.2f, %.2f, %.2f", entity->position.x, entity->position.y, entity->position.z);
-                ImGui::Text("R: %.2f, %.2f, %.2f", entity->rotation.x, entity->rotation.y, entity->rotation.z);
-                ImGui::Text("S: %.2f, %.2f, %.2f", entity->scale.x, entity->scale.y, entity->scale.z);
+                auto& position = entity->position;
+                auto& rotation = entity->rotation;
+                auto& scale    = entity->scale;
+                
+                float itemWidth = ImGui::GetContentRegionAvail().x * 0.6f;
 
-                // Скрываем блок, если кликнули левой кнопкой мыши мимо него
-                if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !ImGui::IsWindowHovered()) {
-                    showContextMenu = false;
+                // Position
+                if (ImGui::TreeNodeEx("Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
+
+                    ImGui::PushItemWidth(itemWidth);
+
+                    // Location X, Y, Z
+                    ImGui::Text("Location X"); ImGui::SameLine(120);
+                    ImGui::DragFloat("##LocX", &position.x, 0.05f, 0.0f, 0.0f, "%.3f m");
+
+                    ImGui::Text("         Y"); ImGui::SameLine(120);
+                    ImGui::DragFloat("##LocY", &position.y, 0.05f, 0.0f, 0.0f, "%.3f m");
+
+                    ImGui::Text("         Z"); ImGui::SameLine(120);
+                    ImGui::DragFloat("##LocZ", &position.z, 0.05f, 0.0f, 0.0f, "%.3f m");
+
+                    ImGui::Spacing();
+
+                    // Rotation X, Y, Z (Euler angles)
+                    ImGui::Text("Rotation X"); ImGui::SameLine(120);
+                    ImGui::DragFloat("##RotX", &rotation.x, 0.5f, 0.0f, 0.0f, "%.1f°");
+
+                    ImGui::Text("         Y"); ImGui::SameLine(120);
+                    ImGui::DragFloat("##RotY", &rotation.y, 0.5f, 0.0f, 0.0f, "%.1f°");
+
+                    ImGui::Text("         Z"); ImGui::SameLine(120);
+                    ImGui::DragFloat("##RotZ", &rotation.z, 0.5f, 0.0f, 0.0f, "%.1f°");
+
+                    ImGui::Spacing();
+
+                    // Scale X, Y, Z
+                    // Для масштаба ставим минимальный лимит 0.001f, чтобы объект не схлопнулся
+                    ImGui::Text("Scale    X"); ImGui::SameLine(120);
+                    ImGui::DragFloat("##ScaleX", &scale.x, 0.01f, 0.001f, 1000.0f, "%.3f");
+
+                    ImGui::Text("         Y"); ImGui::SameLine(120);
+                    ImGui::DragFloat("##ScaleY", &scale.y, 0.01f, 0.001f, 1000.0f, "%.3f");
+
+                    ImGui::Text("         Z"); ImGui::SameLine(120);
+                    ImGui::DragFloat("##ScaleZ", &scale.z, 0.01f, 0.001f, 1000.0f, "%.3f");
+
+                    ImGui::PopItemWidth();
+                    ImGui::TreePop();
                 }
+
+                // General scale
+                ImGui::Spacing();
+                ImGui::Separator();
+                ImGui::Spacing();
+
+                ImGui::Text("Uniform Scale");
+                ImGui::SameLine(120);
+                ImGui::PushItemWidth(itemWidth);
+
+                float uniformScale = scale.x;
+                if (ImGui::DragFloat("##UniformScale", &uniformScale, 0.01f, 0.001f, 1000.0f, "Multiplier: %.3f")) {
+                    scale.x = uniformScale;
+                    scale.y = uniformScale;
+                    scale.z = uniformScale;
+                }
+                ImGui::PopItemWidth();
+
+            } else {
+                ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "Error: Entity not found!");
             }
-            ImGui::End();
         }
+        ImGui::End();
     }
 }
 
