@@ -14,6 +14,34 @@ glm::mat4 GameEntity::GetLocalMatrix() const {
     return translationMat * rotationMat * scaleMat;
 }
 
+AABB GameEntity::GetWorldAABB(ModelManager& modelManager) const{
+    AABB localBox = modelManager.GetModelAABB(this->modelAssetId);
+
+    glm::mat4 modelMatrix = GetLocalMatrix();
+
+    glm::vec3 vertices[8] = {
+        localBox.min,
+        {localBox.max.x, localBox.min.y, localBox.min.z},
+        {localBox.min.x, localBox.max.y, localBox.min.z},
+        {localBox.min.x, localBox.min.y, localBox.max.z},
+        {localBox.min.x, localBox.max.y, localBox.max.z},
+        {localBox.max.x, localBox.min.y, localBox.max.z},
+        {localBox.max.x, localBox.max.y, localBox.min.z},
+        localBox.max
+    };
+
+    glm::vec3 minBound(std::numeric_limits<float>::max());
+    glm::vec3 maxBound(-std::numeric_limits<float>::max());
+
+    for (int i = 0; i < 8; ++i) {
+        glm::vec3 worldVert = glm::vec3(modelMatrix * glm::vec4(vertices[i], 1.0f));
+        minBound = glm::min(minBound, worldVert);
+        maxBound = glm::max(maxBound, worldVert);
+    }
+
+    return AABB{ minBound, maxBound };
+}
+
 GameEntity* Scene::CreateEntity(const std::string& name, uint32_t modelAssetId){
     uint32_t newId = _nextEntityId++;
 
@@ -103,44 +131,120 @@ void Scene::CullingAndSubmit(RenderSystem& renderSystem, VkPipeline defaultPipel
 
     for (const auto& entity : _entities) {
         if (!entity.bIsVisible) continue;
+        if (!_modelManager.has_model(entity.modelAssetId)) continue;
 
-        // Получаем данные о место нахождении обьекта
+        Model& model = _modelManager.GetModel(entity.modelAssetId);
+        if (!model.bIsValid || !model.rootNode) continue;
+
         glm::mat4 entityWorldMatrix = entity.GetLocalMatrix();
 
-        // Запрашиваем структуру модели
-        if (!_modelManager.has_model(entity.modelAssetId)) continue;
-        const Model& model = _modelManager.GetModel(entity.modelAssetId);
-        if (!model.bIsValid) continue;
+        model.rootNode->UpdateMatrices(entityWorldMatrix);
 
-        // Обходим внутренние ноды модели (саб-меши), если они есть
         for (const auto& meshNode : model.meshNodes) {
-            if (!meshNode || !meshNode->mesh) continue;
+            if (!meshNode->mesh) continue;
 
-            auto& mesh = meshNode->mesh;
-            for (const auto& surface : mesh->surfaces) {
-
-                // Формируем RenderObject для рендер-системы
+            for (const auto& surface : meshNode->mesh->surfaces) {
                 RenderObject ro;
-                ro.indexBuffer = mesh->meshBuffers.indexBuffer.buffer;
-                ro.vertexBufferAddress = mesh->meshBuffers.vertexBufferAddress;
+                ro.render_matrix = meshNode->worldTransform;
+
+                ro.indexBuffer = meshNode->mesh->meshBuffers.indexBuffer.buffer;
+                ro.vertexBufferAddress = meshNode->mesh->meshBuffers.vertexBufferAddress;
                 ro.indexCount = surface.count;
                 ro.firstIndex = surface.startIndex;
+
                 ro.pipeline = defaultPipeline;
                 ro.pipelineLayout = defaultLayout;
+                ro.colorTextureID = surface.material->colorTextureID;
+                ro.metallicRoughnessTextureID = surface.material->metallicRoughnessTextureID;
 
-                // Обходим материалы
-                if (surface.material) {
-                    ro.colorTextureID = surface.material->colorTextureID;
-                    ro.metallicRoughnessTextureID = surface.material->metallicRoughnessTextureID;
-                }
-
-                // Перемножение локальной ноды на внешние изменения
-                ro.render_matrix = entityWorldMatrix * meshNode->worldTransform;
-
-
-                // Отправляем в НАШУ СУПЕР ДУПЕР RENDER SYSTEM
                 renderSystem.Submit(ro);
             }
         }
     }
+}
+
+RaycastHit Scene::Raycast(const Ray& ray){
+    RaycastHit closestHit;
+
+    for (auto& entity : _entities) {
+        // Если объект скрыт в ImGui, кликнуть по нему нельзя
+        if (!entity.bIsVisible) continue;
+
+        // Берём наш AABB модельки
+        AABB worldBox = entity.GetWorldAABB(_modelManager);
+
+        float dist = 0.0f;
+        // Вызываем алгоритм Смита
+        if (ray.IntersectsAABB(worldBox, dist)) {
+            // Ищем самый ближний объект к камере
+            if (dist < closestHit.distance) {
+                closestHit.hit = true;
+                closestHit.distance = dist;
+                closestHit.entity = &entity; // Запоминаем указатель на GameEntity
+            }
+        }
+    }
+
+    return closestHit;
+}
+
+Ray::Ray(const glm::vec3& origin, const glm::vec3& direction)
+: _origin(origin), _direction(glm::normalize(direction)) {}
+
+Ray Ray::FromScreen(float screenX, float screenY, float screenWidth, float screenHeight, const GPUSceneData& sceneData){
+    float x = (2.0f * screenX) / screenWidth - 1.0f;
+    float y = (2.0f * screenY) / screenHeight - 1.0f;
+
+    glm::vec4 rayClip = glm::vec4(x, y, 0.0f, 1.0f);
+
+    glm::vec4 rayEye = glm::inverse(sceneData.proj) * rayClip;
+
+    rayEye.z = -1.0f;
+    rayEye.w = 0.0f; // Сбрасываем W, так как нам нужен чистый вектор направления
+
+    glm::mat4 invView = glm::inverse(sceneData.view);
+    glm::vec3 rayDirWorld = glm::normalize(glm::vec3(invView * rayEye));
+
+    glm::vec3 rayOriginWorld = glm::vec3(invView[3]);
+
+    return Ray(rayOriginWorld, rayDirWorld);
+}
+
+bool Ray::IntersectsAABB(const AABB& box, float& outDist) const{
+    glm::vec3 invDir = 1.0f / _direction;
+
+    // Ось X
+    float tmin = (box.min.x - _origin.x) * invDir.x;
+    float tmax = (box.max.x - _origin.x) * invDir.x;
+    if (tmin > tmax) std::swap(tmin, tmax);
+
+    // Ось Y
+    float tymin = (box.min.y - _origin.y) * invDir.y;
+    float tymax = (box.max.y - _origin.y) * invDir.y;
+    if (tymin > tymax) std::swap(tymin, tymax);
+
+    if ((tmin > tymax) || (tymin > tmax)) return false;
+    if (tymin > tmin) tmin = tymin;
+    if (tymax < tmax) tmax = tymax;
+
+    // Ось Z
+    float tzmin = (box.min.z - _origin.z) * invDir.z;
+    float tzmax = (box.max.z - _origin.z) * invDir.z;
+    if (tzmin > tzmax) std::swap(tzmin, tzmax);
+
+    if ((tmin > tzmax) || (tzmin > tmax)) return false;
+    if (tzmin > tmin) tmin = tzmin;
+    if (tzmax < tmax) tmax = tzmax;
+
+    // Проверка: если tmax < 0, то весь бокс находится позади луча
+    if (tmax < 0) return false;
+
+    // Если tmin < 0, значит начало луча находится внутри самого бокса
+    if (tmin < 0) {
+        outDist = tmax; // Возвращаем точку выхода из бокса
+    } else {
+        outDist = tmin; // Возвращаем точку входа в бокс
+    }
+
+    return true;
 }

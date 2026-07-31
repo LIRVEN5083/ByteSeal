@@ -317,6 +317,137 @@ void VK_GUI::GUI::draw_fps_overlay(VK_INIT_ENGINE::_inited_engine& _init, CONTRO
     ImGui::End();
 }
 
+void VK_GUI::GUI::draw_context_menu_trs(VK_INIT_ENGINE::_inited_engine& _init, std::unique_ptr<Scene>& _scene,
+    const GPUSceneData& sceneData){
+    if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) && !ImGui::GetIO().WantCaptureMouse) {
+
+        ImVec2 mousePos = ImGui::GetMousePos();
+
+        float screenWidth  = static_cast<float>(_init._windowExtent.width);
+        float screenHeight = static_cast<float>(_init._windowExtent.height);
+
+        // Строим луч и пускаем в сцену
+        Ray ray = Ray::FromScreen(mousePos.x, mousePos.y, screenWidth, screenHeight, sceneData);
+
+        RaycastHit hit = _scene->Raycast(ray);
+
+        if (hit.hit && hit.entity != nullptr) {
+            selectedEntityId = static_cast<int>(hit.entity->id);
+            mouseClickPos = mousePos; // Запоминаем координаты курсора
+            showContextMenu = true;
+
+            ImGui::OpenPopup("ModelContextMenu");
+        } else {
+            selectedEntityId = -1;
+            showContextMenu = false;
+        }
+    }
+
+    static bool showTrsWindow = false;
+
+    ImGui::SetNextWindowPos(mouseClickPos, ImGuiCond_Appearing);
+
+    if (ImGui::BeginPopup("ModelContextMenu")) {
+        GameEntity* entity = _scene->GetEntity(static_cast<uint32_t>(selectedEntityId));
+
+        if (entity) {
+            ImGui::TextDisabled("Entity ID: %d", selectedEntityId);
+            ImGui::Separator();
+
+            if (ImGui::MenuItem("TRS")) {
+                showTrsWindow = true;
+                showContextMenu = false;
+                ImGui::CloseCurrentPopup();
+            }
+        }
+        ImGui::EndPopup();
+    }
+
+    if (showTrsWindow) {
+        ImGui::SetNextWindowSize(ImVec2(350, 400), ImGuiCond_FirstUseEver);
+
+        if (ImGui::Begin("TRS Properties", &showTrsWindow)) {
+            GameEntity* entity = _scene->GetEntity(static_cast<uint32_t>(selectedEntityId));
+
+            if (entity) {
+                ImGui::Text("Editing Entity ID: %d", selectedEntityId);
+                ImGui::Separator();
+
+                auto& position = entity->position;
+                auto& rotation = entity->rotation;
+                auto& scale    = entity->scale;
+                
+                float itemWidth = ImGui::GetContentRegionAvail().x * 0.6f;
+
+                // Position
+                if (ImGui::TreeNodeEx("Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
+
+                    ImGui::PushItemWidth(itemWidth);
+
+                    // Location X, Y, Z
+                    ImGui::Text("Location X"); ImGui::SameLine(120);
+                    ImGui::DragFloat("##LocX", &position.x, 0.05f, 0.0f, 0.0f, "%.3f m");
+
+                    ImGui::Text("         Y"); ImGui::SameLine(120);
+                    ImGui::DragFloat("##LocY", &position.y, 0.05f, 0.0f, 0.0f, "%.3f m");
+
+                    ImGui::Text("         Z"); ImGui::SameLine(120);
+                    ImGui::DragFloat("##LocZ", &position.z, 0.05f, 0.0f, 0.0f, "%.3f m");
+
+                    ImGui::Spacing();
+
+                    // Rotation X, Y, Z (Euler angles)
+                    ImGui::Text("Rotation X"); ImGui::SameLine(120);
+                    ImGui::DragFloat("##RotX", &rotation.x, 0.5f, 0.0f, 0.0f, "%.1f°");
+
+                    ImGui::Text("         Y"); ImGui::SameLine(120);
+                    ImGui::DragFloat("##RotY", &rotation.y, 0.5f, 0.0f, 0.0f, "%.1f°");
+
+                    ImGui::Text("         Z"); ImGui::SameLine(120);
+                    ImGui::DragFloat("##RotZ", &rotation.z, 0.5f, 0.0f, 0.0f, "%.1f°");
+
+                    ImGui::Spacing();
+
+                    // Scale X, Y, Z
+                    // Для масштаба ставим минимальный лимит 0.001f, чтобы объект не схлопнулся
+                    ImGui::Text("Scale    X"); ImGui::SameLine(120);
+                    ImGui::DragFloat("##ScaleX", &scale.x, 0.01f, 0.001f, 1000.0f, "%.3f");
+
+                    ImGui::Text("         Y"); ImGui::SameLine(120);
+                    ImGui::DragFloat("##ScaleY", &scale.y, 0.01f, 0.001f, 1000.0f, "%.3f");
+
+                    ImGui::Text("         Z"); ImGui::SameLine(120);
+                    ImGui::DragFloat("##ScaleZ", &scale.z, 0.01f, 0.001f, 1000.0f, "%.3f");
+
+                    ImGui::PopItemWidth();
+                    ImGui::TreePop();
+                }
+
+                // General scale
+                ImGui::Spacing();
+                ImGui::Separator();
+                ImGui::Spacing();
+
+                ImGui::Text("Uniform Scale");
+                ImGui::SameLine(120);
+                ImGui::PushItemWidth(itemWidth);
+
+                float uniformScale = scale.x;
+                if (ImGui::DragFloat("##UniformScale", &uniformScale, 0.01f, 0.001f, 1000.0f, "Multiplier: %.3f")) {
+                    scale.x = uniformScale;
+                    scale.y = uniformScale;
+                    scale.z = uniformScale;
+                }
+                ImGui::PopItemWidth();
+
+            } else {
+                ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "Error: Entity not found!");
+            }
+        }
+        ImGui::End();
+    }
+}
+
 void VK_GUI::GUI::draw_imgui(VK_INIT_ENGINE::_inited_engine& _init, VkCommandBuffer cmd, VkExtent2D _drawExtent){
     VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(_init._drawImage.imageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
@@ -334,7 +465,7 @@ void VK_GUI::GUI::draw_imgui(VK_INIT_ENGINE::_inited_engine& _init, VkCommandBuf
     vkCmdEndRendering(cmd);
 }
 
-void VK_GUI::GUI::update_imgui(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER::Delta& _delta, ModelManager& _modelManager, std::unique_ptr<Scene>& _scene){
+void VK_GUI::GUI::update_imgui(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER::Delta& _delta, ModelManager& _modelManager, std::unique_ptr<Scene>& _scene, const GPUSceneData& sceneData){
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplSDL3_NewFrame();
     ImGui::NewFrame();
@@ -344,6 +475,8 @@ void VK_GUI::GUI::update_imgui(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER
     draw_model_list_overlay(_init, _modelManager, _scene);
 
     draw_inspector_window(_init, _modelManager);
+
+    draw_context_menu_trs(_init, _scene, sceneData);
 
     ImGui::Render();
 }

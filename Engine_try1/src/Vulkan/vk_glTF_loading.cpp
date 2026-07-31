@@ -563,6 +563,8 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> load_Meshes(VK_INIT_ENGIN
         indices.clear();
         vertices.clear();
 
+        AABB totalMeshAABB;
+
         for (auto&& p : gltfMesh.primitives) {
             GeoSurface newSurface;
             newSurface.startIndex = static_cast<uint32_t>(indices.size());
@@ -594,7 +596,7 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> load_Meshes(VK_INIT_ENGIN
                     });
             }
 
-            // 2. Загрузка позиций вершин
+            // 2. Загрузка позиций вершин + Извлечение AABB саб-меша
             {
                 auto* positionAttribute = p.findAttribute("POSITION");
                 if (positionAttribute == nullptr) {
@@ -602,6 +604,23 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> load_Meshes(VK_INIT_ENGIN
                 } else {
                     fastgltf::Accessor& posAccessor = asset.accessors[positionAttribute->accessorIndex];
                     vertices.resize(vertices.size() + posAccessor.count);
+
+                    if (posAccessor.min.has_value() && posAccessor.max.has_value()) {
+                        auto& minVals = posAccessor.min.value();
+                        auto& maxVals = posAccessor.max.value();
+
+                        newSurface.localAABB.min = glm::vec3(static_cast<float>(minVals.get<double>(0)),
+                                                             static_cast<float>(minVals.get<double>(1)),
+                                                             static_cast<float>(minVals.get<double>(2)));
+
+                        newSurface.localAABB.max = glm::vec3(static_cast<float>(maxVals.get<double>(0)),
+                                                             static_cast<float>(maxVals.get<double>(1)),
+                                                             static_cast<float>(maxVals.get<double>(2)));
+                    } else {
+                        // если в glTF нет min/max границ
+                        newSurface.localAABB.min = glm::vec3(std::numeric_limits<float>::infinity());
+                        newSurface.localAABB.max = glm::vec3(-std::numeric_limits<float>::infinity());
+                    }
 
                     fastgltf::iterateAccessorWithIndex<glm::vec3>(asset, posAccessor,
                         [&](glm::vec3 v, size_t index) {
@@ -644,10 +663,16 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> load_Meshes(VK_INIT_ENGIN
                     });
             }
 
+            // Обьединяем AABB текущего саб-меша в один большой меш-ассет AABB
+            totalMeshAABB.min = glm::min(totalMeshAABB.min, newSurface.localAABB.min);
+            totalMeshAABB.max = glm::max(totalMeshAABB.max, newSurface.localAABB.max);
+
             newMeshAsset->surfaces.push_back(newSurface);
         }
 
-        // Визуализация нормалей через цвета (Блендер-стайл дебаг)
+        newMeshAsset->localAABB = totalMeshAABB;
+
+        // Визуализация нормалей через цвета
         constexpr bool OverrideColors = false;
         if (OverrideColors) {
             for (Vertex& vtx : vertices) {
@@ -701,6 +726,54 @@ std::optional<std::shared_ptr<Node>> load_Node(fastgltf::Asset& asset, fastgltf:
     }
 
     return currentEngineNode;
+}
+
+AABB transformAABB(const AABB& localBox, const glm::mat4& M){
+    AABB worldBox;
+
+    // Позиция смещения (translation) берется из 4-го столбца матрицы
+    glm::vec3 translation = glm::vec3(M[3]);
+    worldBox.min = translation;
+    worldBox.max = translation;
+
+    // Обходим оси координат и пересчитываем новые границы
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            float a = M[j][i] * localBox.min[j];
+            float b = M[j][i] * localBox.max[j];
+
+            worldBox.min[i] += std::min(a, b);
+            worldBox.max[i] += std::max(a, b);
+        }
+    }
+    return worldBox;
+}
+
+void calculate_model_bounds(Node* node, const glm::mat4& parentTransform, AABB& outTotalAABB){
+    if (!node) return;
+
+    // Считаем трансформацию текущей ноды относительно корня модели
+    glm::mat4 currentTransform = parentTransform * node->localTransform;
+
+    // Проверяем, является ли текущая нода мешем (MeshNode)
+    if (auto* meshNode = dynamic_cast<MeshNode*>(node)) {
+        // Проверяем, что к ноде действительно привязан ассет меша
+        if (meshNode->mesh) {
+            // Трансформируем локальный AABB меша
+            // с учетом накопленной матрицы трансформации этой ноды
+            AABB transformedBox = transformAABB(meshNode->mesh->localAABB, currentTransform);
+
+            // Расширяем глобальный AABB модели, беря минимальные и максимальные
+            // координаты среди всех уже обработанных саб-мешей
+            outTotalAABB.min = glm::min(outTotalAABB.min, transformedBox.min);
+            outTotalAABB.max = glm::max(outTotalAABB.max, transformedBox.max);
+        }
+    }
+
+    // Рекурсивно спускаемся вниз к детям, передавая им текущую матрицу в качестве родительской
+    for (auto& child : node->children) {
+        calculate_model_bounds(child.get(), currentTransform, outTotalAABB);
+    }
 }
 
 Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init,
@@ -835,21 +908,109 @@ Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init,
     auto baseRoot = std::make_shared<Node>();
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // Загрузка Nodes
+    // Загрузка Nodes, БЕЗ ЕБАННЫХ НЕСКОЛЬКИХ ROOT-NODE
     fastgltf::Scene& defaultScene = gltf.scenes[gltf.defaultScene.value_or(0)];
 
-    for (size_t rootNodeIdx : defaultScene.nodeIndices) {
-        // Запускаем рекурсивный сбор дерева нод.
-        // Функция load_Node сама свяжет меши и наполнит плоский список loadedModel.meshNodes
-        auto nodeOpt = load_Node(gltf, gltf.nodes[rootNodeIdx], loadedModel);
-        if (nodeOpt.has_value()) {
-            baseRoot->AddChild(nodeOpt.value());
+    // Жесткий отстрел многокорневых файлов
+    if (defaultScene.nodeIndices.size() > 1) {
+        fmt::print("[ENGINE CRITICAL ERROR]: Fuck you, we don't use multiple root nodes in the same model!\n",
+            filePath.string(), defaultScene.nodeIndices.size());
+        loadedModel.destroy(_init, meshManager, textureManager);
+        loadedModel.bIsValid = false;
+        return loadedModel;
+    }
+
+    // Создаем ИСКУССТВЕННЫЙ временный корень для проведения операции запекания
+    auto bakeRoot = std::make_shared<Node>();
+
+    size_t singleRootIdx = defaultScene.nodeIndices[0];
+    auto gltfRootNodeOpt = load_Node(gltf, gltf.nodes[singleRootIdx], loadedModel);
+
+    if (gltfRootNodeOpt.has_value()) {
+        // Навешиваем glTF-корень художника на наш временный bakeRoot
+        bakeRoot->AddChild(gltfRootNodeOpt.value());
+    } else {
+        loadedModel.destroy(_init, meshManager, textureManager);
+        loadedModel.bIsValid = false;
+        return loadedModel;
+    }
+
+    AABB totalModelAABB;
+    calculate_model_bounds(bakeRoot.get(), glm::mat4(1.0f), totalModelAABB);
+
+    // Считаем масштаб (вписываем в стандартные 2.0 метра)
+    glm::vec3 modelSize = totalModelAABB.max - totalModelAABB.min;
+    float maxExtent = std::max({modelSize.x, modelSize.y, modelSize.z});
+    constexpr float targetSize = 2.0f;
+    float scaleFactor = targetSize / maxExtent;
+
+    float gltfCenterX = (totalModelAABB.min.x + totalModelAABB.max.x) * 0.5f;
+    float gltfCenterY = (totalModelAABB.min.y + totalModelAABB.max.y) * 0.5f;
+
+    float gltfBottomY = totalModelAABB.min.y;
+
+    // Собираем правильный вектор смещения в пространстве glTF
+    glm::vec3 modelPivotOffset(-gltfCenterX, -gltfBottomY, -gltfCenterY);
+
+    // Строим матрицу нормализации (сначала сдвигаем пивот в пол, затем масштабируем)
+    glm::mat4 normalizationMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(scaleFactor)) *
+                                    glm::translate(glm::mat4(1.0f), modelPivotOffset);
+
+    // Ебанное Y-up экспортируемые glTF формат
+    glm::mat4 gltfToZUp = glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+
+    // Накладываем исправления на наш временный корень bakeRoot
+    bakeRoot->localTransform = gltfToZUp * normalizationMatrix;
+
+    bakeRoot->UpdateMatrices(glm::mat4(1.0f));
+
+    glm::vec3 finalMin(std::numeric_limits<float>::max());
+    glm::vec3 finalMax(-std::numeric_limits<float>::max());
+    bool hasMeshes = false;
+
+    for (auto& meshNode : loadedModel.meshNodes) {
+        if (meshNode->mesh) {
+            // Переносим запеченную Z-Up матрицу в локальную матрицу ноды меша
+            meshNode->localTransform = meshNode->worldTransform;
+            meshNode->worldTransform = glm::mat4(1.0f);
+
+            // ОДИН РАЗ трансформируем локальный AABB меша в пространство Z-Up
+            meshNode->mesh->localAABB = transformAABB(meshNode->mesh->localAABB, meshNode->localTransform);
+
+            // СРАЗУ добавляем этот трансформированный куб в общую копилку модели
+            finalMin = glm::min(finalMin, meshNode->mesh->localAABB.min);
+            finalMax = glm::max(finalMax, meshNode->mesh->localAABB.max);
+            hasMeshes = true;
+
+            // Изолируем Node - у нее больше нет родителей из glTF файла, она самодостаточна
+            meshNode->parent = nullptr;
+            meshNode->children.clear();
         }
     }
 
-    // Сохраняем корень дерева в модель
-    loadedModel.rootNode = baseRoot;
+    // Запись AABB
+    if (hasMeshes) {
+        loadedModel.localAABB.min = finalMin;
+        loadedModel.localAABB.max = finalMax;
+    } else {
+        loadedModel.localAABB.min = glm::vec3(0.0f);
+        loadedModel.localAABB.max = glm::vec3(0.0f);
+    }
 
+    // Создаем чистый финальный rootNode для нашей модели, у которого localTransform = identity
+    loadedModel.rootNode = std::make_shared<Node>();
+
+    // Привязываем все наши готовые, повернутые meshNodes напрямую к новому чистому корню
+    for (auto& meshNode : loadedModel.meshNodes) {
+        loadedModel.rootNode->AddChild(meshNode);
+    }
+
+    // Финальный локальный апдейт модели в чистом Z-Up пространстве движка
+    loadedModel.rootNode->UpdateMatrices(glm::mat4(1.0f));
+
+
+    loadedModel.bIsValid = true;
+    std::cout << "Model successfully isolated & baked into native Z-Up!\n";
     return loadedModel;
 
 }
@@ -980,6 +1141,13 @@ void ModelManager::destroy_all(){
     }
     _models.clear();
     _path_to_id.clear();
+}
+
+AABB ModelManager::GetModelAABB(uint32_t id){
+    if (!has_model(id)) {
+        return AABB{ glm::vec3(-1.0f), glm::vec3(1.0f) };
+    }
+    return GetModel(id).localAABB;
 }
 
 

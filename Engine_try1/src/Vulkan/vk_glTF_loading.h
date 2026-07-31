@@ -137,10 +137,16 @@ private:
     std::vector<uint32_t> _freeIndices;
 };
 
+struct AABB {
+    glm::vec3 min{ std::numeric_limits<float>::infinity() };
+    glm::vec3 max{ -std::numeric_limits<float>::infinity() };
+};
+
 struct GeoSurface {
     uint32_t startIndex;
     uint32_t count;
     std::shared_ptr<MaterialAsset> material;
+    AABB localAABB;
 };
 
 struct MeshAsset {
@@ -148,6 +154,8 @@ struct MeshAsset {
 
     std::vector<GeoSurface> surfaces;
     GPUMeshBuffers meshBuffers;
+
+    AABB localAABB;
 };
 
 class Node {
@@ -192,6 +200,8 @@ struct Model{
     ModelLifetime lifetime{ ModelLifetime::Dynamic };
     bool bIsValid{ false };
 
+    AABB localAABB;
+
     void destroy(VK_INIT_ENGINE::_inited_engine& _init, MeshManager& meshManager, TextureManager& textureManager);
 };
 
@@ -217,6 +227,10 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> load_Meshes(VK_INIT_ENGIN
 
 // Парсинг Node
 std::optional<std::shared_ptr<Node>> load_Node(fastgltf::Asset& asset, fastgltf::Node& gltfNode, Model& outModel);
+
+AABB transformAABB(const AABB& localBox, const glm::mat4& M);
+
+void calculate_model_bounds(Node* node, const glm::mat4& parentTransform, AABB& outTotalAABB);
 
 // Обьединение всего парсинга модели
 Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init,
@@ -251,6 +265,9 @@ public:
     void destroy_all();
 
     VkSampler GetDefaultSampler() const{ return _textureManager.GetDefaultSampler(); }
+
+    AABB GetModelAABB(uint32_t id);
+
 private:
     VK_INIT_ENGINE::_inited_engine& _init;
     MeshManager& _meshManager;
@@ -276,6 +293,8 @@ struct RenderObject{
 
     // Ключ для сортировки
     uint64_t sortKey{0};
+
+    AABB worldAABB;
 };
 
 class RenderSystem{
