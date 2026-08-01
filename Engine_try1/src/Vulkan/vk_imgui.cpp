@@ -319,7 +319,9 @@ void VK_GUI::GUI::draw_fps_overlay(VK_INIT_ENGINE::_inited_engine& _init, CONTRO
 
 void VK_GUI::GUI::draw_context_menu_trs(VK_INIT_ENGINE::_inited_engine& _init, std::unique_ptr<Scene>& _scene,
     const GPUSceneData& sceneData){
-    if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) && !ImGui::GetIO().WantCaptureMouse) {
+    if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) &&
+    !ImGui::GetIO().WantCaptureMouse &&
+    !ImGuizmo::IsOver())  {
 
         ImVec2 mousePos = ImGui::GetMousePos();
 
@@ -357,6 +359,12 @@ void VK_GUI::GUI::draw_context_menu_trs(VK_INIT_ENGINE::_inited_engine& _init, s
             if (ImGui::MenuItem("TRS")) {
                 showTrsWindow = true;
                 showContextMenu = false;
+                ImGui::CloseCurrentPopup();
+            }
+
+            if (ImGui::MenuItem("Delete")) {
+                _scene->DestroyEntity(selectedEntityId);
+                selectedEntityId = -1;
                 ImGui::CloseCurrentPopup();
             }
         }
@@ -448,6 +456,115 @@ void VK_GUI::GUI::draw_context_menu_trs(VK_INIT_ENGINE::_inited_engine& _init, s
     }
 }
 
+void VK_GUI::GUI::draw_gizmo(VK_INIT_ENGINE::_inited_engine& _init, std::unique_ptr<Scene>& _scene,
+    const GPUSceneData& sceneData, ModelManager& _modelManager){
+
+    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
+        !ImGui::GetIO().WantCaptureMouse &&
+        !ImGuizmo::IsOver())
+    {
+        ImVec2 mousePos = ImGui::GetMousePos();
+        float screenWidth  = static_cast<float>(_init._windowExtent.width);
+        float screenHeight = static_cast<float>(_init._windowExtent.height);
+
+        Ray ray = Ray::FromScreen(mousePos.x, mousePos.y, screenWidth, screenHeight, sceneData);
+        RaycastHit hit = _scene->Raycast(ray);
+
+        if (hit.hit && hit.entity != nullptr) {
+            selectedEntityId = static_cast<int>(hit.entity->id);
+            showTrsWindow = true;
+        } else {
+            selectedEntityId = -1;
+            showTrsWindow = false;
+        }
+    }
+
+    if (selectedEntityId == -1 || !showTrsWindow) return;
+
+    GameEntity* entity = _scene->GetEntity(static_cast<uint32_t>(selectedEntityId));
+    if (entity == nullptr) return;
+
+    ImGuiIO& io = ImGui::GetIO();
+    ImGuizmo::SetOrthographic(false);
+    ImGuizmo::SetRect(0.0f, 0.0f, io.DisplaySize.x, io.DisplaySize.y);
+
+    glm::mat4 viewMatrix = sceneData.view;
+    glm::mat4 projMatrix = sceneData.proj;
+
+    glm::vec3 pivotOffset = glm::vec3(0.0f);
+
+    if (projMatrix[1][1] < 0.0f) {
+        projMatrix[1][1] *= -1.0f;
+    }
+
+    if (currentGizmoOperation != ImGuizmo::SCALE)
+    {
+        auto box = entity->GetWorldAABB(_modelManager);
+        glm::vec3 aabbCenter = (box.min + box.max) * 0.5f;
+        pivotOffset = aabbCenter - entity->position;
+    }
+
+    glm::mat4 modelMatrix = glm::mat4(1.0f);
+
+    modelMatrix = glm::translate(modelMatrix, entity->position + pivotOffset);
+
+    // Применяем вращение вокруг этого центра
+    modelMatrix = glm::rotate(modelMatrix, glm::radians(entity->rotation.x), glm::vec3(1.0f, 0.0f, 0.0f));
+    modelMatrix = glm::rotate(modelMatrix, glm::radians(entity->rotation.y), glm::vec3(0.0f, 1.0f, 0.0f));
+    modelMatrix = glm::rotate(modelMatrix, glm::radians(entity->rotation.z), glm::vec3(0.0f, 0.0f, 1.0f));
+
+    // Применяем масштаб
+    modelMatrix = glm::scale(modelMatrix, entity->scale);
+
+    // Манипуляция ImGuizmo
+    ImGuizmo::Manipulate(
+        glm::value_ptr(viewMatrix),
+        glm::value_ptr(projMatrix),
+        currentGizmoOperation,
+        currentGizmoMode,
+        glm::value_ptr(modelMatrix)
+    );
+
+    // Если крутим/двигаем гизмо — сохраняем изменения
+    if (ImGuizmo::IsUsing())
+    {
+        float translation[3];
+        float rotation[3];
+        float scale[3];
+
+        ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(modelMatrix), translation, rotation, scale);
+
+        // Возвращаем позицию обратно, вычитая pivotOffset, чтобы объект не прыгал при манипуляциях
+        entity->position.x = translation[0] - pivotOffset.x;
+        entity->position.y = translation[1] - pivotOffset.y;
+        entity->position.z = translation[2] - pivotOffset.z;
+
+        entity->rotation.x = rotation[0];
+        entity->rotation.y = rotation[1];
+        entity->rotation.z = rotation[2];
+
+        entity->scale.x = scale[0];
+        entity->scale.y = scale[1];
+        entity->scale.z = scale[2];
+    }
+}
+
+void VK_GUI::GUI::gizmo_mode(){
+    if (!ImGui::GetIO().WantTextInput) {
+        if (ImGui::IsKeyPressed(ImGuiKey_F)) {
+            if (currentGizmoOperation == ImGuizmo::TRANSLATE) {
+                currentGizmoOperation = ImGuizmo::ROTATE;
+            }
+            else if (currentGizmoOperation == ImGuizmo::ROTATE) {
+                currentGizmoOperation = ImGuizmo::SCALE;
+            }
+            else if (currentGizmoOperation == ImGuizmo::SCALE) {
+                currentGizmoOperation = ImGuizmo::TRANSLATE;
+            }
+        }
+    }
+}
+
 void VK_GUI::GUI::draw_imgui(VK_INIT_ENGINE::_inited_engine& _init, VkCommandBuffer cmd, VkExtent2D _drawExtent){
     VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(_init._drawImage.imageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
@@ -469,6 +586,9 @@ void VK_GUI::GUI::update_imgui(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplSDL3_NewFrame();
     ImGui::NewFrame();
+    ImGuizmo::BeginFrame();
+
+    gizmo_mode();
 
     draw_fps_overlay(_init, _delta);
 
@@ -477,6 +597,8 @@ void VK_GUI::GUI::update_imgui(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER
     draw_inspector_window(_init, _modelManager);
 
     draw_context_menu_trs(_init, _scene, sceneData);
+
+    draw_gizmo(_init, _scene, sceneData, _modelManager);
 
     ImGui::Render();
 }
