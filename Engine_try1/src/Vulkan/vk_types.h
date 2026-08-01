@@ -22,15 +22,19 @@
 #include <glm/vec4.hpp>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtx/matrix_decompose.hpp>
 #include <gli/gli.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtx/string_cast.hpp>
 #include <bit>
 
 #include "imgui.h"
+#include "imgui_internal.h"
 #include "imgui_impl_sdl3.h"
 #include "imgui_impl_vulkan.h"
-#include "imgui_internal.h"
+#include "ImGuizmo.h"
+#include "ImSequencer.h"
+
 
 #include "transcoder/basisu_transcoder.h"
 #include "../Controller/movement.hpp"

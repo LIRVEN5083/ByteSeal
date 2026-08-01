@@ -17,9 +17,12 @@ namespace VK_GUI{
             std::unique_ptr<Scene>& _scene, const GPUSceneData& sceneData);
     private:
         void draw_inspector_window(VK_INIT_ENGINE::_inited_engine& _init, ModelManager& modelManager);
-        void draw_model_list_overlay(VK_INIT_ENGINE::_inited_engine& _init, ModelManager& _modelManager, std::unique_ptr<Scene>& _scene);
+        void draw_model_list_overlay(VK_INIT_ENGINE::_inited_engine& _init, ModelManager& _modelManager,
+            std::unique_ptr<Scene>& _scene, const GPUSceneData& sceneData);
         void draw_fps_overlay(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER::Delta _delta);
         void draw_context_menu_trs(VK_INIT_ENGINE::_inited_engine& _init, std::unique_ptr<Scene>& _scene, const GPUSceneData& sceneData);
+        void draw_gizmo(VK_INIT_ENGINE::_inited_engine& _init, std::unique_ptr<Scene>& _scene, const GPUSceneData& sceneData, ModelManager& _modelManager);
+        void gizmo_mode();
 
         // TODO:: Для model manager и инспектора
         // -1 ну типо то что инспектор пуст
@@ -32,5 +35,10 @@ namespace VK_GUI{
         static inline bool showContextMenu = false;
         // Координаты мыши
         static inline ImVec2 mouseClickPos;
+
+        // TODO:: Для gizmo
+        static inline bool showTrsWindow = false;
+        static inline ImGuizmo::OPERATION currentGizmoOperation = ImGuizmo::TRANSLATE;
+        static inline ImGuizmo::MODE currentGizmoMode = ImGuizmo::WORLD;
     };
 }
