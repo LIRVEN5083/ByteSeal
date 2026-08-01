@@ -57,6 +57,9 @@ add_executable(${PROJECT_NAME}
     src/external/imgui/imgui_tables.cpp
     src/external/imgui/imgui_widgets.cpp
 
+    src/external/ImGuizmo/src/ImGuizmo.cpp
+    src/external/ImGuizmo/src/ImSequencer.cpp
+
     src/external/imgui/backends/imgui_impl_sdl3.cpp
     src/external/imgui/backends/imgui_impl_vulkan.cpp
 
@@ -83,7 +86,9 @@ add_subdirectory(src/external/draco)
 target_include_directories(${PROJECT_NAME} PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src/external
 
-     ${CMAKE_CURRENT_SOURCE_DIR}/src/external/stb
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/external/ImGuizmo/src
+
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/external/stb
      ${CMAKE_CURRENT_SOURCE_DIR}/src/external/glm
 
     ${CMAKE_CURRENT_SOURCE_DIR}/src/external/fmt/include
