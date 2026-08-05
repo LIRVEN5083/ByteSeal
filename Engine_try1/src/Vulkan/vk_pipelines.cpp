@@ -232,6 +232,34 @@ void PipelineBuilder::set_multisampling_none(){
     _multisampling.alphaToOneEnable = VK_FALSE;
 }
 
+void PipelineBuilder::set_multisampling(VkSampleCountFlagBits samples){
+    _multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    _multisampling.pNext = nullptr;
+
+    // Количество сэмплов
+    _multisampling.rasterizationSamples = samples;
+
+    // Базовые настройки аппаратного MSAA
+    _multisampling.sampleShadingEnable = VK_FALSE; // Альфа-аппроксимация (False для скорости)
+    _multisampling.minSampleShading = 1.0f;
+    _multisampling.pSampleMask = nullptr;
+
+    _multisampling.alphaToCoverageEnable = VK_FALSE;
+    _multisampling.alphaToOneEnable = VK_FALSE;
+}
+
+void PipelineBuilder::set_multisampling_alpha(VkSampleCountFlagBits samples){
+    _multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    _multisampling.pNext = nullptr;
+    _multisampling.rasterizationSamples = samples;
+
+    // магия Alpha-to-Coverage
+    _multisampling.sampleShadingEnable = VK_FALSE;
+    _multisampling.alphaToCoverageEnable = VK_TRUE;
+    _multisampling.alphaToOneEnable = VK_FALSE;
+    _multisampling.pSampleMask = nullptr;
+}
+
 void PipelineBuilder::disable_blending(){
     // default write mask
     _colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
@@ -271,8 +299,8 @@ void PipelineBuilder::enable_depthtest(bool depthWriteEnable, VkCompareOp op)
     _depthStencil.stencilTestEnable = VK_FALSE;
     _depthStencil.front = {};
     _depthStencil.back = {};
-    _depthStencil.minDepthBounds = 0.f;
-    _depthStencil.maxDepthBounds = 1.f;
+    _depthStencil.minDepthBounds = 1.f;
+    _depthStencil.maxDepthBounds = 0.f;
 }
 
 void PipelineBuilder::enable_blending_additive()

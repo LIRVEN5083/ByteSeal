@@ -48,6 +48,7 @@ void VK_APPLICATION::VulkanApplication::cleanup(){
 void VK_APPLICATION::VulkanApplication::run(){
     init_commands();
     init_descriptors();
+    _maxSamples = vkinit::max_samples(_init);
     init_grid_pipeline();
     init_scene();
     init_base_pipeline();
@@ -128,6 +129,7 @@ void VK_APPLICATION::VulkanApplication::run(){
 }
 
 void VK_APPLICATION::VulkanApplication::renderLoop(){
+    if (resize_requested) return;
     const uint32_t frameId = _frameNumber % FRAME_OVERLAP;
     FrameData& currentFrame = _frames[frameId];
 
@@ -167,8 +169,9 @@ void VK_APPLICATION::VulkanApplication::renderLoop(){
     VkCommandBufferBeginInfo cmdBeginInfo = vkinit::command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
     VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
 
-    vkutil::transition_image(cmd, _init._drawImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-    vkutil::transition_image(cmd, _init._depthImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+    vkutil::transition_image(cmd, _init._msaaColorImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    vkutil::transition_image(cmd, _init._msaaDepthImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL); // Наша 4х глубина
+    vkutil::transition_image(cmd, _init._drawImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL); // Наш 1х resolve-таргет
 
     _renderSystem.ClearQueue();
 
@@ -183,6 +186,9 @@ void VK_APPLICATION::VulkanApplication::renderLoop(){
 
     // Захардкоженная сетка
     draw_grid(cmd, globalDescriptor);
+
+    vkCmdEndRendering(cmd);
+
     // Захардкоженный интерефейс
     _gui.draw_imgui(_init, cmd, _drawExtent);
 
@@ -240,7 +246,6 @@ void VK_APPLICATION::VulkanApplication::resize_swapchain(){
 
     int w, h;
     SDL_GetWindowSizeInPixels(_init._window, &w, &h);
-
     while (w == 0 || h == 0) {
         SDL_GetWindowSizeInPixels(_init._window, &w, &h);
         SDL_WaitEvent(nullptr);
@@ -252,89 +257,103 @@ void VK_APPLICATION::VulkanApplication::resize_swapchain(){
     destroy_swapchain();
 
     vkb::SwapchainBuilder swapchainBuilder{_init._chosenGPU, _init._device, _init._surface};
-
     auto vkbSwapchain = swapchainBuilder
         .set_desired_extent(_init._windowExtent.width, _init._windowExtent.height)
         .set_desired_format({_init._swapchainImageFormat, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR})
-        // Флаг нужный для resize
         .add_image_usage_flags(VK_IMAGE_USAGE_TRANSFER_DST_BIT)
         .build()
         .value();
 
-    VkExtent3D drawImageExtent = {
-        _init._windowExtent.width,
-        _init._windowExtent.height,
-        1
-    };
+    VkExtent3D drawImageExtent = { _init._windowExtent.width, _init._windowExtent.height, 1 };
 
     _init._swapchain = vkbSwapchain.swapchain;
     _init._swapchainImages = vkbSwapchain.get_images().value();
     _init._swapchainImageViews = vkbSwapchain.get_image_views().value();
     _init._swapchainExtent = vkbSwapchain.extent;
 
-    _init._drawImage.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
-    _init._drawImage.imageExtent = drawImageExtent;
-
-    VkImageUsageFlags drawImageUsages{};
-    drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-    drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-    drawImageUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
-    drawImageUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-
-    VkImageCreateInfo rimg_info = vkinit::image_create_info(_init._drawImage.imageFormat, drawImageUsages, drawImageExtent);
-
-    //for the draw image, we want to allocate it from gpu local memory
     VmaAllocationCreateInfo rimg_allocinfo = {};
     rimg_allocinfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
     rimg_allocinfo.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-    //allocate and create the image
+    // Обычный плоский цвет
+    _init._drawImage.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
+    _init._drawImage.imageExtent = drawImageExtent;
+    VkImageUsageFlags drawImageUsages = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    VkImageCreateInfo rimg_info = vkinit::image_create_info(_init._drawImage.imageFormat, drawImageUsages, drawImageExtent);
+    rimg_info.samples = VK_SAMPLE_COUNT_1_BIT;
     vmaCreateImage(_init._allocator, &rimg_info, &rimg_allocinfo, &_init._drawImage.image, &_init._drawImage.allocation, nullptr);
-
-    //build a image-view for the draw image to use for rendering
     VkImageViewCreateInfo rview_info = vkinit::imageview_create_info(_init._drawImage.imageFormat, _init._drawImage.image, VK_IMAGE_ASPECT_COLOR_BIT);
-
     VK_CHECK(vkCreateImageView(_init._device, &rview_info, nullptr, &_init._drawImage.imageView));
+    // Холст MSAA
+    _init._msaaColorImage.imageFormat = _init._drawImage.imageFormat;
+    _init._msaaColorImage.imageExtent = drawImageExtent;
+    VkImageUsageFlags msaaColorUsages = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
+    VkImageCreateInfo msaa_img_info = vkinit::image_create_info(_init._msaaColorImage.imageFormat, msaaColorUsages, drawImageExtent);
+    msaa_img_info.samples = _maxSamples;
+    vmaCreateImage(_init._allocator, &msaa_img_info, &rimg_allocinfo, &_init._msaaColorImage.image, &_init._msaaColorImage.allocation, nullptr);
+    VkImageViewCreateInfo msaa_view_info = vkinit::imageview_create_info(_init._msaaColorImage.imageFormat, _init._msaaColorImage.image, VK_IMAGE_ASPECT_COLOR_BIT);
+    VK_CHECK(vkCreateImageView(_init._device, &msaa_view_info, nullptr, &_init._msaaColorImage.imageView));
+    // Буфер глубины MSAA
+    _init._msaaDepthImage.imageFormat = VK_FORMAT_D32_SFLOAT;
+    _init._msaaDepthImage.imageExtent = drawImageExtent;
+    VkImageUsageFlags depthImageUsages = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
+    VkImageCreateInfo dimg_info = vkinit::image_create_info(_init._msaaDepthImage.imageFormat, depthImageUsages, drawImageExtent);
+    dimg_info.samples = _maxSamples;
 
-    _init._depthImage.imageFormat = VK_FORMAT_D32_SFLOAT;
-    _init._depthImage.imageExtent = drawImageExtent;
-    VkImageUsageFlags depthImageUsages{};
-    depthImageUsages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    // Аллокация строго в переменные _msaaDepthImage
+    vmaCreateImage(_init._allocator, &dimg_info, &rimg_allocinfo, &_init._msaaDepthImage.image, &_init._msaaDepthImage.allocation, nullptr);
+    VkImageViewCreateInfo dview_info = vkinit::imageview_create_info(_init._msaaDepthImage.imageFormat, _init._msaaDepthImage.image, VK_IMAGE_ASPECT_DEPTH_BIT);
+    VK_CHECK(vkCreateImageView(_init._device, &dview_info, nullptr, &_init._msaaDepthImage.imageView));
 
-    VkImageCreateInfo dimg_info = vkinit::image_create_info(_init._depthImage.imageFormat, depthImageUsages, drawImageExtent);
-
-    //allocate and create the image
-    vmaCreateImage(_init._allocator, &dimg_info, &rimg_allocinfo, &_init._depthImage.image, &_init._depthImage.allocation, nullptr);
-
-    //build a image-view for the draw image to use for rendering
-    VkImageViewCreateInfo dview_info = vkinit::imageview_create_info(_init._depthImage.imageFormat, _init._depthImage.image, VK_IMAGE_ASPECT_DEPTH_BIT);
-
-    VK_CHECK(vkCreateImageView(_init._device, &dview_info, nullptr, &_init._depthImage.imageView));
+    ImGui_ImplVulkan_SetMinImageCount(_init._swapchainImageViews.size());
 
     resize_requested = false;
 }
 
 
 void VK_APPLICATION::VulkanApplication::destroy_swapchain(){
-    // Очистка swapchain
+    fmt::print("Destroy swapchain\n");
+
     if (_init._allocator != VK_NULL_HANDLE) {
         if (_init._drawImage.imageView != VK_NULL_HANDLE) {
             vkDestroyImageView(_init._device, _init._drawImage.imageView, nullptr);
             _init._drawImage.imageView = VK_NULL_HANDLE;
         }
+        /*
         if (_init._depthImage.imageView != VK_NULL_HANDLE) {
             vkDestroyImageView(_init._device, _init._depthImage.imageView, nullptr);
             _init._depthImage.imageView = VK_NULL_HANDLE;
+        }
+        */
+        if (_init._msaaColorImage.imageView != VK_NULL_HANDLE) {
+            vkDestroyImageView(_init._device, _init._msaaColorImage.imageView, nullptr);
+            _init._msaaColorImage.imageView = VK_NULL_HANDLE;
+        }
+        if (_init._msaaDepthImage.imageView != VK_NULL_HANDLE) {
+            vkDestroyImageView(_init._device, _init._msaaDepthImage.imageView, nullptr);
+            _init._msaaDepthImage.imageView = VK_NULL_HANDLE;
         }
         if (_init._drawImage.image != VK_NULL_HANDLE) {
             vmaDestroyImage(_init._allocator, _init._drawImage.image, _init._drawImage.allocation);
             _init._drawImage.image = VK_NULL_HANDLE;
             _init._drawImage.allocation = VK_NULL_HANDLE;
         }
+        /*
         if (_init._depthImage.image != VK_NULL_HANDLE) {
             vmaDestroyImage(_init._allocator, _init._depthImage.image, _init._depthImage.allocation);
             _init._depthImage.image = VK_NULL_HANDLE;
             _init._depthImage.allocation = VK_NULL_HANDLE;
+        }
+        */
+        if (_init._msaaColorImage.image != VK_NULL_HANDLE) {
+            vmaDestroyImage(_init._allocator, _init._msaaColorImage.image, _init._msaaColorImage.allocation);
+            _init._msaaColorImage.image = VK_NULL_HANDLE;
+            _init._msaaColorImage.allocation = VK_NULL_HANDLE;
+        }
+        if (_init._msaaDepthImage.image != VK_NULL_HANDLE) {
+            vmaDestroyImage(_init._allocator, _init._msaaDepthImage.image, _init._msaaDepthImage.allocation);
+            _init._msaaDepthImage.image = VK_NULL_HANDLE;
+            _init._msaaDepthImage.allocation = VK_NULL_HANDLE;
         }
     }
 
@@ -343,13 +362,12 @@ void VK_APPLICATION::VulkanApplication::destroy_swapchain(){
             vkDestroyImageView(_init._device, imageView, nullptr);
         }
     }
-
     _init._swapchainImageViews.clear();
     _init._swapchainImages.clear();
 
-    // Уничтожаем сам Swapchain
     if (_init._swapchain != VK_NULL_HANDLE) {
         vkDestroySwapchainKHR(_init._device, _init._swapchain, nullptr);
+        _init._swapchain = VK_NULL_HANDLE;
     }
 }
 
@@ -428,16 +446,17 @@ void VK_APPLICATION::VulkanApplication::init_grid_pipeline(){
     //no backface culling
     pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
     //no multisampling
-    pipelineBuilder.set_multisampling_none();
+    pipelineBuilder.set_multisampling_alpha(_maxSamples);
 
     pipelineBuilder.enable_blending_alphablend();
 
     //pipelineBuilder.disable_blending();
-    pipelineBuilder.enable_depthtest(VK_FALSE, VK_COMPARE_OP_LESS_OR_EQUAL);
+    pipelineBuilder.enable_depthtest(VK_FALSE, VK_COMPARE_OP_GREATER_OR_EQUAL);
+
 
     //connect the image format we will draw into, from draw image
-    pipelineBuilder.set_color_attachment_format(_init._drawImage.imageFormat);
-    pipelineBuilder.set_depth_format(_init._depthImage.imageFormat);
+    pipelineBuilder.set_color_attachment_format(_init._msaaColorImage.imageFormat);
+    pipelineBuilder.set_depth_format(_init._msaaDepthImage.imageFormat);
 
     //finally build the pipeline
     _gridPipeline = pipelineBuilder.build_pipeline(_init._device);
@@ -494,16 +513,17 @@ void VK_APPLICATION::VulkanApplication::init_base_pipeline(){
     //no backface culling
     pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
     //no multisampling
-    pipelineBuilder.set_multisampling_none();
+
+    pipelineBuilder.set_multisampling(_maxSamples);
 
     pipelineBuilder.disable_blending();
 
     //pipelineBuilder.disable_blending();
-    pipelineBuilder.enable_depthtest(VK_TRUE, VK_COMPARE_OP_LESS_OR_EQUAL);
+    pipelineBuilder.enable_depthtest(VK_TRUE, VK_COMPARE_OP_GREATER_OR_EQUAL);
 
     //connect the image format we will draw into, from draw image
-    pipelineBuilder.set_color_attachment_format(_init._drawImage.imageFormat);
-    pipelineBuilder.set_depth_format(_init._depthImage.imageFormat);
+    pipelineBuilder.set_color_attachment_format(_init._msaaColorImage.imageFormat);
+    pipelineBuilder.set_depth_format(_init._msaaDepthImage.imageFormat);
 
     //finally build the pipeline
     _BasePipeline = pipelineBuilder.build_pipeline(_init._device);
@@ -576,33 +596,11 @@ void VK_APPLICATION::VulkanApplication::init_scene(){
 }
 
 void VK_APPLICATION::VulkanApplication::draw_grid(VkCommandBuffer cmd, VkDescriptorSet globalDescriptor){
-    VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(_init._drawImage.imageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-
-    VkRenderingAttachmentInfo depthAttachment = vkinit::depth_attachment_info(_init._depthImage.imageView, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
-    depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-    depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-
-    VkRenderingInfo renderInfo = vkinit::rendering_info(_drawExtent, &colorAttachment, &depthAttachment);
-    vkCmdBeginRendering(cmd, &renderInfo);
-
-    VkViewport viewport{};
-    viewport.x = 0;
-    viewport.y = 0;
-    viewport.width = _drawExtent.width;
-    viewport.height = _drawExtent.height;
-    viewport.minDepth = 0.f;
-    viewport.maxDepth = 1.f;
+    VkViewport viewport = { 0.0f, 0.0f, (float)_drawExtent.width, (float)_drawExtent.height, 1.0f, 0.0f };
     vkCmdSetViewport(cmd, 0, 1, &viewport);
 
-    VkRect2D scissor = {};
-    scissor.offset.x = 0;
-    scissor.offset.y = 0;
-    scissor.extent.width = _drawExtent.width;
-    scissor.extent.height = _drawExtent.height;
+    VkRect2D scissor = { {0, 0}, _drawExtent };
     vkCmdSetScissor(cmd, 0, 1, &scissor);
-
 
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _gridPipeline);
 
@@ -617,7 +615,6 @@ void VK_APPLICATION::VulkanApplication::draw_grid(VkCommandBuffer cmd, VkDescrip
     );
 
     vkCmdDraw(cmd, 6, 1, 0, 0);
-    vkCmdEndRendering(cmd);
 }
 
 /*
@@ -777,7 +774,7 @@ VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& 
 
     // Perspective projection
     float aspect = (float)_init._windowExtent.width / (float)_init._windowExtent.height;
-    sceneData.proj = glm::perspective(glm::radians(70.0f), aspect, 0.01f, 10000.0f);
+    sceneData.proj = glm::tweakedInfinitePerspective(glm::radians(70.0f), aspect, 0.1f);
     sceneData.proj[1][1] *= -1.0f;
 
     // proj * view

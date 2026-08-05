@@ -1,5 +1,23 @@
 #include "vk_initializers.h"
 
+VkSampleCountFlagBits vkinit::max_samples(VK_INIT_ENGINE::_inited_engine& _init){
+    VkPhysicalDeviceProperties properties;
+    vkGetPhysicalDeviceProperties(_init._chosenGPU, &properties);
+
+    VkSampleCountFlags counts = properties.limits.framebufferColorSampleCounts &
+                                properties.limits.framebufferDepthSampleCounts;
+
+    if (counts & VK_SAMPLE_COUNT_64_BIT) return VK_SAMPLE_COUNT_64_BIT;
+    if (counts & VK_SAMPLE_COUNT_32_BIT) return VK_SAMPLE_COUNT_32_BIT;
+    if (counts & VK_SAMPLE_COUNT_16_BIT) return VK_SAMPLE_COUNT_16_BIT;
+    if (counts & VK_SAMPLE_COUNT_8_BIT)  return VK_SAMPLE_COUNT_8_BIT;
+    if (counts & VK_SAMPLE_COUNT_4_BIT)  return VK_SAMPLE_COUNT_4_BIT;
+    if (counts & VK_SAMPLE_COUNT_2_BIT)  return VK_SAMPLE_COUNT_2_BIT;
+
+    return VK_SAMPLE_COUNT_1_BIT;
+}
+
+
 VkCommandPoolCreateInfo vkinit::command_pool_create_info(uint32_t queueFamilyIndex, VkCommandPoolCreateFlags flags){
     VkCommandPoolCreateInfo info = {};
     info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
@@ -235,7 +253,9 @@ VkRenderingAttachmentInfo vkinit::depth_attachment_info(
     depthAttachment.imageLayout = layout;
     depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    depthAttachment.clearValue.depthStencil.depth = 1.0f;
+
+    // МАГИЯ REVERSE Z: очищаем буфер в 0.0f (теперь это самая дальняя точка)
+    depthAttachment.clearValue.depthStencil.depth = 0.0f;
 
     return depthAttachment;
 }

@@ -2,11 +2,12 @@
 
 #include "vk_types.h"
 
-#include "vk_imgui.h"
 #include "vk_images.h"
-#include "vk_pipelines.h"
+#include "vk_imgui.h"
 
 namespace vkinit {
+
+    VkSampleCountFlagBits max_samples(VK_INIT_ENGINE::_inited_engine& _init);
 
     // Заполнение структуры для командного пула одной функцией
     VkCommandPoolCreateInfo command_pool_create_info(

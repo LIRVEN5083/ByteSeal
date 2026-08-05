@@ -81,6 +81,8 @@ namespace VK_APPLICATION {
         VkPipelineLayout _BasePipelineLayout;
         VkPipeline _BasePipeline;
 
+        VkSampleCountFlagBits _maxSamples;
+
         std::vector<std::string> modelsToLoad = {
             "../Model/pudge_dota_2.glb"
         };

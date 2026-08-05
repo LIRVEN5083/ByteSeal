@@ -86,6 +86,10 @@ namespace VK_INIT_ENGINE {
         std::vector<VkImageView> _swapchainImageViews; // Инструкция к каждому кадру (Сырой картинки из swapChainImages)
         VkExtent2D _swapchainExtent;
 
+        // Холсты для MSAA
+        AllocatedImage _msaaColorImage;
+        AllocatedImage _msaaDepthImage;
+
         // Холст цветной куда шейдеры выводят изображение
         AllocatedImage _drawImage;
         // Буфер глубины

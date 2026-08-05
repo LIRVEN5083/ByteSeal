@@ -1,7 +1,7 @@
 #pragma once
 
-#include "vk_glTF_loading.h"
 #include "vk_initializers.h"
+#include "vk_glTF_loading.h"
 #include "vk_scene.h"
 #include "../Utils/File_loader.h"
 
