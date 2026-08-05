@@ -113,7 +113,7 @@ GPUTexture TextureManager::AllocateTexture(VkImageCreateInfo imageInfo,
     GPUTexture texture{};
     texture.lifetime = lifetime;
 
-    texture.mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(imageInfo.extent.width, imageInfo.extent.height)))) + 1;
+    texture.mipLevels = imageInfo.mipLevels;
     imageInfo.mipLevels = texture.mipLevels;
     imageInfo.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
@@ -534,22 +534,24 @@ std::optional<GPUTexture> load_image(VK_INIT_ENGINE::_inited_engine& _init, Text
     memcpy(data, pixelData, dataSize);
     vmaUnmapMemory(_init._allocator, stagingBuffer.allocation);
 
+    uint32_t mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1;
+
     // Настраиваем инфо для оптимальной текстуры на GPU
     VkImageCreateInfo imgInfo{ VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
     imgInfo.imageType = VK_IMAGE_TYPE_2D;
     imgInfo.format = format;
     imgInfo.extent = { width, height, 1 };
-    imgInfo.mipLevels = 1;
+    imgInfo.mipLevels = mipLevels;
     imgInfo.arrayLayers = 1;
     imgInfo.samples = VK_SAMPLE_COUNT_1_BIT;
     imgInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-    imgInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    imgInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 
     VkImageViewCreateInfo viewInfo{ VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
     viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
     viewInfo.format = format;
     viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    viewInfo.subresourceRange.levelCount = 1;
+    viewInfo.subresourceRange.levelCount = mipLevels;
     viewInfo.subresourceRange.layerCount = 1;
 
     // Выделяем память из VMA Арены и регистрируем в Bindless-сет

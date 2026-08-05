@@ -773,7 +773,7 @@ VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& 
 
     // Perspective projection
     float aspect = (float)_init._windowExtent.width / (float)_init._windowExtent.height;
-    sceneData.proj = glm::perspective(glm::radians(70.0f), aspect, 0.01f, 10000.0f);
+    sceneData.proj = glm::perspective(glm::radians(70.0f), aspect, 0.2f, 1000.0f);
     sceneData.proj[1][1] *= -1.0f;
 
     // proj * view
