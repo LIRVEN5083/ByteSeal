@@ -28,19 +28,37 @@ void VK_INIT_ENGINE::VulkanInitEngine::init_cleanup(){
         vkDestroyCommandPool(ready_init._device, ready_init._immCommandPool, nullptr);
     }
 
-    // Очистка swapchain
     if (ready_init._allocator != VK_NULL_HANDLE) {
+        // Цвет 1х
         if (ready_init._drawImage.imageView != VK_NULL_HANDLE) {
             vkDestroyImageView(ready_init._device, ready_init._drawImage.imageView, nullptr);
-        }
-        if (ready_init._depthImage.imageView != VK_NULL_HANDLE) {
-            vkDestroyImageView(ready_init._device, ready_init._depthImage.imageView, nullptr);
+            ready_init._drawImage.imageView = VK_NULL_HANDLE;
         }
         if (ready_init._drawImage.image != VK_NULL_HANDLE) {
             vmaDestroyImage(ready_init._allocator, ready_init._drawImage.image, ready_init._drawImage.allocation);
+            ready_init._drawImage.image = VK_NULL_HANDLE;
+            ready_init._drawImage.allocation = VK_NULL_HANDLE;
         }
-        if (ready_init._depthImage.image != VK_NULL_HANDLE) {
-            vmaDestroyImage(ready_init._allocator, ready_init._depthImage.image, ready_init._depthImage.allocation);
+
+        // MSAA
+        if (ready_init._msaaColorImage.imageView != VK_NULL_HANDLE) {
+            vkDestroyImageView(ready_init._device, ready_init._msaaColorImage.imageView, nullptr);
+            ready_init._msaaColorImage.imageView = VK_NULL_HANDLE;
+        }
+        if (ready_init._msaaColorImage.image != VK_NULL_HANDLE) {
+            vmaDestroyImage(ready_init._allocator, ready_init._msaaColorImage.image, ready_init._msaaColorImage.allocation);
+            ready_init._msaaColorImage.image = VK_NULL_HANDLE;
+            ready_init._msaaColorImage.allocation = VK_NULL_HANDLE;
+        }
+
+        if (ready_init._msaaDepthImage.imageView != VK_NULL_HANDLE) {
+            vkDestroyImageView(ready_init._device, ready_init._msaaDepthImage.imageView, nullptr);
+            ready_init._msaaDepthImage.imageView = VK_NULL_HANDLE;
+        }
+        if (ready_init._msaaDepthImage.image != VK_NULL_HANDLE) {
+            vmaDestroyImage(ready_init._allocator, ready_init._msaaDepthImage.image, ready_init._msaaDepthImage.allocation);
+            ready_init._msaaDepthImage.image = VK_NULL_HANDLE;
+            ready_init._msaaDepthImage.allocation = VK_NULL_HANDLE;
         }
     }
 
@@ -49,17 +67,15 @@ void VK_INIT_ENGINE::VulkanInitEngine::init_cleanup(){
             vkDestroyImageView(ready_init._device, imageView, nullptr);
         }
     }
-
     ready_init._swapchainImageViews.clear();
     ready_init._swapchainImages.clear();
 
-    // Уничтожаем сам Swapchain
     if (ready_init._swapchain != VK_NULL_HANDLE) {
         vkDestroySwapchainKHR(ready_init._device, ready_init._swapchain, nullptr);
+        ready_init._swapchain = VK_NULL_HANDLE;
     }
 
-
-    // Базовая чистка
+    // Базовая чистка систем Vulkan
     if (ready_init._allocator != VK_NULL_HANDLE) {
         vmaDestroyAllocator(ready_init._allocator);
     }
@@ -114,14 +130,19 @@ void VK_INIT_ENGINE::VulkanInitEngine::create_swapchain(uint32_t width, uint32_t
 
 void VK_INIT_ENGINE::VulkanInitEngine::init_swapchain(){
     create_swapchain(ready_init._windowExtent.width, ready_init._windowExtent.height);
-    //draw image size will match the window
+
     VkExtent3D drawImageExtent = {
         ready_init._windowExtent.width,
         ready_init._windowExtent.height,
         1
     };
 
-    //hardcoding the draw format to 32 bit float
+    // 1. Получаем поддерживаемое видеокартой количество сэмплов для MSAA
+    VkSampleCountFlagBits msaaSamples = vkinit::max_samples(ready_init);
+
+    // ==========================================
+    // Обычная плоская картинка (_drawImage, 1 sample)
+    // ==========================================
     ready_init._drawImage.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
     ready_init._drawImage.imageExtent = drawImageExtent;
 
@@ -129,37 +150,56 @@ void VK_INIT_ENGINE::VulkanInitEngine::init_swapchain(){
     drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
     drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     drawImageUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
-    drawImageUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    drawImageUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; // Оставляем, так как сюда сбрасывается Resolve и рисуется UI
 
     VkImageCreateInfo rimg_info = vkinit::image_create_info(ready_init._drawImage.imageFormat, drawImageUsages, drawImageExtent);
+    // Для обычной картинки сэмплы всегда равны 1
+    rimg_info.samples = VK_SAMPLE_COUNT_1_BIT;
 
-    //for the draw image, we want to allocate it from gpu local memory
     VmaAllocationCreateInfo rimg_allocinfo = {};
     rimg_allocinfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
     rimg_allocinfo.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-    //allocate and create the image
     vmaCreateImage(ready_init._allocator, &rimg_info, &rimg_allocinfo, &ready_init._drawImage.image, &ready_init._drawImage.allocation, nullptr);
 
-    //build a image-view for the draw image to use for rendering
     VkImageViewCreateInfo rview_info = vkinit::imageview_create_info(ready_init._drawImage.imageFormat, ready_init._drawImage.image, VK_IMAGE_ASPECT_COLOR_BIT);
-
     VK_CHECK(vkCreateImageView(ready_init._device, &rview_info, nullptr, &ready_init._drawImage.imageView));
 
-    ready_init._depthImage.imageFormat = VK_FORMAT_D32_SFLOAT;
-    ready_init._depthImage.imageExtent = drawImageExtent;
+
+    // Новая многовыборочная цветная картинка (_msaaColorImage)
+
+    ready_init._msaaColorImage.imageFormat = ready_init._drawImage.imageFormat; // Формат совпадает с основным холстом
+    ready_init._msaaColorImage.imageExtent = drawImageExtent;
+
+    VkImageUsageFlags msaaColorUsages{};
+    msaaColorUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; // Используем как таргет для 3D сцены
+    msaaColorUsages |= VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT; // Оптимизация GPU: память может не выделяться на диске физически, она временная
+
+    VkImageCreateInfo msaa_img_info = vkinit::image_create_info(ready_init._msaaColorImage.imageFormat, msaaColorUsages, drawImageExtent);
+    msaa_img_info.samples = msaaSamples;
+
+    // Выделяем память
+    vmaCreateImage(ready_init._allocator, &msaa_img_info, &rimg_allocinfo, &ready_init._msaaColorImage.image, &ready_init._msaaColorImage.allocation, nullptr);
+
+    VkImageViewCreateInfo msaa_view_info = vkinit::imageview_create_info(ready_init._msaaColorImage.imageFormat, ready_init._msaaColorImage.image, VK_IMAGE_ASPECT_COLOR_BIT);
+    VK_CHECK(vkCreateImageView(ready_init._device, &msaa_view_info, nullptr, &ready_init._msaaColorImage.imageView));
+
+    // Новая многовыборочная глубина (_msaaDepthImage)
+
+    ready_init._msaaDepthImage.imageFormat = VK_FORMAT_D32_SFLOAT;
+    ready_init._msaaDepthImage.imageExtent = drawImageExtent;
+
     VkImageUsageFlags depthImageUsages{};
     depthImageUsages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    depthImageUsages |= VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
 
-    VkImageCreateInfo dimg_info = vkinit::image_create_info(ready_init._depthImage.imageFormat, depthImageUsages, drawImageExtent);
+    VkImageCreateInfo dimg_info = vkinit::image_create_info(ready_init._msaaDepthImage.imageFormat, depthImageUsages, drawImageExtent);
+    dimg_info.samples = msaaSamples;
 
-    //allocate and create the image
-    vmaCreateImage(ready_init._allocator, &dimg_info, &rimg_allocinfo, &ready_init._depthImage.image, &ready_init._depthImage.allocation, nullptr);
+    vmaCreateImage(ready_init._allocator, &dimg_info, &rimg_allocinfo, &ready_init._msaaDepthImage.image, &ready_init._msaaDepthImage.allocation, nullptr);
 
-    //build a image-view for the draw image to use for rendering
-    VkImageViewCreateInfo dview_info = vkinit::imageview_create_info(ready_init._depthImage.imageFormat, ready_init._depthImage.image, VK_IMAGE_ASPECT_DEPTH_BIT);
-
-    VK_CHECK(vkCreateImageView(ready_init._device, &dview_info, nullptr, &ready_init._depthImage.imageView));
+    VkImageViewCreateInfo dview_info = vkinit::imageview_create_info(ready_init._msaaDepthImage.imageFormat, ready_init._msaaDepthImage.image, VK_IMAGE_ASPECT_DEPTH_BIT);
+    VK_CHECK(vkCreateImageView(ready_init._device, &dview_info, nullptr, &ready_init._msaaDepthImage.imageView));
 }
 
 void VK_INIT_ENGINE::VulkanInitEngine::init_sync_structures(){

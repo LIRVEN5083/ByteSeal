@@ -68,6 +68,10 @@ public:
 
     void set_multisampling_none();
 
+    void set_multisampling(VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_2_BIT);
+
+    void set_multisampling_alpha(VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_2_BIT);
+
     void disable_blending();
 
     void set_color_attachment_format(VkFormat format);

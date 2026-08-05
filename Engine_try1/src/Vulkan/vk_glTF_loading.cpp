@@ -1244,20 +1244,28 @@ void RenderSystem::DrawForward(VkCommandBuffer cmd, VkExtent2D drawExtent, VkDes
     VkClearValue clearColor;
     clearColor.color = { { 0.3f, 0.3f, 0.3f, 1.0f } };
 
-    VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(_init._drawImage.imageView, &clearColor, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    // основной таргет — MSAA картинка
+    VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(_init._msaaColorImage.imageView, &clearColor, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    // GPU сохранит только сглаженный результат
+    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 
-    VkRenderingAttachmentInfo depthAttachment = vkinit::depth_attachment_info(_init._depthImage.imageView, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+    // МУЛЬТИСЭМПЛИНГОВАЯ МАГИЯ RESOLVE:
+    colorAttachment.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT; // Усредняем субпиксели
+    colorAttachment.resolveImageView = _init._drawImage.imageView; // Сюда GPU сольет сглаженный 1х кадр
+    colorAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+    // Настраиваем глубину: она у нас уже 4х/8х на уровне создания памяти
+    VkRenderingAttachmentInfo depthAttachment = vkinit::depth_attachment_info(_init._msaaDepthImage.imageView, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
     depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE; // Память глубины тоже можно не сохранять
 
     VkRenderingInfo renderInfo = vkinit::rendering_info(drawExtent, &colorAttachment, &depthAttachment);
 
     vkCmdBeginRendering(cmd, &renderInfo);
 
     if (_mainDrawQueue.empty()) {
-        vkCmdEndRendering(cmd);
+        // Если сцена пустая, мы всё равно не закрываем рендер тут, так как дальше идет сетка!
         return;
     }
 
@@ -1298,5 +1306,4 @@ void RenderSystem::DrawForward(VkCommandBuffer cmd, VkExtent2D drawExtent, VkDes
         vkCmdDrawIndexed(cmd, object.indexCount, 1, object.firstIndex, 0, 0);
     }
 
-    vkCmdEndRendering(cmd);
 }
