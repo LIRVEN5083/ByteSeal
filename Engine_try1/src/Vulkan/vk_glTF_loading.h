@@ -17,6 +17,14 @@
 #include <fastgltf/tools.hpp>
 #include <iostream>
 
+// TODO: from vk_images.h
+namespace vkutil{
+    VkFilter GetVkFilter(int gltfFilter);
+    VkSamplerMipmapMode GetVkMipmapMode(int gltfFilter);
+    VkSamplerAddressMode GetVkAddressMode(int gltfWrap);
+    struct SamplerCreateInfoHash;
+    struct SamplerCreateInfoEqual;
+}
 // Делим ебанные обьекты по типу аллокации
 // И времени их существования на сцене
 
@@ -68,6 +76,8 @@ struct GPUTexture {
     uint32_t globalIndex{ 0 };
     uint32_t mipLevels;
 
+    VkSampler sampler;
+
     VkDescriptorSet imguiDescriptorSet{VK_NULL_HANDLE};
     ModelLifetime lifetime{ ModelLifetime::Dynamic };
 };
@@ -104,13 +114,24 @@ private:
     VmaPool _meshArena;
 };
 
+struct SamplerOptions{
+    int minFilter{ 9729 }; // LINEAR по умолчанию
+    int magFilter{ 9729 }; // LINEAR по умолчанию
+    int wrapS{ 10497 };    // REPEAT по умолчанию
+    int wrapT{ 10497 };    // REPEAT по умолчанию
+};
+
 class TextureManager{
 public:
     const uint32_t MAX_BINDLESS_TEXTURES = 1000;
 
     void init(VK_INIT_ENGINE::_inited_engine& _init);
 
-    GPUTexture AllocateTexture(VkImageCreateInfo imageInfo, VkImageViewCreateInfo viewInfo, ModelLifetime lifetime = ModelLifetime::Dynamic);
+    GPUTexture AllocateTexture(
+        VkImageCreateInfo imageInfo,
+        VkImageViewCreateInfo viewInfo,
+        const SamplerOptions& params = {},
+        ModelLifetime lifetime = ModelLifetime::Dynamic);
 
     void FreeTexture(GPUTexture& texture);
     void DestroyAllocationData();
@@ -121,6 +142,8 @@ public:
     VkDescriptorSetLayout GetTextureLayout() const { return _textureLayout; }
     VkSampler GetDefaultSampler() const {return _defaultSampler;}
 private:
+    VkSampler CreateSampler(const SamplerOptions& params);
+
     GPUTexture defaultTexture;
 
     VkDevice _device{ VK_NULL_HANDLE };
@@ -131,7 +154,12 @@ private:
     VkDescriptorSet _textureSet;
 
     VmaPool _textureArena{ VK_NULL_HANDLE };
+
+    // Базовый сэмлпер пустышка
     VkSampler _defaultSampler{ VK_NULL_HANDLE };
+
+    // Хэш ддя сэмплеров
+    std::unordered_map<VkSamplerCreateInfo, VkSampler, vkutil::SamplerCreateInfoHash, vkutil::SamplerCreateInfoEqual> _samplerCache;
 
     uint32_t _nextIndex{ 0 };
     std::vector<uint32_t> _freeIndices;
@@ -217,7 +245,8 @@ namespace VK_APPLICATION{
 // Парсинг текстур и их аллокация
 std::optional<GPUTexture> load_image(VK_INIT_ENGINE::_inited_engine& _init, TextureManager& textureManager,
                                             const unsigned char* pixelData, uint32_t width, uint32_t height,
-                                            VkFormat format, ModelLifetime lifetime = ModelLifetime::Dynamic);
+                                            VkFormat format, SamplerOptions samplerParams = {},
+                                            ModelLifetime lifetime = ModelLifetime::Dynamic);
 
 // Парсинг мешей и их аллокация
 std::optional<std::vector<std::shared_ptr<MeshAsset>>> load_Meshes(VK_INIT_ENGINE::_inited_engine& _init,

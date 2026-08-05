@@ -2,6 +2,7 @@
 #include "vk_types.h"
 #include "VkBootstrap.h"
 #include "vk_initializers.h"
+#include "vk_pipelines.h"
 
 #include <chrono>
 #include <thread>

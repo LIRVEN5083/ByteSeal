@@ -2,9 +2,8 @@
 
 #include "vk_types.h"
 
-#include "vk_imgui.h"
 #include "vk_images.h"
-#include "vk_pipelines.h"
+#include "vk_imgui.h"
 
 namespace vkinit {
 

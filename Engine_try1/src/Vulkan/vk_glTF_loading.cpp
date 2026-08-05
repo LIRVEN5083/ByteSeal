@@ -106,13 +106,18 @@ void TextureManager::init(VK_INIT_ENGINE::_inited_engine& _init){
     create_default_white_texture(_init);
 }
 
-GPUTexture TextureManager::AllocateTexture(VkImageCreateInfo imageInfo, VkImageViewCreateInfo viewInfo, ModelLifetime lifetime){
+GPUTexture TextureManager::AllocateTexture(VkImageCreateInfo imageInfo,
+        VkImageViewCreateInfo viewInfo,
+        const SamplerOptions& params,
+        ModelLifetime lifetime){
     GPUTexture texture{};
     texture.lifetime = lifetime;
 
     texture.mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(imageInfo.extent.width, imageInfo.extent.height)))) + 1;
     imageInfo.mipLevels = texture.mipLevels;
     imageInfo.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+
+    texture.sampler = CreateSampler(params);
 
     // Получить bindless индекс
     if (!_freeIndices.empty()) {
@@ -121,7 +126,7 @@ GPUTexture TextureManager::AllocateTexture(VkImageCreateInfo imageInfo, VkImageV
     } else {
         texture.globalIndex = _nextIndex++;
         if (texture.globalIndex >= MAX_BINDLESS_TEXTURES) {
-            fmt::print("CRITICAL ERROR: Texture index out of range!");
+            fmt::print("[ENGINE CRITICAL ERROR]:  Texture index out of range!");
         }
     }
 
@@ -143,7 +148,7 @@ GPUTexture TextureManager::AllocateTexture(VkImageCreateInfo imageInfo, VkImageV
 
     VkDescriptorImageInfo descriptorImgInfo{};
     descriptorImgInfo.imageView = texture.image.imageView;
-    descriptorImgInfo.sampler = _defaultSampler;
+    descriptorImgInfo.sampler = texture.sampler;
     descriptorImgInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
     VkWriteDescriptorSet write{ VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
@@ -157,7 +162,7 @@ GPUTexture TextureManager::AllocateTexture(VkImageCreateInfo imageInfo, VkImageV
     vkUpdateDescriptorSets(_device, 1, &write, 0, nullptr);
 
     texture.imguiDescriptorSet = ImGui_ImplVulkan_AddTexture(
-        _defaultSampler,
+        texture.sampler,
         texture.image.imageView,
         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
     );
@@ -184,6 +189,13 @@ void TextureManager::FreeTexture(GPUTexture& texture){
 }
 
 void TextureManager::DestroyAllocationData(){
+    // Уничтожаем хэш сэмплеров и сами сэмплеры
+    for (auto& [info, sampler] : _samplerCache) {
+        if (sampler != VK_NULL_HANDLE) {
+            vkDestroySampler(_device, sampler, nullptr);
+        }
+    }
+    _samplerCache.clear();
     if (_defaultSampler) vkDestroySampler(_device, _defaultSampler, nullptr);
     if (defaultTexture.image.imageView != VK_NULL_HANDLE) {
         vkDestroyImageView(_device, defaultTexture.image.imageView, nullptr);
@@ -240,7 +252,8 @@ void TextureManager::create_default_white_texture(VK_INIT_ENGINE::_inited_engine
     viewInfo.subresourceRange.levelCount = 1;
     viewInfo.subresourceRange.layerCount = 1;
 
-    defaultTexture = AllocateTexture(imgInfo, viewInfo, ModelLifetime::Static);
+    SamplerOptions params = {};
+    defaultTexture = AllocateTexture(imgInfo, viewInfo, params, ModelLifetime::Static);
 
     vkinit::submit_immediate([&](VkCommandBuffer cmd) {
         VkImageMemoryBarrier barrier{ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
@@ -293,6 +306,36 @@ void TextureManager::create_default_white_texture(VK_INIT_ENGINE::_inited_engine
     vmaDestroyBuffer(_init._allocator, stagingBuffer.buffer, stagingBuffer.allocation);
 
     std::cout << "TextureManager: Default white texture generated under Bindless ID = 0\n";
+}
+
+VkSampler TextureManager::CreateSampler(const SamplerOptions& params){
+    VkSamplerCreateInfo samplerInfo{};
+    samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    samplerInfo.magFilter = vkutil::GetVkFilter(params.magFilter);
+    samplerInfo.minFilter = vkutil::GetVkFilter(params.minFilter);
+    samplerInfo.mipmapMode = vkutil::GetVkMipmapMode(params.minFilter);
+    samplerInfo.addressModeU = vkutil::GetVkAddressMode(params.wrapS);
+    samplerInfo.addressModeV = vkutil::GetVkAddressMode(params.wrapT);
+    samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+
+    // включаем анизотропию для всех 3D текстур
+    samplerInfo.anisotropyEnable = VK_TRUE;
+    samplerInfo.maxAnisotropy = 16.0f;
+
+    // Поиск по кешу
+    auto it = _samplerCache.find(samplerInfo);
+    if (it != _samplerCache.end()) {
+        return it->second;
+    }
+
+    // Нет в кеше - создаём новый
+    VkSampler newSampler;
+    if (vkCreateSampler(_device, &samplerInfo, nullptr, &newSampler) != VK_SUCCESS) {
+        throw std::runtime_error("[ENGINE CRITICAL ERROR]: Can't create sampler");
+    }
+
+    _samplerCache[samplerInfo] = newSampler;
+    return newSampler;
 }
 
 void Node::AddChild(std::shared_ptr<Node> child){
@@ -473,7 +516,9 @@ GPUMeshBuffers MeshManager::upload_meshes(VK_INIT_ENGINE::_inited_engine& _init,
 }
 
 std::optional<GPUTexture> load_image(VK_INIT_ENGINE::_inited_engine& _init, TextureManager& textureManager,
-    const unsigned char* pixelData, uint32_t width, uint32_t height, VkFormat format, ModelLifetime lifetime){
+    const unsigned char* pixelData, uint32_t width, uint32_t height, VkFormat format,
+    SamplerOptions samplerParams, ModelLifetime lifetime){
+
     size_t dataSize = static_cast<size_t>(width) * height * 4; // Предпокаем RGBA8
 
     AllocatedBuffer stagingBuffer = vkinit::create_buffer(
@@ -489,7 +534,7 @@ std::optional<GPUTexture> load_image(VK_INIT_ENGINE::_inited_engine& _init, Text
     memcpy(data, pixelData, dataSize);
     vmaUnmapMemory(_init._allocator, stagingBuffer.allocation);
 
-    // 2. Настраиваем инфо для оптимальной текстуры на GPU
+    // Настраиваем инфо для оптимальной текстуры на GPU
     VkImageCreateInfo imgInfo{ VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
     imgInfo.imageType = VK_IMAGE_TYPE_2D;
     imgInfo.format = format;
@@ -508,7 +553,7 @@ std::optional<GPUTexture> load_image(VK_INIT_ENGINE::_inited_engine& _init, Text
     viewInfo.subresourceRange.layerCount = 1;
 
     // Выделяем память из VMA Арены и регистрируем в Bindless-сет
-    GPUTexture outTexture = textureManager.AllocateTexture(imgInfo, viewInfo, lifetime);
+    GPUTexture outTexture = textureManager.AllocateTexture(imgInfo, viewInfo, samplerParams, lifetime);
 
     // Отправляем команды копирования на GPU через submit_immediate
     vkinit::submit_immediate([&](VkCommandBuffer cmd) {
@@ -817,7 +862,8 @@ Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init,
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Загрузка изображений
-    for (auto& gltfImage : gltf.images) {
+    for (size_t imgIdx = 0; imgIdx < gltf.images.size(); ++imgIdx) {
+        auto& gltfImage = gltf.images[imgIdx];
         int width = 0, height = 0, channels = 0;
         unsigned char* pixelData = nullptr;
 
@@ -843,7 +889,29 @@ Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init,
 
         // Если пиксели успешно раскодированы — отправляем их в нашу изолированную load_image
         if (pixelData) {
-            auto gpuTex = load_image(_init, textureManager, pixelData, width, height, VK_FORMAT_R8G8B8A8_SRGB, lifetime);
+            SamplerOptions samplerParams{};
+
+            for (const auto& gltfTex : gltf.textures) {
+                if (gltfTex.imageIndex.has_value() && gltfTex.imageIndex.value() == imgIdx) {
+                    if (gltfTex.samplerIndex.has_value()) {
+                        auto& gltfSampler = gltf.samplers[gltfTex.samplerIndex.value()];
+
+                        // Используем fastgltf::to_underlying для безопасного извлечения ID из enum class
+                        if (gltfSampler.minFilter.has_value()) {
+                            samplerParams.minFilter = static_cast<int>(fastgltf::to_underlying(gltfSampler.minFilter.value()));
+                        }
+                        if (gltfSampler.magFilter.has_value()) {
+                            samplerParams.magFilter = static_cast<int>(fastgltf::to_underlying(gltfSampler.magFilter.value()));
+                        }
+
+                        samplerParams.wrapS = static_cast<int>(fastgltf::to_underlying(gltfSampler.wrapS));
+                        samplerParams.wrapT = static_cast<int>(fastgltf::to_underlying(gltfSampler.wrapT));
+                    }
+                    break;
+                }
+            }
+
+            auto gpuTex = load_image(_init, textureManager, pixelData, width, height, VK_FORMAT_R8G8B8A8_SRGB, samplerParams, lifetime);
 
             stbi_image_free(pixelData);
 
@@ -854,13 +922,14 @@ Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init,
             }
         }
         else {
-            std::cout << "ERROR: fastgltf/stbi failed to load image data for one of the textures!\n";
+            std::cout << "[ENGINE CRITICAL ERROR]: fastgltf/stbi failed to load image data for one of the textures!\n";
         }
         GPUTexture dummyTex{};
         dummyTex.globalIndex = 0;
         dummyTex.lifetime = ModelLifetime::Static;
         loadedModel.loadedTextures.push_back(dummyTex);
     }
+
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Загрузка материалов

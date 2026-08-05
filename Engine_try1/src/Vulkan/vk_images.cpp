@@ -80,3 +80,36 @@ void vkutil::copy_image_to_image(VkCommandBuffer cmd, VkImage source, VkImage de
     // И соответсвенно по базе прихуячиваем к commandBuffer
     vkCmdBlitImage2(cmd, &blitInfo);
 }
+
+VkFilter vkutil::GetVkFilter(int gltfFilter){
+    switch (gltfFilter) {
+    case 9728: // NEAREST
+    case 9984: // NEAREST_MIPMAP_NEAREST
+    case 9986: // NEAREST_MIPMAP_LINEAR
+        return VK_FILTER_NEAREST;
+    case 9729: // LINEAR
+    case 9985: // LINEAR_MIPMAP_NEAREST
+    case 9987: // LINEAR_MIPMAP_LINEAR
+    default:
+        return VK_FILTER_LINEAR; // Дефолт по спецификации glTF
+    }
+}
+
+VkSamplerMipmapMode vkutil::GetVkMipmapMode(int gltfFilter){
+    switch (gltfFilter) {
+    case 9986: // NEAREST_MIPMAP_LINEAR
+    case 9987: // LINEAR_MIPMAP_LINEAR
+        return VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    default:
+        return VK_SAMPLER_MIPMAP_MODE_NEAREST;
+    }
+}
+
+VkSamplerAddressMode vkutil::GetVkAddressMode(int gltfWrap){
+    switch (gltfWrap) {
+    case 10497: return VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    case 33071: return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    case 33648: return VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT;
+    default:    return VK_SAMPLER_ADDRESS_MODE_REPEAT; // Дефолт по спецификации glTF
+    }
+}
