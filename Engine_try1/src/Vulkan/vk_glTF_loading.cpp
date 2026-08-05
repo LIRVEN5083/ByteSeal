@@ -171,6 +171,8 @@ GPUTexture TextureManager::AllocateTexture(VkImageCreateInfo imageInfo,
 }
 
 void TextureManager::FreeTexture(GPUTexture& texture){
+    if (texture.globalIndex == 0) {return;}
+
     if (texture.image.imageView != VK_NULL_HANDLE) {
         vkDestroyImageView(_device, texture.image.imageView, nullptr);
     }
@@ -864,6 +866,7 @@ Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init,
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Загрузка изображений
+
     for (size_t imgIdx = 0; imgIdx < gltf.images.size(); ++imgIdx) {
         auto& gltfImage = gltf.images[imgIdx];
         int width = 0, height = 0, channels = 0;
