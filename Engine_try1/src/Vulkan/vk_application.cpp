@@ -451,7 +451,8 @@ void VK_APPLICATION::VulkanApplication::init_grid_pipeline(){
     pipelineBuilder.enable_blending_alphablend();
 
     //pipelineBuilder.disable_blending();
-    pipelineBuilder.enable_depthtest(VK_FALSE, VK_COMPARE_OP_LESS_OR_EQUAL);
+    pipelineBuilder.enable_depthtest(VK_FALSE, VK_COMPARE_OP_GREATER_OR_EQUAL);
+
 
     //connect the image format we will draw into, from draw image
     pipelineBuilder.set_color_attachment_format(_init._msaaColorImage.imageFormat);
@@ -518,7 +519,7 @@ void VK_APPLICATION::VulkanApplication::init_base_pipeline(){
     pipelineBuilder.disable_blending();
 
     //pipelineBuilder.disable_blending();
-    pipelineBuilder.enable_depthtest(VK_TRUE, VK_COMPARE_OP_LESS_OR_EQUAL);
+    pipelineBuilder.enable_depthtest(VK_TRUE, VK_COMPARE_OP_GREATER_OR_EQUAL);
 
     //connect the image format we will draw into, from draw image
     pipelineBuilder.set_color_attachment_format(_init._msaaColorImage.imageFormat);
@@ -595,7 +596,7 @@ void VK_APPLICATION::VulkanApplication::init_scene(){
 }
 
 void VK_APPLICATION::VulkanApplication::draw_grid(VkCommandBuffer cmd, VkDescriptorSet globalDescriptor){
-    VkViewport viewport = { 0.0f, 0.0f, (float)_drawExtent.width, (float)_drawExtent.height, 0.0f, 1.f };
+    VkViewport viewport = { 0.0f, 0.0f, (float)_drawExtent.width, (float)_drawExtent.height, 1.0f, 0.0f };
     vkCmdSetViewport(cmd, 0, 1, &viewport);
 
     VkRect2D scissor = { {0, 0}, _drawExtent };
@@ -773,7 +774,7 @@ VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& 
 
     // Perspective projection
     float aspect = (float)_init._windowExtent.width / (float)_init._windowExtent.height;
-    sceneData.proj = glm::perspective(glm::radians(70.0f), aspect, 0.2f, 1000.0f);
+    sceneData.proj = glm::tweakedInfinitePerspective(glm::radians(70.0f), aspect, 0.1f);
     sceneData.proj[1][1] *= -1.0f;
 
     // proj * view

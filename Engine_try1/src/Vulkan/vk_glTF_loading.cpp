@@ -1271,7 +1271,7 @@ void RenderSystem::DrawForward(VkCommandBuffer cmd, VkExtent2D drawExtent, VkDes
         return;
     }
 
-    VkViewport viewport = { 0.0f, 0.0f, (float)drawExtent.width, (float)drawExtent.height, 0.0f, 1.f };
+    VkViewport viewport = { 0.0f, 0.0f, (float)drawExtent.width, (float)drawExtent.height, 1.0f, 0.0f };
     vkCmdSetViewport(cmd, 0, 1, &viewport);
 
     VkRect2D scissor = { {0, 0}, drawExtent };

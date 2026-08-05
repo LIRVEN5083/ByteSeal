@@ -253,7 +253,9 @@ VkRenderingAttachmentInfo vkinit::depth_attachment_info(
     depthAttachment.imageLayout = layout;
     depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    depthAttachment.clearValue.depthStencil.depth = 1.0f;
+
+    // МАГИЯ REVERSE Z: очищаем буфер в 0.0f (теперь это самая дальняя точка)
+    depthAttachment.clearValue.depthStencil.depth = 0.0f;
 
     return depthAttachment;
 }
