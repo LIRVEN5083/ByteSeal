@@ -354,7 +354,6 @@ RealPipeline* PipelineManager::CreatePipeline(const PipelineCreateInfo& info, Vk
         return &_pipelines[info.name];
     }
 
-    // 2. Загружаем шейдерные модули вашим методом vkutil::load_shader_module
     VkShaderModule vertModule;
     VkShaderModule fragModule;
 
@@ -369,10 +368,8 @@ RealPipeline* PipelineManager::CreatePipeline(const PipelineCreateInfo& info, Vk
     }
 
 
-    // 3. Работаем через ВАШ РОДНОЙ PipelineBuilder
     PipelineBuilder pipelineBuilder;
 
-    // 🔥 МАГИЯ: Обязательно сбрасываем билдер, чтобы проставились все .sType у структур!
     pipelineBuilder.clear();
 
     // Принудительно отдаем билдеру наш ОБЩИЙ макет (layout) из менеджера конвейеров
@@ -387,7 +384,6 @@ RealPipeline* PipelineManager::CreatePipeline(const PipelineCreateInfo& info, Vk
     // Определяем сэмплы для MSAA
     VkSampleCountFlagBits samplesToUse = info.useMSAA ? maxSamples : VK_SAMPLE_COUNT_1_BIT;
 
-    // 4. АВТОМАТИЗАЦИЯ СТЕЙТОВ: настраиваем блендинг и глубину (всё строго по вашему старому коду!)
     if (info.opacity == PipelineOpacity::Transparent) {
         // Конфигурация для сетки (Grid)
         pipelineBuilder.set_multisampling_alpha(samplesToUse);
@@ -411,10 +407,8 @@ RealPipeline* PipelineManager::CreatePipeline(const PipelineCreateInfo& info, Vk
     pipelineBuilder.set_color_attachment_format(colorFormat);
     pipelineBuilder.set_depth_format(depthFormat);
 
-    // 5. Физически собираем конвейер вашим проверенным методом build_pipeline
     VkPipeline newPipeline = pipelineBuilder.build_pipeline(_device);
 
-    // После сборки конвейера шейдерные модули на CPU нам больше не нужны, удаляем
     vkDestroyShaderModule(_device, vertModule, nullptr);
     vkDestroyShaderModule(_device, fragModule, nullptr);
 
