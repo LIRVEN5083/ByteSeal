@@ -35,16 +35,19 @@ layout( push_constant ) uniform constants
 
 	uint colorTextureID;
 	uint metallicRoughnessTextureID;
+	vec4 baseColorFactor;
 } PushConstants;
 
 void main() 
 {
 	uint texID = nonuniformEXT(PushConstants.colorTextureID);
 	vec4 texColor = texture(globalTextures[texID], inUV);
-	vec4 finalAlbedo = texColor * inColor;
+	vec4 finalAlbedo = texColor * PushConstants.baseColorFactor;
+
 	if (finalAlbedo.a < 0.1f) {
 		discard;
 	}
+
 
 	 outFragColor = finalAlbedo;
 }

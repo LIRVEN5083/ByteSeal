@@ -1324,6 +1324,7 @@ void RenderSystem::DrawForward(VkCommandBuffer cmd, VkExtent2D drawExtent, VkDes
         push_constants.vertexBuffer = object.vertexBufferAddress;
         push_constants.colorTextureID = object.colorTextureID;
         push_constants.metallicRoughnessTextureID = object.metallicRoughnessTextureID;
+        push_constants.baseColorFactor = object.baseColorFactor;
 
         vkCmdPushConstants(cmd, object.pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(GPUDrawPushConstants), &push_constants);
 

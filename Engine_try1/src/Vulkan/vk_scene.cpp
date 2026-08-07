@@ -198,6 +198,7 @@ void Scene::CullingAndSubmit(RenderSystem& renderSystem, PipelineManager& pipeli
                 ro.pipelineLayout = pipeline->layout;
                 ro.colorTextureID = surface.material->colorTextureID;
                 ro.metallicRoughnessTextureID = surface.material->metallicRoughnessTextureID;
+                ro.baseColorFactor = surface.material->baseColorFactor;
 
                 // Определяем секцию прозрачности
                 uint64_t opacitySection = 0; // Opaque (BaseMesh)
