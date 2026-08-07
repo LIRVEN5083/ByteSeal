@@ -42,6 +42,8 @@ struct GPUDrawPushConstants {
 
     uint32_t colorTextureID;
     uint32_t metallicRoughnessTextureID;
+
+    glm::vec4 baseColorFactor;
 };
 
 struct GPUSceneData {
@@ -84,6 +86,8 @@ struct GPUTexture {
 
 struct MaterialAsset {
     std::string name;
+    std::string pipelineName;
+
     uint32_t colorTextureID{ 0 };
     uint32_t metallicRoughnessTextureID{ 0 };
 
@@ -317,6 +321,7 @@ struct RenderObject{
     VkPipelineLayout pipelineLayout;
     uint32_t colorTextureID;
     uint32_t metallicRoughnessTextureID;
+    glm::vec4 baseColorFactor;
 
     glm::mat4 render_matrix;
 

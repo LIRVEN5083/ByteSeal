@@ -83,13 +83,10 @@ namespace VK_APPLICATION {
 
         VkSampleCountFlagBits _maxSamples;
 
-        std::vector<std::string> modelsToLoad = {
-            "../Model/pudge_dota_2.glb"
-        };
-
         // Для теста нодов
         float angle{0.0f};
 
+        std::unique_ptr<PipelineManager> _pipelineManager;
         TextureManager _textureManager;
         MeshManager _meshManager;
         ModelManager _modelManager{_init, _meshManager, _textureManager};
@@ -103,8 +100,7 @@ namespace VK_APPLICATION {
         void destroy_swapchain();
 
         void init_descriptors();
-        void init_grid_pipeline();
-        void init_base_pipeline();
+        void init_pipeline_manager();
         void init_commands();
         void init_scene();
 

@@ -326,3 +326,161 @@ void PipelineBuilder::enable_blending_alphablend()
     _colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
     _colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
 }
+
+void PipelineManager::InitCommonLayout(VkDescriptorSetLayout globalSetLayout, VkDescriptorSetLayout bindlessSetLayout){
+    VkPushConstantRange pushConstantRange{};
+    pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+    pushConstantRange.offset = 0;
+    pushConstantRange.size = sizeof(GPUDrawPushConstants);
+
+    std::vector<VkDescriptorSetLayout> layouts = { globalSetLayout, bindlessSetLayout };
+
+    VkPipelineLayoutCreateInfo layoutInfo{};
+    layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    layoutInfo.setLayoutCount = static_cast<uint32_t>(layouts.size());
+    layoutInfo.pSetLayouts = layouts.data();
+    layoutInfo.pushConstantRangeCount = 1;
+    layoutInfo.pPushConstantRanges = &pushConstantRange;
+
+    if (vkCreatePipelineLayout(_device, &layoutInfo, nullptr, &_commonLayout) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create common pipeline layout!");
+    }
+}
+
+RealPipeline* PipelineManager::CreatePipeline(const PipelineCreateInfo& info, VkFormat colorFormat,
+    VkFormat depthFormat, VkSampleCountFlagBits maxSamples){
+
+    if (_pipelines.find(info.name) != _pipelines.end()) {
+        return &_pipelines[info.name];
+    }
+
+    // 2. Загружаем шейдерные модули вашим методом vkutil::load_shader_module
+    VkShaderModule vertModule;
+    VkShaderModule fragModule;
+
+    if (!vkutil::load_shader_module(info.vertexShaderPath.c_str(), _device, &vertModule)) {
+        fmt::print(stderr, "[PipelineManager ERROR] Failed to load vertex shader: {}\n", info.vertexShaderPath);
+        return nullptr;
+    }
+    if (!vkutil::load_shader_module(info.fragmentShaderPath.c_str(), _device, &fragModule)) {
+        fmt::print(stderr, "[PipelineManager ERROR] Failed to load fragment shader: {}\n", info.fragmentShaderPath);
+        vkDestroyShaderModule(_device, vertModule, nullptr);
+        return nullptr;
+    }
+
+
+    // 3. Работаем через ВАШ РОДНОЙ PipelineBuilder
+    PipelineBuilder pipelineBuilder;
+
+    // 🔥 МАГИЯ: Обязательно сбрасываем билдер, чтобы проставились все .sType у структур!
+    pipelineBuilder.clear();
+
+    // Принудительно отдаем билдеру наш ОБЩИЙ макет (layout) из менеджера конвейеров
+    pipelineBuilder._pipelineLayout = _commonLayout;
+
+    // Настраиваем шейдеры и базовые геометрические параметры
+    pipelineBuilder.set_shaders(vertModule, fragModule);
+    pipelineBuilder.set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+    pipelineBuilder.set_polygon_mode(VK_POLYGON_MODE_FILL);
+    pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+
+    // Определяем сэмплы для MSAA
+    VkSampleCountFlagBits samplesToUse = info.useMSAA ? maxSamples : VK_SAMPLE_COUNT_1_BIT;
+
+    // 4. АВТОМАТИЗАЦИЯ СТЕЙТОВ: настраиваем блендинг и глубину (всё строго по вашему старому коду!)
+    if (info.opacity == PipelineOpacity::Transparent) {
+        // Конфигурация для сетки (Grid)
+        pipelineBuilder.set_multisampling_alpha(samplesToUse);
+        pipelineBuilder.enable_blending_alphablend();
+        pipelineBuilder.enable_depthtest(VK_FALSE, VK_COMPARE_OP_GREATER_OR_EQUAL);
+    }
+    else if (info.opacity == PipelineOpacity::AlphaTested) {
+        // Конфигурация для листвы/масок (Alpha-test)
+        pipelineBuilder.set_multisampling(samplesToUse);
+        pipelineBuilder.disable_blending();
+        pipelineBuilder.enable_depthtest(VK_TRUE, VK_COMPARE_OP_GREATER_OR_EQUAL);  // Reversed-Z, запись вкл
+    }
+    else {
+        // Конфигурация для обычных моделей (BaseMesh)
+        pipelineBuilder.set_multisampling(samplesToUse);
+        pipelineBuilder.disable_blending();
+        pipelineBuilder.enable_depthtest(VK_TRUE, VK_COMPARE_OP_GREATER_OR_EQUAL);   // Reversed-Z, запись вкл
+    }
+
+    // Прокидываем форматы динамического рендеринга
+    pipelineBuilder.set_color_attachment_format(colorFormat);
+    pipelineBuilder.set_depth_format(depthFormat);
+
+    // 5. Физически собираем конвейер вашим проверенным методом build_pipeline
+    VkPipeline newPipeline = pipelineBuilder.build_pipeline(_device);
+
+    // После сборки конвейера шейдерные модули на CPU нам больше не нужны, удаляем
+    vkDestroyShaderModule(_device, vertModule, nullptr);
+    vkDestroyShaderModule(_device, fragModule, nullptr);
+
+    if (newPipeline == VK_NULL_HANDLE) {
+        fmt::print(stderr, "[PipelineManager ERROR] pipelineBuilder.build_pipeline returned VK_NULL_HANDLE for {}\n", info.name);
+        return nullptr;
+    }
+
+    // Генерируем компактный числовой ID конвейера для нашего sortKey
+    uint16_t newId = static_cast<uint16_t>(_pipelines.size());
+
+    // Сохраняем в карту менеджера конвейеров
+    RealPipeline pipelineData{ info.name, newPipeline, _commonLayout, info.opacity, newId };
+    _pipelines[info.name] = pipelineData;
+
+    return &_pipelines[info.name];
+}
+
+RealPipeline* PipelineManager::GetPipeline(const std::string& name){
+    auto it = _pipelines.find(name);
+    return (it != _pipelines.end()) ? &it->second : nullptr;
+}
+
+bool PipelineManager::DestroyPipeline(const std::string& name){
+    auto it = _pipelines.find(name);
+
+    // Если конвейер с таким именем не найден — возвращаем false
+    if (it == _pipelines.end()) {
+        return false;
+    }
+
+    // Удаляем сам объект Vulkan
+    if (it->second.pipeline != VK_NULL_HANDLE) {
+        vkDestroyPipeline(_device, it->second.pipeline, nullptr);
+    }
+
+    // Удаляем запись из хэш-карты менеджера
+    _pipelines.erase(it);
+    return true;
+}
+
+void PipelineManager::DestroyAllPipelines(){
+    for (auto& [name, pipe] : _pipelines) {
+        if (pipe.pipeline != VK_NULL_HANDLE) {
+            vkDestroyPipeline(_device, pipe.pipeline, nullptr);
+        }
+    }
+    _pipelines.clear();
+}
+
+void PipelineManager::cleanup(){
+    DestroyAllPipelines();
+
+    // Уничтожаем общий Layout
+    if (_commonLayout != VK_NULL_HANDLE) {
+        vkDestroyPipelineLayout(_device, _commonLayout, nullptr);
+        _commonLayout = VK_NULL_HANDLE;
+    }
+}
+
+VkShaderModule PipelineManager::loadShaderModule(const std::string& filePath){
+    VkShaderModule Shader;
+    if (!vkutil::load_shader_module("filePath", _device, &Shader)) {
+        fmt::print("[ENGINE CRITICAL ERROR]: Can't load shader", filePath);
+    }
+    else {
+        fmt::print("Loaded shader: ", filePath, "\n");
+    }
+}

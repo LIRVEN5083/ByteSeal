@@ -126,10 +126,41 @@ void Scene::DestroyEntitiesByModel(uint32_t modelAssetId){
     }
 }
 
-void Scene::CullingAndSubmit(RenderSystem& renderSystem, VkPipeline defaultPipeline, VkPipelineLayout defaultLayout){
-    if (_entities.empty()) return;
+void Scene::CullingAndSubmit(RenderSystem& renderSystem, PipelineManager& pipelineManager, const glm::vec3& cameraPosition){
 
-    for (const auto& entity : _entities) {
+    RealPipeline* gridPipeline = pipelineManager.GetPipeline("Grid"); // 💡 проверь, "Grid" или "GridP" в init_pipeline_manager
+    if (gridPipeline)
+    {
+        RenderObject gridRo{};
+        gridRo.render_matrix = glm::mat4(1.0f); // Сетка всегда в центре мира
+
+        // Бесконечная процедурная сетка из vk-guide генерируется прямо в шейдере, буферы не нужны
+        gridRo.indexBuffer = VK_NULL_HANDLE;
+        gridRo.vertexBufferAddress = 0;
+        gridRo.indexCount = 6;
+        gridRo.firstIndex = 0;
+
+        gridRo.pipeline = gridPipeline->pipeline;
+        gridRo.pipelineLayout = gridPipeline->layout;
+
+        gridRo.colorTextureID = 0;
+        gridRo.metallicRoughnessTextureID = 0;
+
+        // Генерируем правильный ключ (Transparent = 2)
+        uint64_t gridOpacity = 2;
+        uint64_t gridKey = 0;
+        gridKey |= (gridOpacity & 0x3ULL) << 62;
+        gridKey |= (static_cast<uint64_t>(gridPipeline->id) & 0x3FFFULL) << 48; // Сдвиг на 48 бит, чтобы ключ совпал по формату с мешами
+
+        gridRo.sortKey = gridKey;
+
+        renderSystem.Submit(gridRo);
+    }
+
+     if (_entities.empty()) return;
+
+    for (const auto& entity : _entities)
+    {
         if (!entity.bIsVisible) continue;
         if (!_modelManager.has_model(entity.modelAssetId)) continue;
 
@@ -137,26 +168,62 @@ void Scene::CullingAndSubmit(RenderSystem& renderSystem, VkPipeline defaultPipel
         if (!model.bIsValid || !model.rootNode) continue;
 
         glm::mat4 entityWorldMatrix = entity.GetLocalMatrix();
-
         model.rootNode->UpdateMatrices(entityWorldMatrix);
+
+        // Считаем мировую позицию самого объекта для сортировки прозрачности
+        glm::vec3 entityWorldPos = glm::vec3(entityWorldMatrix[3].x, entityWorldMatrix[3].y, entityWorldMatrix[3].z);
+        float distanceToCamera = glm::distance(entityWorldPos, cameraPosition);
 
         for (const auto& meshNode : model.meshNodes) {
             if (!meshNode->mesh) continue;
 
             for (const auto& surface : meshNode->mesh->surfaces) {
+                if (!surface.material) continue;
+
+                std::string targetPipelineName = surface.material->pipelineName;
+                if (targetPipelineName.empty()) {
+                    targetPipelineName = "BaseMesh";
+                }
+
+                RealPipeline* pipeline = pipelineManager.GetPipeline(targetPipelineName);
+                if (!pipeline) continue;
+
                 RenderObject ro;
                 ro.render_matrix = meshNode->worldTransform;
-
                 ro.indexBuffer = meshNode->mesh->meshBuffers.indexBuffer.buffer;
                 ro.vertexBufferAddress = meshNode->mesh->meshBuffers.vertexBufferAddress;
                 ro.indexCount = surface.count;
                 ro.firstIndex = surface.startIndex;
-
-                ro.pipeline = defaultPipeline;
-                ro.pipelineLayout = defaultLayout;
+                ro.pipeline = pipeline->pipeline;
+                ro.pipelineLayout = pipeline->layout;
                 ro.colorTextureID = surface.material->colorTextureID;
                 ro.metallicRoughnessTextureID = surface.material->metallicRoughnessTextureID;
+                ro.baseColorFactor = surface.material->baseColorFactor;
 
+                // Определяем секцию прозрачности
+                uint64_t opacitySection = 0; // Opaque (BaseMesh)
+                if (pipeline->opacity == PipelineOpacity::Transparent) {
+                    opacitySection = 2; // Transparent (TransparentMesh)
+                } else if (pipeline->opacity == PipelineOpacity::AlphaTested) {
+                    opacitySection = 1;
+                }
+
+                // Сборка ключа сортировки
+                uint64_t key = 0;
+                key |= (opacitySection & 0x3ULL) << 62;
+                key |= (static_cast<uint64_t>(pipeline->id) & 0x3FFFULL) << 48;
+                key |= (static_cast<uint64_t>(ro.colorTextureID) & 0xFFFFULL) << 32;
+
+                if (opacitySection == 2) {
+                    float safeDist = (distanceToCamera < 0.01f) ? 0.01f : distanceToCamera;
+                    float invDist = 1.0f / safeDist;
+
+                    // Умножаем на миллион для сохранения высокой точности float в uint32
+                    uint32_t quantizedDist = static_cast<uint32_t>(invDist * 1000000.0f);
+                    key |= (quantizedDist & 0xFFFFFFFFULL);
+                }
+
+                ro.sortKey = key;
                 renderSystem.Submit(ro);
             }
         }

@@ -86,3 +86,58 @@ public:
 
     void enable_blending_alphablend();
 };
+
+enum class PipelineOpacity{
+    Opaque,
+    AlphaTested,
+    Transparent
+};
+
+struct PipelineCreateInfo {
+    // Ident name
+    std::string name;
+    // Enum class
+    PipelineOpacity opacity;
+    // MSAA
+    bool useMSAA{ false };
+
+    // Shaders
+    std::string vertexShaderPath;
+    std::string fragmentShaderPath;
+};
+
+struct RealPipeline {
+    std::string name;
+    VkPipeline pipeline{ VK_NULL_HANDLE };
+    VkPipelineLayout layout{ VK_NULL_HANDLE };
+    PipelineOpacity opacity;
+
+    uint16_t id{ 0 };
+};
+
+class PipelineManager{
+public:
+    PipelineManager(VkDevice device) : _device(device){}
+
+    void InitCommonLayout(VkDescriptorSetLayout globalSetLayout, VkDescriptorSetLayout bindlessSetLayout);
+
+    RealPipeline* CreatePipeline(const PipelineCreateInfo& info, VkFormat colorFormat, VkFormat depthFormat, VkSampleCountFlagBits maxSamples);
+
+    RealPipeline* GetPipeline(const std::string& name);
+
+    bool DestroyPipeline(const std::string& name);
+
+    void DestroyAllPipelines();
+
+    void cleanup();
+
+private:
+
+    VkShaderModule loadShaderModule(const std::string& filePath);
+
+    VkDevice _device;
+
+    VkPipelineLayout _commonLayout{VK_NULL_HANDLE};
+
+    std::unordered_map<std::string, RealPipeline> _pipelines;
+};

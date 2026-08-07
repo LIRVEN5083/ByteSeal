@@ -14,26 +14,28 @@ void VK_APPLICATION::VulkanApplication::cleanup(){
         _frames[i]._deletionQueue.flush();
     }
 
-    if (_sceneDescriptorPool) vkDestroyDescriptorPool(_init._device, _sceneDescriptorPool, nullptr);
-    if (_gpuSceneDataDescriptorLayout != VK_NULL_HANDLE) {
-        vkDestroyDescriptorSetLayout(_init._device, _gpuSceneDataDescriptorLayout, nullptr);
-        _gpuSceneDataDescriptorLayout = VK_NULL_HANDLE;
-    }
-
-    vkDestroyPipelineLayout(_init._device, _BasePipelineLayout, nullptr);
-    vkDestroyPipeline(_init._device, _BasePipeline, nullptr);
-
-    vkDestroyPipelineLayout(_init._device, _gridPipelineLayout, nullptr);
-    vkDestroyPipeline(_init._device, _gridPipeline, nullptr);
-
+    _pipelineManager->cleanup();
+    _pipelineManager.reset();
+    _activeScene->DestroyAllEntites();
     _modelManager.destroy_all();
-    _textureManager.DestroyAllocationData();
     _meshManager.DestroyAllocationData();
+    _textureManager.DestroyAllocationData();
 
     for (int i = 0; i < FRAME_OVERLAP; i++) {
         vkinit::destroy_buffer(_frames[i].gpuSceneDataBuffer, _init._allocator);
 
         _frames[i]._frameDescriptors.destroy_pools(_init._device);
+
+        _frames[i].sceneDescriptorSet = VK_NULL_HANDLE;
+    }
+
+    if (_sceneDescriptorPool != VK_NULL_HANDLE) {
+        vkDestroyDescriptorPool(_init._device, _sceneDescriptorPool, nullptr);
+        _sceneDescriptorPool = VK_NULL_HANDLE;
+    }
+    if (_gpuSceneDataDescriptorLayout != VK_NULL_HANDLE) {
+        vkDestroyDescriptorSetLayout(_init._device, _gpuSceneDataDescriptorLayout, nullptr);
+        _gpuSceneDataDescriptorLayout = VK_NULL_HANDLE;
     }
 
     for (int i = 0; i < FRAME_OVERLAP; i++) {
@@ -49,9 +51,8 @@ void VK_APPLICATION::VulkanApplication::run(){
     init_commands();
     init_descriptors();
     _maxSamples = vkinit::max_samples(_init);
-    init_grid_pipeline();
     init_scene();
-    init_base_pipeline();
+    init_pipeline_manager();
 
     SDL_Event e;
     bool bQuit = false;
@@ -173,21 +174,18 @@ void VK_APPLICATION::VulkanApplication::renderLoop(){
     vkutil::transition_image(cmd, _init._msaaDepthImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL); // Наша 4х глубина
     vkutil::transition_image(cmd, _init._drawImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL); // Наш 1х resolve-таргет
 
+    // ПОДГОТОВКА ОЧЕРЕДИ
     _renderSystem.ClearQueue();
 
     _renderSystem.Allocate(7000);
     // Сборка сцены
-    _activeScene->CullingAndSubmit(_renderSystem, _BasePipeline, _BasePipelineLayout);
+    glm::vec3 cameraPos = { _movement.valueX, _movement.valueY, _movement.valueZ };
+    _activeScene->CullingAndSubmit(_renderSystem, *_pipelineManager, cameraPos);
 
     // Отрисовка RenderObject
     _renderSystem.PrepareFrame();
     VkDescriptorSet bindlessSet = _textureManager.GetTextureSet();
     _renderSystem.DrawForward(cmd, _drawExtent, globalDescriptor, bindlessSet);
-
-    // Захардкоженная сетка
-    draw_grid(cmd, globalDescriptor);
-
-    vkCmdEndRendering(cmd);
 
     // Захардкоженный интерефейс
     _gui.draw_imgui(_init, cmd, _drawExtent);
@@ -409,128 +407,79 @@ void VK_APPLICATION::VulkanApplication::init_descriptors(){
     }
 }
 
-void VK_APPLICATION::VulkanApplication::init_grid_pipeline(){
-    VkShaderModule triangleFragShader;
-    if (!vkutil::load_shader_module("../Shaders/InfGrid/Binary/grid.frag.spv", _init._device, &triangleFragShader)) {
-        fmt::print("Error when building the grid fragment shader module\n");
-    }
-    else {
-        fmt::print("Grid fragment shader succesfully loaded\n");
-    }
+void VK_APPLICATION::VulkanApplication::init_pipeline_manager(){
+    _pipelineManager = std::make_unique<PipelineManager>(_init._device);
 
-    VkShaderModule triangleVertexShader;
-    if (!vkutil::load_shader_module("../Shaders/InfGrid/Binary/grid.vert.spv", _init._device, &triangleVertexShader)) {
-        fmt::print("Error when building the grid vertex shader module\n");
-    }
-    else {
-        fmt::print("Grid vertex shader succesfully loaded\n");
+    VkDescriptorSetLayout textureLayout = _textureManager.GetTextureLayout();
+
+    if (textureLayout == VK_NULL_HANDLE) {
+        fmt::print(stderr, "[ERROR] textureLayout is STILL VK_NULL_HANDLE before InitCommonLayout!\n");
+        std::abort();
     }
 
-    //build the pipeline layout that controls the inputs/outputs of the shader
-    //we are not using descriptor sets or other systems yet, so no need to use anything other than empty default
-    VkPipelineLayoutCreateInfo pipeline_layout_info = vkinit::pipeline_layout_create_info();
-    pipeline_layout_info.setLayoutCount = 1;
-    pipeline_layout_info.pSetLayouts = &_gpuSceneDataDescriptorLayout;
-    VK_CHECK(vkCreatePipelineLayout(_init._device, &pipeline_layout_info, nullptr, &_gridPipelineLayout));
+    _pipelineManager->InitCommonLayout(_gpuSceneDataDescriptorLayout, textureLayout);
+    // Форматы для Dynamic Rendering берем из вашей MSAA картинки, как в старом коде
+    VkFormat colorFormat = _init._msaaColorImage.imageFormat;
+    VkFormat depthFormat = _init._msaaDepthImage.imageFormat;
 
-    PipelineBuilder pipelineBuilder;
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Конвеер для базовых моделей (непрозрачных)
+    PipelineCreateInfo baseMeshInfo{};
+    baseMeshInfo.name = "BaseMesh";
+    baseMeshInfo.opacity = PipelineOpacity::Opaque;
+    baseMeshInfo.useMSAA = true; // Так как в старом коде было _maxSamples
+    baseMeshInfo.vertexShaderPath = "../Shaders/BaseMesh/Binary/mesh.vert.spv";
+    baseMeshInfo.fragmentShaderPath = "../Shaders/BaseMesh/Binary/mesh.frag.spv";
 
-    //use the triangle layout we created
-    pipelineBuilder._pipelineLayout = _gridPipelineLayout;
-    //connecting the vertex and pixel shaders to the pipeline
-    pipelineBuilder.set_shaders(triangleVertexShader, triangleFragShader);
-    //it will draw triangles
-    pipelineBuilder.set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-    //filled triangles
-    pipelineBuilder.set_polygon_mode(VK_POLYGON_MODE_FILL);
-    //no backface culling
-    pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
-    //no multisampling
-    pipelineBuilder.set_multisampling_alpha(_maxSamples);
-
-    pipelineBuilder.enable_blending_alphablend();
-
-    //pipelineBuilder.disable_blending();
-    pipelineBuilder.enable_depthtest(VK_FALSE, VK_COMPARE_OP_GREATER_OR_EQUAL);
-
-
-    //connect the image format we will draw into, from draw image
-    pipelineBuilder.set_color_attachment_format(_init._msaaColorImage.imageFormat);
-    pipelineBuilder.set_depth_format(_init._msaaDepthImage.imageFormat);
-
-    //finally build the pipeline
-    _gridPipeline = pipelineBuilder.build_pipeline(_init._device);
-
-    //clean structures
-    vkDestroyShaderModule(_init._device, triangleFragShader, nullptr);
-    vkDestroyShaderModule(_init._device, triangleVertexShader, nullptr);
-}
-
-void VK_APPLICATION::VulkanApplication::init_base_pipeline(){
-    VkShaderModule baseFragShader;
-    if (!vkutil::load_shader_module("../Shaders/BaseMesh/Binary/mesh.frag.spv", _init._device, &baseFragShader)) {
-        fmt::print("Error when building the Mesh fragment shader module\n");
-    }
-    else {
-        fmt::print("Mesh fragment shader succesfully loaded\n");
+    RealPipeline* basePipeline = _pipelineManager->CreatePipeline(baseMeshInfo, colorFormat, depthFormat, _maxSamples);
+    if (basePipeline) {
+        fmt::print("[PipelineManager] Pipeline 'BaseMesh' successfully loaded and built.\n");
+        _BasePipeline = basePipeline->pipeline;
+        _BasePipelineLayout = basePipeline->layout;
     }
 
-    VkShaderModule baseVertexShader;
-    if (!vkutil::load_shader_module("../Shaders/BaseMesh/Binary/mesh.vert.spv", _init._device, &baseVertexShader)) {
-        fmt::print("Error when building the Mesh vertex shader module\n");
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Конвеер для базовых моделей (прозрачных)
+    PipelineCreateInfo transparentMeshInfo{};
+    transparentMeshInfo.name = "TransparentMesh";
+    transparentMeshInfo.opacity = PipelineOpacity::Transparent;
+    transparentMeshInfo.useMSAA = true;
+    transparentMeshInfo.vertexShaderPath = "../Shaders/BaseMesh/Binary/mesh.vert.spv";
+    transparentMeshInfo.fragmentShaderPath = "../Shaders/BaseMesh/Binary/mesh.frag.spv";
+
+    RealPipeline* transPipeline = _pipelineManager->CreatePipeline(transparentMeshInfo, colorFormat, depthFormat, _maxSamples);
+    if (transPipeline) {
+        fmt::print("[PipelineManager] Pipeline 'TransparentMesh' successfully loaded and built.\n");
     }
-    else {
-        fmt::print("Mesh vertex shader succesfully loaded\n");
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Конвеер для базовых моделей (AlphaTested)
+    PipelineCreateInfo alphaTestedMeshInfo{};
+    alphaTestedMeshInfo.name = "AlphaTestedMesh";
+    alphaTestedMeshInfo.opacity = PipelineOpacity::AlphaTested;
+    alphaTestedMeshInfo.useMSAA = true;
+    alphaTestedMeshInfo.vertexShaderPath = "../Shaders/BaseMesh/Binary/mesh.vert.spv";
+    // 💡 Важно: для него нужен шейдер с поддержкой discard, мы обновим твой mesh.frag ниже
+    alphaTestedMeshInfo.fragmentShaderPath = "../Shaders/BaseMesh/Binary/mesh.frag.spv";
+
+    RealPipeline* alphaPipeline = _pipelineManager->CreatePipeline(alphaTestedMeshInfo, colorFormat, depthFormat, _maxSamples);
+    if (alphaPipeline) {
+        fmt::print("[PipelineManager] Pipeline 'AlphaTestedMesh' successfully loaded and built.\n");
     }
+ ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Конвеер для сетки
+    PipelineCreateInfo gridInfo{};
+    gridInfo.name = "Grid";
+    gridInfo.opacity = PipelineOpacity::Transparent; // Включает AlphaBlend, отключает запись в глубину
+    gridInfo.useMSAA = true; // Использовал set_multisampling_alpha(_maxSamples)
+    gridInfo.vertexShaderPath = "../Shaders/InfGrid/Binary/grid.vert.spv";
+    gridInfo.fragmentShaderPath = "../Shaders/InfGrid/Binary/grid.frag.spv";
 
-    VkPushConstantRange bufferRange{};
-    bufferRange.offset = 0;
-    bufferRange.size = sizeof(GPUDrawPushConstants);
-    bufferRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;;
-
-    VkDescriptorSetLayout layouts[] = {
-        _gpuSceneDataDescriptorLayout,     // Будет отвечать за set = 0
-        _textureManager.GetTextureLayout() // Будет отвечать за set = 1
-    };
-
-    VkPipelineLayoutCreateInfo pipeline_layout_info = vkinit::pipeline_layout_create_info();
-    pipeline_layout_info.pPushConstantRanges = &bufferRange;
-    pipeline_layout_info.pushConstantRangeCount = 1;
-    pipeline_layout_info.pSetLayouts = layouts;
-    pipeline_layout_info.setLayoutCount = 2;
-    VK_CHECK(vkCreatePipelineLayout(_init._device, &pipeline_layout_info, nullptr, &_BasePipelineLayout));
-
-    PipelineBuilder pipelineBuilder;
-
-    //use the triangle layout we created
-    pipelineBuilder._pipelineLayout = _BasePipelineLayout;
-    //connecting the vertex and pixel shaders to the pipeline
-    pipelineBuilder.set_shaders(baseVertexShader, baseFragShader);
-    //it will draw triangles
-    pipelineBuilder.set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-    //filled triangles
-    pipelineBuilder.set_polygon_mode(VK_POLYGON_MODE_FILL);
-    //no backface culling
-    pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
-    //no multisampling
-
-    pipelineBuilder.set_multisampling(_maxSamples);
-
-    pipelineBuilder.disable_blending();
-
-    //pipelineBuilder.disable_blending();
-    pipelineBuilder.enable_depthtest(VK_TRUE, VK_COMPARE_OP_GREATER_OR_EQUAL);
-
-    //connect the image format we will draw into, from draw image
-    pipelineBuilder.set_color_attachment_format(_init._msaaColorImage.imageFormat);
-    pipelineBuilder.set_depth_format(_init._msaaDepthImage.imageFormat);
-
-    //finally build the pipeline
-    _BasePipeline = pipelineBuilder.build_pipeline(_init._device);
-
-    //clean structures
-    vkDestroyShaderModule(_init._device, baseFragShader, nullptr);
-    vkDestroyShaderModule(_init._device, baseVertexShader, nullptr);
+    RealPipeline* gridPipeline = _pipelineManager->CreatePipeline(gridInfo, colorFormat, depthFormat, _maxSamples);
+    if (gridPipeline) {
+        fmt::print("[PipelineManager] Pipeline 'Grid' successfully loaded and built.\n");
+        _gridPipeline = gridPipeline->pipeline;
+        _gridPipelineLayout = gridPipeline->layout;
+    }
 }
 
 void VK_APPLICATION::VulkanApplication::init_commands(){
