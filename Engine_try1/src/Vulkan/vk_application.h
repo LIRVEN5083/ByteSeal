@@ -83,10 +83,6 @@ namespace VK_APPLICATION {
 
         VkSampleCountFlagBits _maxSamples;
 
-        std::vector<std::string> modelsToLoad = {
-            "../Model/pudge_dota_2.glb"
-        };
-
         // Для теста нодов
         float angle{0.0f};
 

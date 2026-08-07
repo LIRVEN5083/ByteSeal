@@ -326,3 +326,151 @@ void PipelineBuilder::enable_blending_alphablend()
     _colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
     _colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
 }
+
+void PipelineManager::InitCommonLayout(VkDescriptorSetLayout globalSetLayout, VkDescriptorSetLayout bindlessSetLayout){
+    VkPushConstantRange pushConstantRange{};
+    pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+    pushConstantRange.offset = 0;
+    pushConstantRange.size = 64;
+
+    std::vector<VkDescriptorSetLayout> layouts = { globalSetLayout, bindlessSetLayout };
+
+    VkPipelineLayoutCreateInfo layoutInfo{};
+    layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    layoutInfo.setLayoutCount = static_cast<uint32_t>(layouts.size());
+    layoutInfo.pSetLayouts = layouts.data();
+    layoutInfo.pushConstantRangeCount = 1;
+    layoutInfo.pPushConstantRanges = &pushConstantRange;
+
+    if (vkCreatePipelineLayout(_device, &layoutInfo, nullptr, &_commonLayout) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create common pipeline layout!");
+    }
+}
+
+RealPipeline* PipelineManager::CreatePipeline(const PipelineCreateInfo& info, VkFormat colorFormat,
+    VkFormat depthFormat){
+
+    if (_pipelines.find(info.name) != _pipelines.end()) {
+        return &_pipelines[info.name];
+    }
+
+    VkShaderModule vertModule = loadShaderModule(info.vertexShaderPath);
+    VkShaderModule fragModule = loadShaderModule(info.fragmentShaderPath);
+
+    VkPipelineShaderStageCreateInfo shaderStages[2]{};
+
+    VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
+    vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+
+    VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
+
+    VkPipelineDepthStencilStateCreateInfo depthStencil{};
+    depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    depthStencil.depthTestEnable = VK_TRUE; // Тест включен всегда
+    depthStencil.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+
+    if (info.opacity == PipelineOpacity::Transparent) {
+        depthStencil.depthWriteEnable = VK_FALSE; // Полупрозрачные объекты НЕ пишут в глубину
+    } else {
+        depthStencil.depthWriteEnable = VK_TRUE;  // Opaque и AlphaTested пишут в глубину
+    }
+
+    VkPipelineColorBlendAttachmentState colorBlendAttachment{};
+    colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+
+    if (info.opacity == PipelineOpacity::Transparent) {
+        // Стандартный Alpha-Blending: SrcAlpha * SrcColor + (1 - SrcAlpha) * DstColor
+        colorBlendAttachment.blendEnable = VK_TRUE;
+        colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+        colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+        colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+        colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+        colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+    } else {
+        colorBlendAttachment.blendEnable = VK_FALSE; // Для непрозрачных блендинг выключен
+    }
+
+    VkPipelineColorBlendStateCreateInfo colorBlending{};
+
+    VkPipelineMultisampleStateCreateInfo multisampling{};
+    multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    multisampling.rasterizationSamples = info.useMSAA ? VK_SAMPLE_COUNT_8_BIT : VK_SAMPLE_COUNT_1_BIT;
+
+    VkPipelineRenderingCreateInfo renderingCreateInfo{};
+    renderingCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+    renderingCreateInfo.colorAttachmentCount = 1;
+    renderingCreateInfo.pColorAttachmentFormats = &colorFormat;
+    renderingCreateInfo.depthAttachmentFormat = depthFormat;
+
+    VkGraphicsPipelineCreateInfo pipelineInfo{};
+    pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    pipelineInfo.pNext = &renderingCreateInfo; // Dynamic rendering подключается через pNext
+    pipelineInfo.layout = _commonLayout;       // Используем наш общий Layout
+
+    VkPipeline newPipeline;
+    if (vkCreateGraphicsPipelines(_device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &newPipeline) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create graphics pipeline: " + info.name);
+    }
+
+    vkDestroyShaderModule(_device, vertModule, nullptr);
+    vkDestroyShaderModule(_device, fragModule, nullptr);
+
+    // Сохраняем результат
+    RealPipeline pipelineData{ info.name, newPipeline, _commonLayout, info.opacity };
+    _pipelines[info.name] = pipelineData;
+
+    return &_pipelines[info.name];
+}
+
+RealPipeline* PipelineManager::GetPipeline(const std::string& name){
+    auto it = _pipelines.find(name);
+    return (it != _pipelines.end()) ? &it->second : nullptr;
+}
+
+bool PipelineManager::DestroyPipeline(const std::string& name){
+    auto it = _pipelines.find(name);
+
+    // Если конвейер с таким именем не найден — возвращаем false
+    if (it == _pipelines.end()) {
+        return false;
+    }
+
+    // Удаляем сам объект Vulkan
+    if (it->second.pipeline != VK_NULL_HANDLE) {
+        vkDestroyPipeline(_device, it->second.pipeline, nullptr);
+    }
+
+    // Удаляем запись из хэш-карты менеджера
+    _pipelines.erase(it);
+    return true;
+}
+
+void PipelineManager::DestroyAllPipelines(){
+    for (auto& [name, pipe] : _pipelines) {
+        if (pipe.pipeline != VK_NULL_HANDLE) {
+            vkDestroyPipeline(_device, pipe.pipeline, nullptr);
+        }
+    }
+    _pipelines.clear();
+}
+
+void PipelineManager::cleanup(){
+    DestroyAllPipelines();
+
+    // Уничтожаем общий Layout
+    if (_commonLayout != VK_NULL_HANDLE) {
+        vkDestroyPipelineLayout(_device, _commonLayout, nullptr);
+        _commonLayout = VK_NULL_HANDLE;
+    }
+}
+
+VkShaderModule PipelineManager::loadShaderModule(const std::string& filePath){
+    VkShaderModule Shader;
+    if (!vkutil::load_shader_module("filePath", _device, &Shader)) {
+        fmt::print("[ENGINE CRITICAL ERROR]: Can't load shader", filePath);
+    }
+    else {
+        fmt::print("Loaded shader: ", filePath, "\n");
+    }
+}
