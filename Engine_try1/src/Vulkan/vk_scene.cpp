@@ -126,41 +126,96 @@ void Scene::DestroyEntitiesByModel(uint32_t modelAssetId){
     }
 }
 
-void Scene::CullingAndSubmit(RenderSystem& renderSystem, VkPipeline defaultPipeline, VkPipelineLayout defaultLayout){
-    if (_entities.empty()) return;
+void Scene::CullingAndSubmit(RenderSystem& renderSystem, PipelineManager& pipelineManager){
+    if (!_entities.empty()) {
+        for (const auto& entity : _entities)
+        {
+            if (!entity.bIsVisible) continue;
+            if (!_modelManager.has_model(entity.modelAssetId)) continue;
 
-    for (const auto& entity : _entities) {
-        if (!entity.bIsVisible) continue;
-        if (!_modelManager.has_model(entity.modelAssetId)) continue;
+            Model& model = _modelManager.GetModel(entity.modelAssetId);
+            if (!model.bIsValid || !model.rootNode) continue;
 
-        Model& model = _modelManager.GetModel(entity.modelAssetId);
-        if (!model.bIsValid || !model.rootNode) continue;
+            glm::mat4 entityWorldMatrix = entity.GetLocalMatrix();
+            model.rootNode->UpdateMatrices(entityWorldMatrix);
 
-        glm::mat4 entityWorldMatrix = entity.GetLocalMatrix();
+            for (const auto& meshNode : model.meshNodes) {
+                if (!meshNode->mesh) continue;
 
-        model.rootNode->UpdateMatrices(entityWorldMatrix);
+                for (const auto& surface : meshNode->mesh->surfaces) {
+                    if (!surface.material) continue;
 
-        for (const auto& meshNode : model.meshNodes) {
-            if (!meshNode->mesh) continue;
+                    std::string targetPipelineName = surface.material->pipelineName;
+                    if (targetPipelineName.empty() || targetPipelineName == "Grid") {
+                        targetPipelineName = "BaseMesh";
+                    }
 
-            for (const auto& surface : meshNode->mesh->surfaces) {
-                RenderObject ro;
-                ro.render_matrix = meshNode->worldTransform;
+                    RealPipeline* pipeline = pipelineManager.GetPipeline(targetPipelineName);
+                    if (!pipeline) continue;
 
-                ro.indexBuffer = meshNode->mesh->meshBuffers.indexBuffer.buffer;
-                ro.vertexBufferAddress = meshNode->mesh->meshBuffers.vertexBufferAddress;
-                ro.indexCount = surface.count;
-                ro.firstIndex = surface.startIndex;
+                    RenderObject ro;
+                    ro.render_matrix = meshNode->worldTransform;
 
-                ro.pipeline = defaultPipeline;
-                ro.pipelineLayout = defaultLayout;
-                ro.colorTextureID = surface.material->colorTextureID;
-                ro.metallicRoughnessTextureID = surface.material->metallicRoughnessTextureID;
+                    ro.indexBuffer = meshNode->mesh->meshBuffers.indexBuffer.buffer;
+                    ro.vertexBufferAddress = meshNode->mesh->meshBuffers.vertexBufferAddress;
+                    ro.indexCount = surface.count;
+                    ro.firstIndex = surface.startIndex;
 
-                renderSystem.Submit(ro);
+                    ro.pipeline = pipeline->pipeline;
+                    ro.pipelineLayout = pipeline->layout;
+
+                    ro.colorTextureID = surface.material->colorTextureID;
+                    ro.metallicRoughnessTextureID = surface.material->metallicRoughnessTextureID;
+
+                    uint64_t opacitySection = 0;
+                    if (pipeline->opacity == PipelineOpacity::Transparent) {
+                        opacitySection = 2;
+                    } else if (pipeline->opacity == PipelineOpacity::AlphaTested) {
+                        opacitySection = 1;
+                    }
+
+                    uint64_t modelKey = 0;
+                    modelKey |= (opacitySection & 0x3ULL) << 62;
+                    modelKey |= (static_cast<uint64_t>(pipeline->id) & 0x3FFFULL) << 48;
+                    modelKey |= (static_cast<uint64_t>(ro.colorTextureID) & 0xFFFFULL) << 32;
+
+                    ro.sortKey = modelKey;
+
+                    renderSystem.Submit(ro);
+                }
             }
         }
     }
+
+    RealPipeline* gridPipeline = pipelineManager.GetPipeline("Grid"); // 💡 проверь, "Grid" или "GridP" в init_pipeline_manager
+    if (gridPipeline)
+    {
+        RenderObject gridRo{};
+        gridRo.render_matrix = glm::mat4(1.0f); // Сетка всегда в центре мира
+
+        // Бесконечная процедурная сетка из vk-guide генерируется прямо в шейдере, буферы не нужны
+        gridRo.indexBuffer = VK_NULL_HANDLE;
+        gridRo.vertexBufferAddress = 0;
+        gridRo.indexCount = 6;
+        gridRo.firstIndex = 0;
+
+        gridRo.pipeline = gridPipeline->pipeline;
+        gridRo.pipelineLayout = gridPipeline->layout;
+
+        gridRo.colorTextureID = 0;
+        gridRo.metallicRoughnessTextureID = 0;
+
+        // Генерируем правильный ключ (Transparent = 2)
+        uint64_t gridOpacity = 2;
+        uint64_t gridKey = 0;
+        gridKey |= (gridOpacity & 0x3ULL) << 62;
+        gridKey |= (static_cast<uint64_t>(gridPipeline->id) & 0x3FFFULL) << 48; // Сдвиг на 48 бит, чтобы ключ совпал по формату с мешами
+
+        gridRo.sortKey = gridKey;
+
+        renderSystem.Submit(gridRo);
+    }
+
 }
 
 RaycastHit Scene::Raycast(const Ray& ray){

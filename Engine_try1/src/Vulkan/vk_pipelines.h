@@ -111,6 +111,8 @@ struct RealPipeline {
     VkPipeline pipeline{ VK_NULL_HANDLE };
     VkPipelineLayout layout{ VK_NULL_HANDLE };
     PipelineOpacity opacity;
+
+    uint16_t id{ 0 };
 };
 
 class PipelineManager{
@@ -119,7 +121,7 @@ public:
 
     void InitCommonLayout(VkDescriptorSetLayout globalSetLayout, VkDescriptorSetLayout bindlessSetLayout);
 
-    RealPipeline* CreatePipeline(const PipelineCreateInfo& info, VkFormat colorFormat, VkFormat depthFormat);
+    RealPipeline* CreatePipeline(const PipelineCreateInfo& info, VkFormat colorFormat, VkFormat depthFormat, VkSampleCountFlagBits maxSamples);
 
     RealPipeline* GetPipeline(const std::string& name);
 

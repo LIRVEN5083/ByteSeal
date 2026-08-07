@@ -331,7 +331,7 @@ void PipelineManager::InitCommonLayout(VkDescriptorSetLayout globalSetLayout, Vk
     VkPushConstantRange pushConstantRange{};
     pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
     pushConstantRange.offset = 0;
-    pushConstantRange.size = 64;
+    pushConstantRange.size = sizeof(GPUDrawPushConstants);
 
     std::vector<VkDescriptorSetLayout> layouts = { globalSetLayout, bindlessSetLayout };
 
@@ -348,76 +348,86 @@ void PipelineManager::InitCommonLayout(VkDescriptorSetLayout globalSetLayout, Vk
 }
 
 RealPipeline* PipelineManager::CreatePipeline(const PipelineCreateInfo& info, VkFormat colorFormat,
-    VkFormat depthFormat){
+    VkFormat depthFormat, VkSampleCountFlagBits maxSamples){
 
     if (_pipelines.find(info.name) != _pipelines.end()) {
         return &_pipelines[info.name];
     }
 
-    VkShaderModule vertModule = loadShaderModule(info.vertexShaderPath);
-    VkShaderModule fragModule = loadShaderModule(info.fragmentShaderPath);
+    // 2. Загружаем шейдерные модули вашим методом vkutil::load_shader_module
+    VkShaderModule vertModule;
+    VkShaderModule fragModule;
 
-    VkPipelineShaderStageCreateInfo shaderStages[2]{};
+    if (!vkutil::load_shader_module(info.vertexShaderPath.c_str(), _device, &vertModule)) {
+        fmt::print(stderr, "[PipelineManager ERROR] Failed to load vertex shader: {}\n", info.vertexShaderPath);
+        return nullptr;
+    }
+    if (!vkutil::load_shader_module(info.fragmentShaderPath.c_str(), _device, &fragModule)) {
+        fmt::print(stderr, "[PipelineManager ERROR] Failed to load fragment shader: {}\n", info.fragmentShaderPath);
+        vkDestroyShaderModule(_device, vertModule, nullptr);
+        return nullptr;
+    }
 
-    VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
-    vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
 
-    VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
+    // 3. Работаем через ВАШ РОДНОЙ PipelineBuilder
+    PipelineBuilder pipelineBuilder;
 
-    VkPipelineDepthStencilStateCreateInfo depthStencil{};
-    depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-    depthStencil.depthTestEnable = VK_TRUE; // Тест включен всегда
-    depthStencil.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+    // 🔥 МАГИЯ: Обязательно сбрасываем билдер, чтобы проставились все .sType у структур!
+    pipelineBuilder.clear();
 
+    // Принудительно отдаем билдеру наш ОБЩИЙ макет (layout) из менеджера конвейеров
+    pipelineBuilder._pipelineLayout = _commonLayout;
+
+    // Настраиваем шейдеры и базовые геометрические параметры
+    pipelineBuilder.set_shaders(vertModule, fragModule);
+    pipelineBuilder.set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+    pipelineBuilder.set_polygon_mode(VK_POLYGON_MODE_FILL);
+    pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+
+    // Определяем сэмплы для MSAA
+    VkSampleCountFlagBits samplesToUse = info.useMSAA ? maxSamples : VK_SAMPLE_COUNT_1_BIT;
+
+    // 4. АВТОМАТИЗАЦИЯ СТЕЙТОВ: настраиваем блендинг и глубину (всё строго по вашему старому коду!)
     if (info.opacity == PipelineOpacity::Transparent) {
-        depthStencil.depthWriteEnable = VK_FALSE; // Полупрозрачные объекты НЕ пишут в глубину
-    } else {
-        depthStencil.depthWriteEnable = VK_TRUE;  // Opaque и AlphaTested пишут в глубину
+        // Конфигурация для сетки (Grid)
+        pipelineBuilder.set_multisampling_alpha(samplesToUse);
+        pipelineBuilder.enable_blending_alphablend();
+        pipelineBuilder.enable_depthtest(VK_FALSE, VK_COMPARE_OP_GREATER_OR_EQUAL);
+    }
+    else if (info.opacity == PipelineOpacity::AlphaTested) {
+        // Конфигурация для листвы/масок (Alpha-test)
+        pipelineBuilder.set_multisampling(samplesToUse);
+        pipelineBuilder.disable_blending();
+        pipelineBuilder.enable_depthtest(VK_TRUE, VK_COMPARE_OP_GREATER_OR_EQUAL);  // Reversed-Z, запись вкл
+    }
+    else {
+        // Конфигурация для обычных моделей (BaseMesh)
+        pipelineBuilder.set_multisampling(samplesToUse);
+        pipelineBuilder.disable_blending();
+        pipelineBuilder.enable_depthtest(VK_TRUE, VK_COMPARE_OP_GREATER_OR_EQUAL);   // Reversed-Z, запись вкл
     }
 
-    VkPipelineColorBlendAttachmentState colorBlendAttachment{};
-    colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+    // Прокидываем форматы динамического рендеринга
+    pipelineBuilder.set_color_attachment_format(colorFormat);
+    pipelineBuilder.set_depth_format(depthFormat);
 
-    if (info.opacity == PipelineOpacity::Transparent) {
-        // Стандартный Alpha-Blending: SrcAlpha * SrcColor + (1 - SrcAlpha) * DstColor
-        colorBlendAttachment.blendEnable = VK_TRUE;
-        colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-        colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-        colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
-        colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-        colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
-        colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
-    } else {
-        colorBlendAttachment.blendEnable = VK_FALSE; // Для непрозрачных блендинг выключен
-    }
+    // 5. Физически собираем конвейер вашим проверенным методом build_pipeline
+    VkPipeline newPipeline = pipelineBuilder.build_pipeline(_device);
 
-    VkPipelineColorBlendStateCreateInfo colorBlending{};
-
-    VkPipelineMultisampleStateCreateInfo multisampling{};
-    multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-    multisampling.rasterizationSamples = info.useMSAA ? VK_SAMPLE_COUNT_8_BIT : VK_SAMPLE_COUNT_1_BIT;
-
-    VkPipelineRenderingCreateInfo renderingCreateInfo{};
-    renderingCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
-    renderingCreateInfo.colorAttachmentCount = 1;
-    renderingCreateInfo.pColorAttachmentFormats = &colorFormat;
-    renderingCreateInfo.depthAttachmentFormat = depthFormat;
-
-    VkGraphicsPipelineCreateInfo pipelineInfo{};
-    pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-    pipelineInfo.pNext = &renderingCreateInfo; // Dynamic rendering подключается через pNext
-    pipelineInfo.layout = _commonLayout;       // Используем наш общий Layout
-
-    VkPipeline newPipeline;
-    if (vkCreateGraphicsPipelines(_device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &newPipeline) != VK_SUCCESS) {
-        throw std::runtime_error("Failed to create graphics pipeline: " + info.name);
-    }
-
+    // После сборки конвейера шейдерные модули на CPU нам больше не нужны, удаляем
     vkDestroyShaderModule(_device, vertModule, nullptr);
     vkDestroyShaderModule(_device, fragModule, nullptr);
 
-    // Сохраняем результат
-    RealPipeline pipelineData{ info.name, newPipeline, _commonLayout, info.opacity };
+    if (newPipeline == VK_NULL_HANDLE) {
+        fmt::print(stderr, "[PipelineManager ERROR] pipelineBuilder.build_pipeline returned VK_NULL_HANDLE for {}\n", info.name);
+        return nullptr;
+    }
+
+    // Генерируем компактный числовой ID конвейера для нашего sortKey
+    uint16_t newId = static_cast<uint16_t>(_pipelines.size());
+
+    // Сохраняем в карту менеджера конвейеров
+    RealPipeline pipelineData{ info.name, newPipeline, _commonLayout, info.opacity, newId };
     _pipelines[info.name] = pipelineData;
 
     return &_pipelines[info.name];

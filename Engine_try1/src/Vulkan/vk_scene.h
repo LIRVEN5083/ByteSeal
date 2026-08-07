@@ -11,6 +11,8 @@ struct AABB;
 #include <string>
 #include <vulkan/vulkan.h>
 
+class PipelineManager;
+
 struct GameEntity {
     uint32_t id{ 0 };
     std::string name;
@@ -73,7 +75,7 @@ public:
     void DestroyAllDynamicEntites();
     void DestroyEntitiesByModel(uint32_t modelAssetId);
 
-    void CullingAndSubmit(RenderSystem& renderSystem, VkPipeline defaultPipeline, VkPipelineLayout defaultLayout);
+    void CullingAndSubmit(RenderSystem& renderSystem, PipelineManager& pipelineManager);
 
     RaycastHit Raycast(const Ray& ray);
 

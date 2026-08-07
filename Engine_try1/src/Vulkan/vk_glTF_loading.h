@@ -84,6 +84,8 @@ struct GPUTexture {
 
 struct MaterialAsset {
     std::string name;
+    std::string pipelineName;
+
     uint32_t colorTextureID{ 0 };
     uint32_t metallicRoughnessTextureID{ 0 };
 

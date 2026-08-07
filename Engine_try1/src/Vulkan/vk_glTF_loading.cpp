@@ -191,6 +191,11 @@ void TextureManager::FreeTexture(GPUTexture& texture){
 }
 
 void TextureManager::DestroyAllocationData(){
+    if (defaultTexture.imguiDescriptorSet != VK_NULL_HANDLE) {
+        ImGui_ImplVulkan_RemoveTexture(defaultTexture.imguiDescriptorSet);
+        defaultTexture.imguiDescriptorSet = VK_NULL_HANDLE;
+    }
+
     // Уничтожаем хэш сэмплеров и сами сэмплеры
     for (auto& [info, sampler] : _samplerCache) {
         if (sampler != VK_NULL_HANDLE) {
@@ -937,7 +942,7 @@ Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init,
 
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // Загрузка материалов
+   // Загрузка материалов
     for (auto& gltfMaterial : gltf.materials) {
         auto newMaterial = std::make_shared<MaterialAsset>();
         newMaterial->name = gltfMaterial.name.c_str();
@@ -965,6 +970,16 @@ Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init,
             }
         } else {
             newMaterial->metallicRoughnessTextureID = 0; // Заглушка
+        }
+
+        if (gltfMaterial.alphaMode == fastgltf::AlphaMode::Blend) {
+            newMaterial->pipelineName = "BaseMesh";
+        }
+        else if (gltfMaterial.alphaMode == fastgltf::AlphaMode::Mask) {
+            newMaterial->pipelineName = "BaseMesh";
+        }
+        else {
+            newMaterial->pipelineName = "BaseMesh";
         }
 
         loadedModel.materials.push_back(newMaterial);
@@ -1239,40 +1254,45 @@ void RenderSystem::Submit(RenderObject ro){
 
 void RenderSystem::PrepareFrame(){
     std::sort(_mainDrawQueue.begin(), _mainDrawQueue.end(), [](const RenderObject& a, const RenderObject& b) {
-            return a.sortKey < b.sortKey;
-        });
+        return a.sortKey < b.sortKey;
+    });
 }
 
 void RenderSystem::DrawForward(VkCommandBuffer cmd, VkExtent2D drawExtent, VkDescriptorSet globalDescriptor,
     VkDescriptorSet bindlessTextureSet){
 
+    if (_mainDrawQueue.empty()) return;
+
     VkClearValue clearColor;
     clearColor.color = { { 0.3f, 0.3f, 0.3f, 1.0f } };
 
-    // основной таргет — MSAA картинка
-    VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(_init._msaaColorImage.imageView, &clearColor, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    VkClearValue depthClear;
+    depthClear.depthStencil.depth = 0.0f;
+
+    VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(
+        _init._msaaColorImage.imageView,
+        &clearColor,
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+    );
     colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    // GPU сохранит только сглаженный результат
     colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 
-    // МУЛЬТИСЭМПЛИНГОВАЯ МАГИЯ RESOLVE:
-    colorAttachment.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT; // Усредняем субпиксели
-    colorAttachment.resolveImageView = _init._drawImage.imageView; // Сюда GPU сольет сглаженный 1х кадр
+    colorAttachment.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
+    colorAttachment.resolveImageView = _init._drawImage.imageView;
     colorAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-    // Настраиваем глубину: она у нас уже 4х/8х на уровне создания памяти
-    VkRenderingAttachmentInfo depthAttachment = vkinit::depth_attachment_info(_init._msaaDepthImage.imageView, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+    VkRenderingAttachmentInfo depthAttachment = vkinit::depth_attachment_info(
+        _init._msaaDepthImage.imageView,
+        VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL
+    );
     depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE; // Память глубины тоже можно не сохранять
+    depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+
+    depthAttachment.clearValue = depthClear;
 
     VkRenderingInfo renderInfo = vkinit::rendering_info(drawExtent, &colorAttachment, &depthAttachment);
 
     vkCmdBeginRendering(cmd, &renderInfo);
-
-    if (_mainDrawQueue.empty()) {
-        // Если сцена пустая, мы всё равно не закрываем рендер тут, так как дальше идет сетка!
-        return;
-    }
 
     VkViewport viewport = { 0.0f, 0.0f, (float)drawExtent.width, (float)drawExtent.height, 1.0f, 0.0f };
     vkCmdSetViewport(cmd, 0, 1, &viewport);
@@ -1280,10 +1300,7 @@ void RenderSystem::DrawForward(VkCommandBuffer cmd, VkExtent2D drawExtent, VkDes
     VkRect2D scissor = { {0, 0}, drawExtent };
     vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-    VkDescriptorSet setsToBind[] = {
-        globalDescriptor,
-        bindlessTextureSet
-    };
+    VkDescriptorSet setsToBind[] = { globalDescriptor, bindlessTextureSet };
 
     VkPipeline currentPipeline = VK_NULL_HANDLE;
     VkBuffer currentIndexBuffer = VK_NULL_HANDLE;
@@ -1295,9 +1312,11 @@ void RenderSystem::DrawForward(VkCommandBuffer cmd, VkExtent2D drawExtent, VkDes
             currentPipeline = object.pipeline;
         }
 
-        if (object.indexBuffer != currentIndexBuffer) {
-            vkCmdBindIndexBuffer(cmd, object.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
-            currentIndexBuffer = object.indexBuffer;
+        if (object.indexBuffer != VK_NULL_HANDLE) {
+            if (object.indexBuffer != currentIndexBuffer) {
+                vkCmdBindIndexBuffer(cmd, object.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+                currentIndexBuffer = object.indexBuffer;
+            }
         }
 
         GPUDrawPushConstants push_constants;
@@ -1308,7 +1327,12 @@ void RenderSystem::DrawForward(VkCommandBuffer cmd, VkExtent2D drawExtent, VkDes
 
         vkCmdPushConstants(cmd, object.pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(GPUDrawPushConstants), &push_constants);
 
-        vkCmdDrawIndexed(cmd, object.indexCount, 1, object.firstIndex, 0, 0);
+        if (object.indexBuffer != VK_NULL_HANDLE) {
+            vkCmdDrawIndexed(cmd, object.indexCount, 1, object.firstIndex, 0, 0);
+        } else {
+            vkCmdDraw(cmd, object.indexCount, 1, 0, 0);
+        }
     }
 
+    vkCmdEndRendering(cmd);
 }
