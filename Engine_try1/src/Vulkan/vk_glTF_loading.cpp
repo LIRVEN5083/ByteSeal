@@ -973,10 +973,10 @@ Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init,
         }
 
         if (gltfMaterial.alphaMode == fastgltf::AlphaMode::Blend) {
-            newMaterial->pipelineName = "BaseMesh";
+            newMaterial->pipelineName = "TransparentMesh";
         }
         else if (gltfMaterial.alphaMode == fastgltf::AlphaMode::Mask) {
-            newMaterial->pipelineName = "BaseMesh";
+            newMaterial->pipelineName = "AlphaTestedMesh";
         }
         else {
             newMaterial->pipelineName = "BaseMesh";

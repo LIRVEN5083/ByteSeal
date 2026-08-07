@@ -179,7 +179,8 @@ void VK_APPLICATION::VulkanApplication::renderLoop(){
 
     _renderSystem.Allocate(7000);
     // Сборка сцены
-    _activeScene->CullingAndSubmit(_renderSystem, *_pipelineManager);
+    glm::vec3 cameraPos = { _movement.valueX, _movement.valueY, _movement.valueZ };
+    _activeScene->CullingAndSubmit(_renderSystem, *_pipelineManager, cameraPos);
 
     // Отрисовка RenderObject
     _renderSystem.PrepareFrame();
@@ -422,7 +423,7 @@ void VK_APPLICATION::VulkanApplication::init_pipeline_manager(){
     VkFormat depthFormat = _init._msaaDepthImage.imageFormat;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // Конвеер для базовых моделей
+    // Конвеер для базовых моделей (непрозрачных)
     PipelineCreateInfo baseMeshInfo{};
     baseMeshInfo.name = "BaseMesh";
     baseMeshInfo.opacity = PipelineOpacity::Opaque;
@@ -437,6 +438,33 @@ void VK_APPLICATION::VulkanApplication::init_pipeline_manager(){
         _BasePipelineLayout = basePipeline->layout;
     }
 
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Конвеер для базовых моделей (прозрачных)
+    PipelineCreateInfo transparentMeshInfo{};
+    transparentMeshInfo.name = "TransparentMesh";
+    transparentMeshInfo.opacity = PipelineOpacity::Transparent;
+    transparentMeshInfo.useMSAA = true;
+    transparentMeshInfo.vertexShaderPath = "../Shaders/BaseMesh/Binary/mesh.vert.spv";
+    transparentMeshInfo.fragmentShaderPath = "../Shaders/BaseMesh/Binary/mesh.frag.spv";
+
+    RealPipeline* transPipeline = _pipelineManager->CreatePipeline(transparentMeshInfo, colorFormat, depthFormat, _maxSamples);
+    if (transPipeline) {
+        fmt::print("[PipelineManager] Pipeline 'TransparentMesh' successfully loaded and built.\n");
+    }
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Конвеер для базовых моделей (AlphaTested)
+    PipelineCreateInfo alphaTestedMeshInfo{};
+    alphaTestedMeshInfo.name = "AlphaTestedMesh";
+    alphaTestedMeshInfo.opacity = PipelineOpacity::AlphaTested;
+    alphaTestedMeshInfo.useMSAA = true;
+    alphaTestedMeshInfo.vertexShaderPath = "../Shaders/BaseMesh/Binary/mesh.vert.spv";
+    // 💡 Важно: для него нужен шейдер с поддержкой discard, мы обновим твой mesh.frag ниже
+    alphaTestedMeshInfo.fragmentShaderPath = "../Shaders/BaseMesh/Binary/mesh.frag.spv";
+
+    RealPipeline* alphaPipeline = _pipelineManager->CreatePipeline(alphaTestedMeshInfo, colorFormat, depthFormat, _maxSamples);
+    if (alphaPipeline) {
+        fmt::print("[PipelineManager] Pipeline 'AlphaTestedMesh' successfully loaded and built.\n");
+    }
  ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Конвеер для сетки
     PipelineCreateInfo gridInfo{};

@@ -75,7 +75,7 @@ public:
     void DestroyAllDynamicEntites();
     void DestroyEntitiesByModel(uint32_t modelAssetId);
 
-    void CullingAndSubmit(RenderSystem& renderSystem, PipelineManager& pipelineManager);
+    void CullingAndSubmit(RenderSystem& renderSystem, PipelineManager& pipelineManager, const glm::vec3& cameraPosition);
 
     RaycastHit Raycast(const Ray& ray);
 

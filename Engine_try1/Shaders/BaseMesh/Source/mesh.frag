@@ -42,6 +42,9 @@ void main()
 	uint texID = nonuniformEXT(PushConstants.colorTextureID);
 	vec4 texColor = texture(globalTextures[texID], inUV);
 	vec4 finalAlbedo = texColor * inColor;
+	if (finalAlbedo.a < 0.1f) {
+		discard;
+	}
 
 	 outFragColor = finalAlbedo;
 }
