@@ -427,14 +427,13 @@ void VK_APPLICATION::VulkanApplication::init_pipeline_manager(){
     baseMeshInfo.name = "BaseMesh";
     baseMeshInfo.opacity = PipelineOpacity::Opaque;
     baseMeshInfo.useMSAA = true; // Так как в старом коде было _maxSamples
-    baseMeshInfo.vertexShaderPath = "../Shaders/BaseMesh/Binary/mesh.vert.spv";
-    baseMeshInfo.fragmentShaderPath = "../Shaders/BaseMesh/Binary/mesh.frag.spv";
+    baseMeshInfo.vertexShaderPath = "../Shaders/BaseMesh/Source/mesh.vert";
+    baseMeshInfo.fragmentShaderPath = "../Shaders/BaseMesh/Source/mesh.frag";
 
     RealPipeline* basePipeline = _pipelineManager->CreatePipeline(baseMeshInfo, colorFormat, depthFormat, _maxSamples);
     if (basePipeline) {
         fmt::print("[PipelineManager] Pipeline 'BaseMesh' successfully loaded and built.\n");
     }
-
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Конвеер для базовых моделей (прозрачных)
@@ -442,8 +441,8 @@ void VK_APPLICATION::VulkanApplication::init_pipeline_manager(){
     transparentMeshInfo.name = "TransparentMesh";
     transparentMeshInfo.opacity = PipelineOpacity::Transparent;
     transparentMeshInfo.useMSAA = true;
-    transparentMeshInfo.vertexShaderPath = "../Shaders/BaseMesh/Binary/mesh.vert.spv";
-    transparentMeshInfo.fragmentShaderPath = "../Shaders/BaseMesh/Binary/mesh.frag.spv";
+    transparentMeshInfo.vertexShaderPath = "../Shaders/BaseMesh/Source/mesh.vert";
+    transparentMeshInfo.fragmentShaderPath = "../Shaders/BaseMesh/Source/mesh.frag";
 
     RealPipeline* transPipeline = _pipelineManager->CreatePipeline(transparentMeshInfo, colorFormat, depthFormat, _maxSamples);
     if (transPipeline) {
@@ -455,9 +454,8 @@ void VK_APPLICATION::VulkanApplication::init_pipeline_manager(){
     alphaTestedMeshInfo.name = "AlphaTestedMesh";
     alphaTestedMeshInfo.opacity = PipelineOpacity::AlphaTested;
     alphaTestedMeshInfo.useMSAA = true;
-    alphaTestedMeshInfo.vertexShaderPath = "../Shaders/BaseMesh/Binary/mesh.vert.spv";
-    // 💡 Важно: для него нужен шейдер с поддержкой discard, мы обновим твой mesh.frag ниже
-    alphaTestedMeshInfo.fragmentShaderPath = "../Shaders/BaseMesh/Binary/mesh.frag.spv";
+    alphaTestedMeshInfo.vertexShaderPath = "../Shaders/BaseMesh/Source/mesh.vert";
+    alphaTestedMeshInfo.fragmentShaderPath = "../Shaders/BaseMesh/Source/mesh.frag";
 
     RealPipeline* alphaPipeline = _pipelineManager->CreatePipeline(alphaTestedMeshInfo, colorFormat, depthFormat, _maxSamples);
     if (alphaPipeline) {
@@ -469,8 +467,8 @@ void VK_APPLICATION::VulkanApplication::init_pipeline_manager(){
     gridInfo.name = "Grid";
     gridInfo.opacity = PipelineOpacity::Transparent; // Включает AlphaBlend, отключает запись в глубину
     gridInfo.useMSAA = true; // Использовал set_multisampling_alpha(_maxSamples)
-    gridInfo.vertexShaderPath = "../Shaders/InfGrid/Binary/grid.vert.spv";
-    gridInfo.fragmentShaderPath = "../Shaders/InfGrid/Binary/grid.frag.spv";
+    gridInfo.vertexShaderPath = "../Shaders/InfGrid/Source/grid.vert";
+    gridInfo.fragmentShaderPath = "../Shaders/InfGrid/Source/grid.frag";
 
     RealPipeline* gridPipeline = _pipelineManager->CreatePipeline(gridInfo, colorFormat, depthFormat, _maxSamples);
     if (gridPipeline) {

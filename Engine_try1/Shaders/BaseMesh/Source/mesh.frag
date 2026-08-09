@@ -66,6 +66,5 @@ void main()
 	float roughness = mrSample.g * roughnessFactor;
 	float metallic  = mrSample.b * metallicFactor;
 
-
 	 outFragColor = finalAlbedo;
 }

@@ -96,9 +96,6 @@ namespace VK_APPLICATION {
         void init_commands();
         void init_scene();
 
-        void draw_grid(VkCommandBuffer cmd, VkDescriptorSet globalDescriptor);
-        //void draw_model(VkCommandBuffer cmd, VkDescriptorSet globalDescriptor);
-
         VkDescriptorSet update_scene_data(FrameData& currentFrame);
     };
 }

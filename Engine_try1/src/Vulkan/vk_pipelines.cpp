@@ -350,19 +350,40 @@ void PipelineManager::InitCommonLayout(VkDescriptorSetLayout globalSetLayout, Vk
 RealPipeline* PipelineManager::CreatePipeline(const PipelineCreateInfo& info, VkFormat colorFormat,
     VkFormat depthFormat, VkSampleCountFlagBits maxSamples){
 
+    // Компилируем текстовые файлы в наборы чисел
+    std::vector<uint32_t> vertCode = UTILS::CompileGLSLToSPIRV(info.vertexShaderPath);
+    std::vector<uint32_t> fragCode = UTILS::CompileGLSLToSPIRV(info.fragmentShaderPath);
+
+    if (vertCode.empty() || fragCode.empty()) {
+        fmt::print(stderr, "[PipelineManager ERROR] Initial shader compilation failed for {}\n", info.name);
+        return nullptr;
+    }
+
+    return CreatePipelineFromMemory(info, vertCode, fragCode, colorFormat, depthFormat, maxSamples);
+}
+
+RealPipeline* PipelineManager::CreatePipelineFromMemory(const PipelineCreateInfo& info,
+    const std::vector<uint32_t>& vertCode, const std::vector<uint32_t>& fragCode, VkFormat colorFormat,
+    VkFormat depthFormat, VkSampleCountFlagBits maxSamples){
+
     if (_pipelines.find(info.name) != _pipelines.end()) {
         return &_pipelines[info.name];
     }
 
-    VkShaderModule vertModule;
-    VkShaderModule fragModule;
+    // НАПРЯМУЮ СОЗДАЁМ БИНАРНИКИ И НАПРЯМУЮ СОЗДАЁМ SHADER MODULE
+    VkShaderModule vertModule{ VK_NULL_HANDLE };
+    VkShaderModule fragModule{ VK_NULL_HANDLE };
 
-    if (!vkutil::load_shader_module(info.vertexShaderPath.c_str(), _device, &vertModule)) {
-        fmt::print(stderr, "[PipelineManager ERROR] Failed to load vertex shader: {}\n", info.vertexShaderPath);
-        return nullptr;
-    }
-    if (!vkutil::load_shader_module(info.fragmentShaderPath.c_str(), _device, &fragModule)) {
-        fmt::print(stderr, "[PipelineManager ERROR] Failed to load fragment shader: {}\n", info.fragmentShaderPath);
+    VkShaderModuleCreateInfo createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+
+    createInfo.codeSize = vertCode.size() * sizeof(uint32_t);
+    createInfo.pCode = vertCode.data();
+    if (vkCreateShaderModule(_device, &createInfo, nullptr, &vertModule) != VK_SUCCESS) return nullptr;
+
+    createInfo.codeSize = fragCode.size() * sizeof(uint32_t);
+    createInfo.pCode = fragCode.data();
+    if (vkCreateShaderModule(_device, &createInfo, nullptr, &fragModule) != VK_SUCCESS) {
         vkDestroyShaderModule(_device, vertModule, nullptr);
         return nullptr;
     }
@@ -466,6 +487,23 @@ void PipelineManager::DestroyAllPipelines(){
 
 bool PipelineManager:: ReloadAllPipelines(){
     std::cout << "[PipelineManager] Initiating full runtime pipeline rebuild\n";
+
+    std::unordered_map<std::string, std::vector<uint32_t>> newVertCodes;
+    std::unordered_map<std::string, std::vector<uint32_t>> newFragCodes;
+
+    for (const auto& [name, realPipeline] : _pipelines) {
+        auto vertCode = UTILS::CompileGLSLToSPIRV(realPipeline.vertexShaderPath);
+        auto fragCode = UTILS::CompileGLSLToSPIRV(realPipeline.fragmentShaderPath);
+
+        if (vertCode.empty() || fragCode.empty()) {
+            std::cerr << "[PipelineManager] Hot-reload aborted due to compiler errors.\n";
+            return false;
+        }
+
+        newVertCodes[name] = vertCode;
+        newFragCodes[name] = fragCode;
+    }
+
     vkDeviceWaitIdle(_device);
 
     struct PipelineBackup {
@@ -480,6 +518,10 @@ bool PipelineManager:: ReloadAllPipelines(){
         // Прикол такой что в бинарное дерево при перезагрузке конвееры загружаются случайно, а не в старом порядке
         // из-за этого случайные айди конвееров ломают отрисовку в CullingAndSubmit
         uint16_t oldID;
+
+        // Бинарные шейдеры
+        std::vector<uint32_t> vertCode;
+        std::vector<uint32_t> fragCode;
     };
     std::vector<PipelineBackup> backupQueue;
 
@@ -492,7 +534,9 @@ bool PipelineManager:: ReloadAllPipelines(){
             realPipeline.colorFormat,
             realPipeline.depthFormat,
             realPipeline.maxSamples,
-            realPipeline.id
+            realPipeline.id,
+            newVertCodes[name],
+            newFragCodes[name]
         });
 
         // Сразу уничтожаем старый запеченный конвейер на GPU
@@ -515,7 +559,13 @@ bool PipelineManager:: ReloadAllPipelines(){
         info.vertexShaderPath = pipeline.vertPath;
         info.fragmentShaderPath = pipeline.fragPath;
 
-        RealPipeline* rebuilt = CreatePipeline(info, pipeline.colorFormat, pipeline.depthFormat, pipeline.maxSamples);
+        RealPipeline* rebuilt = CreatePipelineFromMemory(
+            info,
+            pipeline.vertCode, // const std::vector<uint32_t>& vertCode
+            pipeline.fragCode, // const std::vector<uint32_t>& fragCode
+            pipeline.colorFormat,
+            pipeline.depthFormat,
+            pipeline.maxSamples);
         if (rebuilt){
             rebuilt->id = pipeline.oldID;
         }
