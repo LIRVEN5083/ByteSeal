@@ -38,6 +38,7 @@
 
 #include "transcoder/basisu_transcoder.h"
 #include "../Controller/movement.hpp"
+#include <../Utils/shader_compile.h>
 
 #define VK_CHECK(x)                                                     \
     do {                                                                \

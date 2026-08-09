@@ -152,6 +152,9 @@ target_link_libraries(${PROJECT_NAME}
     fastgltf::fastgltf
     nfd
     ${SHADERC_LIB}
+    glslang
+    SPIRV-Tools
+    SPIRV-Tools-opt
 )
 
 if(WIN32)

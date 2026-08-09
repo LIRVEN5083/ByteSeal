@@ -92,7 +92,7 @@ void VK_GUI::apply_theme(){
 }
 
 void VK_GUI::GUI::draw_model_list_overlay(VK_INIT_ENGINE::_inited_engine& _init, ModelManager& _modelManager,
-    std::unique_ptr<Scene>& _scene, const GPUSceneData& sceneData){
+    std::unique_ptr<Scene>& _scene, const GPUSceneData& sceneData, PipelineManager& pipelineManager){
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// Drag and drop
     static bool shouldSpawnDroppedEntity = false;
@@ -151,14 +151,21 @@ void VK_GUI::GUI::draw_model_list_overlay(VK_INIT_ENGINE::_inited_engine& _init,
 
         ImGui::Text("All models in memory: %u", _modelManager.CountOfModels());
 
-        if (ImGui::Button("Destroy dynamic models")) {
+        float spacing = ImGui::GetStyle().ItemSpacing.x;
+        float halfButtonWidth = (300.0f - spacing) / 2.0f;
+
+        if (ImGui::Button("Destroy DM", ImVec2(halfButtonWidth, 0.0f))) {
             _scene->DestroyAllDynamicEntites();
             _modelManager.destroy_dynamic_models();
         }
         ImGui::SameLine();
-        if (ImGui::Button("Destroy all models")) {
+        if (ImGui::Button("Destroy AM", ImVec2(halfButtonWidth, 0.0f))) {
             _scene->DestroyAllEntites();
             _modelManager.destroy_all();
+        }
+
+        if (ImGui::Button("Recompile shaders", ImVec2(300.0f, 0.0f))) {
+            pipelineManager.ReloadAllPipelines();
         }
 
         ImGui::Separator();
@@ -629,7 +636,8 @@ void VK_GUI::GUI::draw_imgui(VK_INIT_ENGINE::_inited_engine& _init, VkCommandBuf
     vkCmdEndRendering(cmd);
 }
 
-void VK_GUI::GUI::update_imgui(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER::Delta& _delta, ModelManager& _modelManager, std::unique_ptr<Scene>& _scene, const GPUSceneData& sceneData){
+void VK_GUI::GUI::update_imgui(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER::Delta& _delta, ModelManager& _modelManager,
+    std::unique_ptr<Scene>& _scene, const GPUSceneData& sceneData, PipelineManager& pipelineManager){
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplSDL3_NewFrame();
     ImGui::NewFrame();
@@ -639,7 +647,7 @@ void VK_GUI::GUI::update_imgui(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER
 
     draw_fps_overlay(_init, _delta);
 
-    draw_model_list_overlay(_init, _modelManager, _scene, sceneData);
+    draw_model_list_overlay(_init, _modelManager, _scene, sceneData, pipelineManager);
 
     draw_inspector_window(_init, _modelManager);
 

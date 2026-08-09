@@ -121,7 +121,7 @@ void VK_APPLICATION::VulkanApplication::run(){
             resize_swapchain();
         }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        _gui.update_imgui(_init, _delta, _modelManager, _activeScene, sceneData);
+        _gui.update_imgui(_init, _delta, _modelManager, _activeScene, sceneData, *_pipelineManager);
         CONTROLLER::update_time(_movement, _delta);
         renderLoop();
         CONTROLLER::made_move(_movement, _camera, _delta);
@@ -202,7 +202,7 @@ void VK_APPLICATION::VulkanApplication::renderLoop(){
     // Закрываем командный буфер, запись завершена
     VK_CHECK(vkEndCommandBuffer(cmd));
 
-    // 4. ОТПРАВКА НА GPU (SUBMIT)
+    // ОТПРАВКА НА GPU (SUBMIT)
     VkCommandBufferSubmitInfo cmdSubmitInfo = vkinit::command_buffer_submit_info(cmd);
 
     // Синхронизируем семафоры: GPU ждет сигнала от Swapchain перед выгрузкой цвета
@@ -216,7 +216,7 @@ void VK_APPLICATION::VulkanApplication::renderLoop(){
     // Когда GPU закончит этот кадр, Fence автоматически откроется
     VK_CHECK(vkQueueSubmit2(_init._graphicsQueue, 1, &submit, _init._renderFence[frameId]));
 
-    // 5. ВЫВОД НА ЭКРАН (PRESENT)
+    // ВЫВОД НА ЭКРАН (PRESENT)
     VkPresentInfoKHR presentInfo{};
     presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
     presentInfo.pNext = nullptr;
@@ -427,14 +427,12 @@ void VK_APPLICATION::VulkanApplication::init_pipeline_manager(){
     baseMeshInfo.name = "BaseMesh";
     baseMeshInfo.opacity = PipelineOpacity::Opaque;
     baseMeshInfo.useMSAA = true; // Так как в старом коде было _maxSamples
-    baseMeshInfo.vertexShaderPath = "../Shaders/BaseMesh/Binary/mesh.vert.spv";
-    baseMeshInfo.fragmentShaderPath = "../Shaders/BaseMesh/Binary/mesh.frag.spv";
+    baseMeshInfo.vertexShaderPath = "../Shaders/BaseMesh/Source/mesh.vert";
+    baseMeshInfo.fragmentShaderPath = "../Shaders/BaseMesh/Source/mesh.frag";
 
     RealPipeline* basePipeline = _pipelineManager->CreatePipeline(baseMeshInfo, colorFormat, depthFormat, _maxSamples);
     if (basePipeline) {
         fmt::print("[PipelineManager] Pipeline 'BaseMesh' successfully loaded and built.\n");
-        _BasePipeline = basePipeline->pipeline;
-        _BasePipelineLayout = basePipeline->layout;
     }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -443,8 +441,8 @@ void VK_APPLICATION::VulkanApplication::init_pipeline_manager(){
     transparentMeshInfo.name = "TransparentMesh";
     transparentMeshInfo.opacity = PipelineOpacity::Transparent;
     transparentMeshInfo.useMSAA = true;
-    transparentMeshInfo.vertexShaderPath = "../Shaders/BaseMesh/Binary/mesh.vert.spv";
-    transparentMeshInfo.fragmentShaderPath = "../Shaders/BaseMesh/Binary/mesh.frag.spv";
+    transparentMeshInfo.vertexShaderPath = "../Shaders/BaseMesh/Source/mesh.vert";
+    transparentMeshInfo.fragmentShaderPath = "../Shaders/BaseMesh/Source/mesh.frag";
 
     RealPipeline* transPipeline = _pipelineManager->CreatePipeline(transparentMeshInfo, colorFormat, depthFormat, _maxSamples);
     if (transPipeline) {
@@ -456,9 +454,8 @@ void VK_APPLICATION::VulkanApplication::init_pipeline_manager(){
     alphaTestedMeshInfo.name = "AlphaTestedMesh";
     alphaTestedMeshInfo.opacity = PipelineOpacity::AlphaTested;
     alphaTestedMeshInfo.useMSAA = true;
-    alphaTestedMeshInfo.vertexShaderPath = "../Shaders/BaseMesh/Binary/mesh.vert.spv";
-    // 💡 Важно: для него нужен шейдер с поддержкой discard, мы обновим твой mesh.frag ниже
-    alphaTestedMeshInfo.fragmentShaderPath = "../Shaders/BaseMesh/Binary/mesh.frag.spv";
+    alphaTestedMeshInfo.vertexShaderPath = "../Shaders/BaseMesh/Source/mesh.vert";
+    alphaTestedMeshInfo.fragmentShaderPath = "../Shaders/BaseMesh/Source/mesh.frag";
 
     RealPipeline* alphaPipeline = _pipelineManager->CreatePipeline(alphaTestedMeshInfo, colorFormat, depthFormat, _maxSamples);
     if (alphaPipeline) {
@@ -470,14 +467,12 @@ void VK_APPLICATION::VulkanApplication::init_pipeline_manager(){
     gridInfo.name = "Grid";
     gridInfo.opacity = PipelineOpacity::Transparent; // Включает AlphaBlend, отключает запись в глубину
     gridInfo.useMSAA = true; // Использовал set_multisampling_alpha(_maxSamples)
-    gridInfo.vertexShaderPath = "../Shaders/InfGrid/Binary/grid.vert.spv";
-    gridInfo.fragmentShaderPath = "../Shaders/InfGrid/Binary/grid.frag.spv";
+    gridInfo.vertexShaderPath = "../Shaders/InfGrid/Source/grid.vert";
+    gridInfo.fragmentShaderPath = "../Shaders/InfGrid/Source/grid.frag";
 
     RealPipeline* gridPipeline = _pipelineManager->CreatePipeline(gridInfo, colorFormat, depthFormat, _maxSamples);
     if (gridPipeline) {
         fmt::print("[PipelineManager] Pipeline 'Grid' successfully loaded and built.\n");
-        _gridPipeline = gridPipeline->pipeline;
-        _gridPipelineLayout = gridPipeline->layout;
     }
 }
 
@@ -494,212 +489,12 @@ void VK_APPLICATION::VulkanApplication::init_commands(){
 }
 
 void VK_APPLICATION::VulkanApplication::init_scene(){
-    // Инициализация менеджеров
     _meshManager.init(_init);
     _textureManager.init(_init);
     _activeScene = std::make_unique<Scene>(_modelManager);
-
-    //uint32_t pudgeAsset  = _modelManager.LoadModel(modelsToLoad.at(0), _confStatic.lifetime, _confStatic.useArena);
-
-    /*
-    auto* pudge = _activeScene->CreateEntity("Pudge", pudgeAsset);
-    pudge->rotation = glm::vec3(90.0f, 0.0f, 0.0f);
-    pudge->scale = glm::vec3(0.01f, 0.01f, 0.01f);
-    */
-
-    /*
-    int countX = 5; // Сколько Пуджей по ширине
-    int countY = 10; // Сколько Пуджей по высоте
-    int countZ = 7; // Сколько Пуджей по глубине
-
-    float stepX = 3.0f; // Шаг между ними по горизонтали (в метрах)
-    float stepY = 1.5f; // Шаг между ними по вертикали
-    float stepZ = 2.0f; // Шаг между ними в глубину
-
-    // Вычисляем смещение, чтобы центрировать куб относительно (0,0,0)
-    float offsetX = ((countX - 1) * stepX) / 2.0f;
-    float offsetY = ((countY - 1) * stepY) / 2.0f;
-    float offsetZ = ((countZ - 1) * stepZ) / 2.0f;
-
-    int pudgeCounter = 0;
-
-    for (int x = 0; x < countX; ++x) {
-        for (int y = 0; y < countY; ++y) {
-            for (int z = 0; z < countZ; ++z) {
-
-                auto* pudgeInstance = _activeScene->CreateEntity("", pudgeAsset);
-
-                float posX = (x * stepX) - offsetX;
-                float posY = (y * stepY) - offsetY + 2.0f;
-                float posZ = (z * stepZ) - offsetZ;
-
-                pudgeInstance->position = glm::vec3(posX, posY, posZ);
-
-                pudgeInstance->scale = glm::vec3(0.01f, 0.01f, 0.01f);
-                pudgeInstance->rotation = glm::vec3(90.0f, 0.0f, 0.0f);
-            }
-        }
-    }
-    */
 }
-
-void VK_APPLICATION::VulkanApplication::draw_grid(VkCommandBuffer cmd, VkDescriptorSet globalDescriptor){
-    VkViewport viewport = { 0.0f, 0.0f, (float)_drawExtent.width, (float)_drawExtent.height, 1.0f, 0.0f };
-    vkCmdSetViewport(cmd, 0, 1, &viewport);
-
-    VkRect2D scissor = { {0, 0}, _drawExtent };
-    vkCmdSetScissor(cmd, 0, 1, &scissor);
-
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _gridPipeline);
-
-    vkCmdBindDescriptorSets(
-        cmd,
-        VK_PIPELINE_BIND_POINT_GRAPHICS,
-        _gridPipelineLayout,
-        0,
-        1,
-        &globalDescriptor,
-        0, nullptr
-    );
-
-    vkCmdDraw(cmd, 6, 1, 0, 0);
-}
-
-/*
-void VK_APPLICATION::VulkanApplication::draw_model(VkCommandBuffer cmd, VkDescriptorSet globalDescriptor){
-    float speed = 1.0f;
-    angle += _delta.delta * speed;
-
-    auto& testNode = _baseModel.meshNodes[1];
-    testNode->localTransform = glm::rotate(glm::mat4{1.0f}, angle, glm::vec3(0.0f, 0.0f, 1.0f));
-
-    //_baseModel.rootNode->localTransform = glm::rotate(glm::mat4{1.0f}, glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-    // glm::scale(glm::mat4{1.0f}, glm::vec3(100.0f, 100.0f, 100.0f));
-
-    //_baseModel.rootNode->UpdateMatrices(glm::mat4(1.0f));
-
-
-    Model furina = _modelManager.GetModel(1);
-    furina.rootNode->localTransform = glm::translate(glm::mat4{1.0f}, glm::vec3(2.0f, 0.0f, 0.0f)) *
-        glm::rotate(glm::mat4{1.0f}, glm::radians(180.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-
-    Model pudge = _modelManager.GetModel(2);
-    pudge.rootNode->localTransform =  glm::translate(glm::mat4{1.0f}, glm::vec3(-1.0f, 0.0f, 0.0f)) *
-        glm::rotate(glm::mat4{1.0f}, glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-
-
-    Model caffe = _modelManager.GetModel(3);
-    caffe.rootNode->localTransform = glm::scale(glm::mat4{1.0f}, glm::vec3(0.01f, 0.01f, 0.01f)) *
-        glm::rotate(glm::mat4{1.0f}, glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-
-
-    VkClearValue clearColor;
-    clearColor.color = { { 0.3f, 0.3f, 0.3f, 1.0f } };
-
-    VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(_init._drawImage.imageView, &clearColor, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-
-    VkRenderingAttachmentInfo depthAttachment = vkinit::depth_attachment_info(_init._depthImage.imageView, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
-    depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-
-    VkRenderingInfo renderInfo = vkinit::rendering_info(_drawExtent, &colorAttachment, &depthAttachment);
-
-    vkCmdBeginRendering(cmd, &renderInfo);
-
-    VkViewport viewport = { 0.0f, 0.0f, (float)_drawExtent.width, (float)_drawExtent.height, 0.f, 1.f };
-    vkCmdSetViewport(cmd, 0, 1, &viewport);
-
-    VkRect2D scissor = { {0, 0}, _drawExtent };
-    vkCmdSetScissor(cmd, 0, 1, &scissor);
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    if (!_modelManager.empty()){
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _BasePipeline);
-
-        VkDescriptorSet setsToBind[] = {
-            globalDescriptor,
-            _textureManager.GetTextureSet()
-        };
-
-        vkCmdBindDescriptorSets(
-            cmd,
-            VK_PIPELINE_BIND_POINT_GRAPHICS,
-            _BasePipelineLayout,
-            0,
-            2,
-            setsToBind,
-            0, nullptr
-        );
-
-        for (uint32_t modelIdx = 1; modelIdx <= _modelManager.CountOfModels(); modelIdx++){
-            if (!_modelManager.has_model(modelIdx)) {
-                continue;
-            }
-
-            const Model& currentModel = _modelManager.GetModel(modelIdx);
-
-            _modelManager.GetModel(modelIdx).rootNode->UpdateMatrices(glm::mat4(1.0f));
-
-            for (const auto& meshNode : currentModel.meshNodes)
-            {
-                if (!meshNode->mesh) continue;
-
-                auto& currentMesh = meshNode->mesh;
-
-                vkCmdBindIndexBuffer(cmd, currentMesh->meshBuffers.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
-
-                for (const auto& surface : currentMesh->surfaces)
-                {
-                    GPUDrawPushConstants push_constants;
-
-                    push_constants.render_matrix = meshNode->worldTransform;
-
-                    push_constants.vertexBuffer = currentMesh->meshBuffers.vertexBufferAddress;
-
-                    if (surface.material) {
-                        push_constants.colorTextureID = surface.material->colorTextureID;
-                        push_constants.metallicRoughnessTextureID = surface.material->metallicRoughnessTextureID;
-                    } else {
-                        push_constants.colorTextureID = 0;
-                        push_constants.metallicRoughnessTextureID = 0;
-                    }
-
-                    vkCmdPushConstants(
-                        cmd,
-                        _BasePipelineLayout,
-                        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-                        0,
-                        sizeof(GPUDrawPushConstants),
-                        &push_constants
-                    );
-
-                    vkCmdDrawIndexed(
-                        cmd,
-                        surface.count,
-                        1,
-                        surface.startIndex,
-                        0,
-                        0
-                    );
-                }
-            }
-        }
-    }
-    vkCmdEndRendering(cmd);
-}
-*/
 
 VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& currentFrame){
-    /*
-    // TODO: HARDCODED DATA
-    float PudgeRotateSpeed = 5.0f;
-    if (auto* enemy = _activeScene->GetEntity(2)){
-        enemy->rotation.z += _delta.delta * PudgeRotateSpeed;
-    }
-    */
-
     // Z-up
     glm::vec3 up = {0.0f, 0.0f, 1.0f};
 

@@ -2,7 +2,6 @@
 
 #include <fstream>
 #include "vk_initializers.h"
-#include <../Utils/shader_compile.h>
 
 namespace vkutil{
     bool load_shader_module(const char* filePath,
@@ -114,6 +113,16 @@ struct RealPipeline {
     PipelineOpacity opacity;
 
     uint16_t id{ 0 };
+
+    std::vector<uint32_t> vertSPIRVCode;
+    std::vector<uint32_t> fragSPIRVCode;
+
+    std::string vertexShaderPath;
+    std::string fragmentShaderPath;
+
+    VkFormat colorFormat{ VK_FORMAT_UNDEFINED };
+    VkFormat depthFormat{ VK_FORMAT_UNDEFINED };
+    VkSampleCountFlagBits maxSamples{ VK_SAMPLE_COUNT_1_BIT };
 };
 
 class PipelineManager{
@@ -124,11 +133,18 @@ public:
 
     RealPipeline* CreatePipeline(const PipelineCreateInfo& info, VkFormat colorFormat, VkFormat depthFormat, VkSampleCountFlagBits maxSamples);
 
+    RealPipeline* CreatePipelineFromMemory(const PipelineCreateInfo& info,
+                                           const std::vector<uint32_t>& vertCode,
+                                           const std::vector<uint32_t>& fragCode,
+                                           VkFormat colorFormat, VkFormat depthFormat, VkSampleCountFlagBits maxSamples);
+
     RealPipeline* GetPipeline(const std::string& name);
 
     bool DestroyPipeline(const std::string& name);
 
     void DestroyAllPipelines();
+
+    bool ReloadAllPipelines();
 
     void cleanup();
 
