@@ -128,13 +128,12 @@ void Scene::DestroyEntitiesByModel(uint32_t modelAssetId){
 
 void Scene::CullingAndSubmit(RenderSystem& renderSystem, PipelineManager& pipelineManager, const glm::vec3& cameraPosition){
 
-    RealPipeline* gridPipeline = pipelineManager.GetPipeline("Grid"); // 💡 проверь, "Grid" или "GridP" в init_pipeline_manager
+    RealPipeline* gridPipeline = pipelineManager.GetPipeline("Grid");
     if (gridPipeline)
     {
         RenderObject gridRo{};
-        gridRo.render_matrix = glm::mat4(1.0f); // Сетка всегда в центре мира
+        gridRo.render_matrix = glm::mat4(1.0f);
 
-        // Бесконечная процедурная сетка из vk-guide генерируется прямо в шейдере, буферы не нужны
         gridRo.indexBuffer = VK_NULL_HANDLE;
         gridRo.vertexBufferAddress = 0;
         gridRo.indexCount = 6;
@@ -145,8 +144,11 @@ void Scene::CullingAndSubmit(RenderSystem& renderSystem, PipelineManager& pipeli
 
         gridRo.colorTextureID = 0;
         gridRo.metallicRoughnessTextureID = 0;
+        gridRo.normalTextureID = 0;
+        gridRo.occlusionTextureID = 0;
+        gridRo.baseColorFactor = glm::vec4(1.0f);
+        gridRo.materialFactors = glm::vec4(1.0f, 0.0f, 0.0f, 0.0f);
 
-        // Генерируем правильный ключ (Transparent = 2)
         uint64_t gridOpacity = 2;
         uint64_t gridKey = 0;
         gridKey |= (gridOpacity & 0x3ULL) << 62;
@@ -196,9 +198,19 @@ void Scene::CullingAndSubmit(RenderSystem& renderSystem, PipelineManager& pipeli
                 ro.firstIndex = surface.startIndex;
                 ro.pipeline = pipeline->pipeline;
                 ro.pipelineLayout = pipeline->layout;
+
                 ro.colorTextureID = surface.material->colorTextureID;
                 ro.metallicRoughnessTextureID = surface.material->metallicRoughnessTextureID;
+                ro.normalTextureID = surface.material->normalTextureID;
+                ro.occlusionTextureID = surface.material->occlusionTextureID;
                 ro.baseColorFactor = surface.material->baseColorFactor;
+
+                ro.materialFactors = glm::vec4(
+                    surface.material->roughnessFactor,
+                    surface.material->metallicFactor,
+                    0.0f, // padding
+                    0.0f  // padding
+                );
 
                 // Определяем секцию прозрачности
                 uint64_t opacitySection = 0; // Opaque (BaseMesh)
