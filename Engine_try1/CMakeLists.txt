@@ -46,6 +46,7 @@ add_executable(${PROJECT_NAME}
         src/Vulkan/vk_glTF_loading.cpp
         src/Controller/movement.cpp
         src/Utils/File_loader.cpp
+        src/Utils/shader_compile.cpp
         src/Vulkan/vk_scene.cpp
         src/Vulkan/vk_imgui.cpp
 
@@ -134,6 +135,15 @@ elseif(UNIX AND NOT APPLE)
     )
 endif()
 
+find_library(SHADERC_LIB
+        NAMES shaderc_combined
+        PATHS ${Vulkan_LIBRARY_DIRS}
+)
+
+if(NOT SHADERC_LIB)
+    message(FATAL_ERROR "Shaderc not found! Make sure Vulkan SDK is installed properly.")
+endif()
+
 target_link_libraries(${PROJECT_NAME}
     Vulkan::Vulkan
     Vulkan::Headers
@@ -141,6 +151,7 @@ target_link_libraries(${PROJECT_NAME}
     draco_static
     fastgltf::fastgltf
     nfd
+    ${SHADERC_LIB}
 )
 
 if(WIN32)

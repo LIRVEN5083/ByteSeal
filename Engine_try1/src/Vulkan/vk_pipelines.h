@@ -2,6 +2,7 @@
 
 #include <fstream>
 #include "vk_initializers.h"
+#include <../Utils/shader_compile.h>
 
 namespace vkutil{
     bool load_shader_module(const char* filePath,
