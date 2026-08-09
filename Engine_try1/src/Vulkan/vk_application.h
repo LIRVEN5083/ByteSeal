@@ -74,13 +74,6 @@ namespace VK_APPLICATION {
         CONTROLLER::Camera _camera;
         CONTROLLER::Delta _delta;
 
-        // HardCoded data
-        VkPipelineLayout _gridPipelineLayout;
-        VkPipeline _gridPipeline;
-
-        VkPipelineLayout _BasePipelineLayout;
-        VkPipeline _BasePipeline;
-
         VkSampleCountFlagBits _maxSamples;
 
         // Для теста нодов
@@ -91,7 +84,6 @@ namespace VK_APPLICATION {
         MeshManager _meshManager;
         ModelManager _modelManager{_init, _meshManager, _textureManager};
         RenderSystem _renderSystem{_init};
-        // Храним нашу сцену в виде умного указателя
         std::unique_ptr<Scene> _activeScene;
         VK_GUI::GUI _gui;
 

@@ -422,6 +422,11 @@ RealPipeline* PipelineManager::CreatePipeline(const PipelineCreateInfo& info, Vk
 
     // Сохраняем в карту менеджера конвейеров
     RealPipeline pipelineData{ info.name, newPipeline, _commonLayout, info.opacity, newId };
+    pipelineData.vertexShaderPath   = info.vertexShaderPath;
+    pipelineData.fragmentShaderPath = info.fragmentShaderPath;
+    pipelineData.colorFormat        = colorFormat;
+    pipelineData.depthFormat        = depthFormat;
+    pipelineData.maxSamples         = maxSamples;
     _pipelines[info.name] = pipelineData;
 
     return &_pipelines[info.name];
@@ -457,6 +462,71 @@ void PipelineManager::DestroyAllPipelines(){
         }
     }
     _pipelines.clear();
+}
+
+bool PipelineManager:: ReloadAllPipelines(){
+    std::cout << "[PipelineManager] Initiating full runtime pipeline rebuild\n";
+    vkDeviceWaitIdle(_device);
+
+    struct PipelineBackup {
+        std::string name;
+        PipelineOpacity opacity;
+        std::string vertPath;
+        std::string fragPath;
+        VkFormat colorFormat;
+        VkFormat depthFormat;
+        VkSampleCountFlagBits maxSamples;
+
+        // Прикол такой что в бинарное дерево при перезагрузке конвееры загружаются случайно, а не в старом порядке
+        // из-за этого случайные айди конвееров ломают отрисовку в CullingAndSubmit
+        uint16_t oldID;
+    };
+    std::vector<PipelineBackup> backupQueue;
+
+    for (const auto& [name, realPipeline] : _pipelines) {
+        backupQueue.push_back({
+            name,
+            realPipeline.opacity,
+            realPipeline.vertexShaderPath,
+            realPipeline.fragmentShaderPath,
+            realPipeline.colorFormat,
+            realPipeline.depthFormat,
+            realPipeline.maxSamples,
+            realPipeline.id
+        });
+
+        // Сразу уничтожаем старый запеченный конвейер на GPU
+        if (realPipeline.pipeline != VK_NULL_HANDLE) {
+            vkDestroyPipeline(_device, realPipeline.pipeline, nullptr);
+        }
+    }
+
+    _pipelines.clear();
+
+    std::sort(backupQueue.begin(), backupQueue.end(), [](const PipelineBackup& a, const PipelineBackup& b) {
+        return a.oldID < b.oldID;
+    });
+
+    for (const auto& pipeline : backupQueue) {
+        PipelineCreateInfo info{};
+        info.name = pipeline.name;
+        info.opacity = pipeline.opacity;
+        info.useMSAA = (pipeline.maxSamples > VK_SAMPLE_COUNT_1_BIT);
+        info.vertexShaderPath = pipeline.vertPath;
+        info.fragmentShaderPath = pipeline.fragPath;
+
+        RealPipeline* rebuilt = CreatePipeline(info, pipeline.colorFormat, pipeline.depthFormat, pipeline.maxSamples);
+        if (rebuilt){
+            rebuilt->id = pipeline.oldID;
+        }
+        else {
+            std::cerr << "[CRITICAL ENGINE ERROR]: Failed to recreate pipeline '" << pipeline.name << "' during crude rebuild!\n";
+            std::abort();
+            return false;
+        }
+    }
+    std::cout << "[PipelineManager] Success!\n";
+    return true;
 }
 
 void PipelineManager::cleanup(){

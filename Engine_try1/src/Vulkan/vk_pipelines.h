@@ -114,6 +114,12 @@ struct RealPipeline {
     PipelineOpacity opacity;
 
     uint16_t id{ 0 };
+
+    std::string vertexShaderPath;
+    std::string fragmentShaderPath;
+    VkFormat colorFormat{ VK_FORMAT_UNDEFINED };
+    VkFormat depthFormat{ VK_FORMAT_UNDEFINED };
+    VkSampleCountFlagBits maxSamples{ VK_SAMPLE_COUNT_1_BIT };
 };
 
 class PipelineManager{
@@ -129,6 +135,8 @@ public:
     bool DestroyPipeline(const std::string& name);
 
     void DestroyAllPipelines();
+
+    bool ReloadAllPipelines();
 
     void cleanup();
 
