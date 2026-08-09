@@ -4,6 +4,8 @@
 
 layout (location = 0) in vec4 inColor;
 layout (location = 1) in vec2 inUV;
+layout (location = 2) in vec3 inNormal;
+layout (location = 3) in vec3 inWorldPos;
 
 layout (location = 0) out vec4 outFragColor;
 
@@ -35,18 +37,34 @@ layout( push_constant ) uniform constants
 
 	uint colorTextureID;
 	uint metallicRoughnessTextureID;
+	uint normalTextureID;
+	uint occlusionTextureID;
+
+	vec2 padding;
+
 	vec4 baseColorFactor;
+	vec4 materialFactors;
 } PushConstants;
 
 void main() 
 {
 	uint texID = nonuniformEXT(PushConstants.colorTextureID);
 	vec4 texColor = texture(globalTextures[texID], inUV);
-	vec4 finalAlbedo = texColor * PushConstants.baseColorFactor;
+	vec4 finalAlbedo = inColor * texColor * PushConstants.baseColorFactor;
 
 	if (finalAlbedo.a < 0.1f) {
 		discard;
 	}
+
+	// Загатовка для PBR
+	float roughnessFactor = PushConstants.materialFactors.x;
+	float metallicFactor  = PushConstants.materialFactors.y;
+
+	uint mrTexID = nonuniformEXT(PushConstants.metallicRoughnessTextureID);
+	vec4 mrSample = texture(globalTextures[mrTexID], inUV);
+
+	float roughness = mrSample.g * roughnessFactor;
+	float metallic  = mrSample.b * metallicFactor;
 
 
 	 outFragColor = finalAlbedo;

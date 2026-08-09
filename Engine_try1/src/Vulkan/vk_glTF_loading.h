@@ -36,14 +36,22 @@ enum class ModelLifetime : uint8_t{
 };
 
 // push constants для работы
+// Сука выравнивание на GPU по 16 байт
 struct GPUDrawPushConstants {
     glm::mat4 render_matrix;          // Обычная матрица преобразований
     VkDeviceAddress vertexBuffer;   // Вершинный буфер который мы алоцировали и получили адресс для передачи
 
     uint32_t colorTextureID;
     uint32_t metallicRoughnessTextureID;
+    uint32_t normalTextureID;
+    uint32_t occlusionTextureID;
+
+    glm::vec2 padding{0.0f};
 
     glm::vec4 baseColorFactor;
+
+    // roughness, metallic, emissive
+    glm::vec4 materialFactors{1.0f, 0.0f, 0.0f, 0.0f};
 };
 
 struct GPUSceneData {
@@ -90,8 +98,12 @@ struct MaterialAsset {
 
     uint32_t colorTextureID{ 0 };
     uint32_t metallicRoughnessTextureID{ 0 };
+    uint32_t normalTextureID{ 0 };
+    uint32_t occlusionTextureID{ 0 };
 
     glm::vec4 baseColorFactor{ 1.0f };
+    float roughnessFactor{ 1.0f };
+    float metallicFactor{0.0f};
 };
 
 class MeshManager{
@@ -319,9 +331,14 @@ struct RenderObject{
 
     VkPipeline pipeline;
     VkPipelineLayout pipelineLayout;
+
     uint32_t colorTextureID;
     uint32_t metallicRoughnessTextureID;
+    uint32_t normalTextureID;
+    uint32_t occlusionTextureID;
+
     glm::vec4 baseColorFactor;
+    glm::vec4 materialFactors;
 
     glm::mat4 render_matrix;
 

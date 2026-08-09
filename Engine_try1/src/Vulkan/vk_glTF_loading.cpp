@@ -921,7 +921,19 @@ Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init,
                 }
             }
 
-            auto gpuTex = load_image(_init, textureManager, pixelData, width, height, VK_FORMAT_R8G8B8A8_SRGB, samplerParams, lifetime);
+            VkFormat imageFormat = VK_FORMAT_R8G8B8A8_SRGB;
+
+            // Короче для материалов нужен формат UNORM
+            for (const auto& mat : gltf.materials) {
+                if (mat.normalTexture.has_value() && gltf.textures[mat.normalTexture->textureIndex].imageIndex == imgIdx) {
+                    imageFormat = VK_FORMAT_R8G8B8A8_UNORM;
+                }
+                if (mat.pbrData.metallicRoughnessTexture.has_value() && gltf.textures[mat.pbrData.metallicRoughnessTexture->textureIndex].imageIndex == imgIdx) {
+                    imageFormat = VK_FORMAT_R8G8B8A8_UNORM;
+                }
+            }
+
+            auto gpuTex = load_image(_init, textureManager, pixelData, width, height, imageFormat, samplerParams, lifetime);
 
             stbi_image_free(pixelData);
 
@@ -948,6 +960,9 @@ Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init,
         newMaterial->name = gltfMaterial.name.c_str();
         newMaterial->baseColorFactor = glm::make_vec4(gltfMaterial.pbrData.baseColorFactor.data());
 
+        newMaterial->roughnessFactor = gltfMaterial.pbrData.roughnessFactor;
+        newMaterial->metallicFactor  = gltfMaterial.pbrData.metallicFactor;
+
         // Базовый цвет (Albedo)
         if (gltfMaterial.pbrData.baseColorTexture.has_value()) {
             size_t gltfTextureIdx = gltfMaterial.pbrData.baseColorTexture->textureIndex;
@@ -970,6 +985,31 @@ Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init,
             }
         } else {
             newMaterial->metallicRoughnessTextureID = 0; // Заглушка
+        }
+
+        // Карта Нормалей (Normal Map) — ДОБАВЛЕНО
+        if (gltfMaterial.normalTexture.has_value()) {
+            size_t gltfTextureIdx = gltfMaterial.normalTexture->textureIndex;
+            auto imageIndexOpt = gltf.textures[gltfTextureIdx].imageIndex;
+            if (imageIndexOpt.has_value()) {
+                size_t imgIdx = imageIndexOpt.value();
+                newMaterial->normalTextureID = loadedModel.loadedTextures[imgIdx].globalIndex;
+            }
+        } else {
+            // Идеально вернуть ID нежно-голубой заглушки (например, 1), если она создана в TextureManager
+            newMaterial->normalTextureID = 0;
+        }
+
+        // Карта Окклюзии
+        if (gltfMaterial.occlusionTexture.has_value()) {
+            size_t gltfTextureIdx = gltfMaterial.occlusionTexture->textureIndex;
+            auto imageIndexOpt = gltf.textures[gltfTextureIdx].imageIndex;
+            if (imageIndexOpt.has_value()) {
+                size_t imgIdx = imageIndexOpt.value();
+                newMaterial->occlusionTextureID = loadedModel.loadedTextures[imgIdx].globalIndex;
+            }
+        } else {
+            newMaterial->occlusionTextureID = 0; // Заглушка
         }
 
         if (gltfMaterial.alphaMode == fastgltf::AlphaMode::Blend) {
@@ -1322,9 +1362,14 @@ void RenderSystem::DrawForward(VkCommandBuffer cmd, VkExtent2D drawExtent, VkDes
         GPUDrawPushConstants push_constants;
         push_constants.render_matrix = object.render_matrix;
         push_constants.vertexBuffer = object.vertexBufferAddress;
+
         push_constants.colorTextureID = object.colorTextureID;
         push_constants.metallicRoughnessTextureID = object.metallicRoughnessTextureID;
+        push_constants.normalTextureID = object.normalTextureID;
+        push_constants.occlusionTextureID = object.occlusionTextureID;
+
         push_constants.baseColorFactor = object.baseColorFactor;
+        push_constants.materialFactors = object.materialFactors;
 
         vkCmdPushConstants(cmd, object.pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(GPUDrawPushConstants), &push_constants);
 

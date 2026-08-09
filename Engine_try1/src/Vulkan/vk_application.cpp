@@ -15,7 +15,6 @@ void VK_APPLICATION::VulkanApplication::cleanup(){
     }
 
     _pipelineManager->cleanup();
-    _pipelineManager.reset();
     _activeScene->DestroyAllEntites();
     _modelManager.destroy_all();
     _meshManager.DestroyAllocationData();
