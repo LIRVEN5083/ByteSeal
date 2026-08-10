@@ -135,13 +135,29 @@ elseif(UNIX AND NOT APPLE)
     )
 endif()
 
-find_library(SHADERC_LIB
-        NAMES shaderc_combined
-        PATHS ${Vulkan_LIBRARY_DIRS}
-)
+if(WIN32)
+    set(SHADERC_LIB "C:/VulkanSDK/1.4.357.0/Bin/shaderc_shared.dll")
+    set(SHADERC_DEPS "")
 
-if(NOT SHADERC_LIB)
-    message(FATAL_ERROR "Shaderc not found! Make sure Vulkan SDK is installed properly.")
+    target_include_directories(${PROJECT_NAME} PUBLIC "C:/VulkanSDK/1.4.357.0/Include")
+
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${SHADERC_LIB}"
+            $<TARGET_FILE_DIR:${PROJECT_NAME}>
+    )
+else()
+    find_library(SHADERC_LIB NAMES shaderc_combined PATHS ${Vulkan_LIBRARY_DIRS} REQUIRED)
+
+    find_package(glslang REQUIRED)
+    find_package(SPIRV-Tools REQUIRED)
+
+    set(SHADERC_DEPS
+            glslang::glslang
+            glslang::SPIRV
+            SPIRV-Tools-opt
+            SPIRV-Tools
+    )
 endif()
 
 target_link_libraries(${PROJECT_NAME}
@@ -152,9 +168,7 @@ target_link_libraries(${PROJECT_NAME}
     fastgltf::fastgltf
     nfd
     ${SHADERC_LIB}
-    glslang
-    SPIRV-Tools
-    SPIRV-Tools-opt
+    ${SHADERC_DEPS}
 )
 
 if(WIN32)

@@ -1013,7 +1013,17 @@ Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init,
         }
 
         if (gltfMaterial.alphaMode == fastgltf::AlphaMode::Blend) {
-            newMaterial->pipelineName = "TransparentMesh";
+            bool isGenuineTransparent = false;
+            
+            if (newMaterial->baseColorFactor.a < 0.95f) {
+                isGenuineTransparent = true;
+            }
+
+            if (isGenuineTransparent) {
+                newMaterial->pipelineName = "TransparentMesh";
+            } else {
+                newMaterial->pipelineName = "AlphaTestedMesh";
+            }
         }
         else if (gltfMaterial.alphaMode == fastgltf::AlphaMode::Mask) {
             newMaterial->pipelineName = "AlphaTestedMesh";
