@@ -6,6 +6,7 @@ layout (location = 0) in vec4 inColor;
 layout (location = 1) in vec2 inUV;
 layout (location = 2) in vec3 inNormal;
 layout (location = 3) in vec3 inWorldPos;
+layout (location = 4) in vec4 inTangent;
 
 layout (location = 0) out vec4 outFragColor;
 
@@ -24,6 +25,7 @@ struct Vertex {
 	vec3 position; float uv_x;
 	vec3 normal;   float uv_y;
 	vec4 color;
+	vec4 tangent;
 };
 layout(buffer_reference, std430) readonly buffer VertexBuffer {
 	Vertex vertices[];
@@ -107,27 +109,59 @@ void main()
 	float roughnessFactor = PushConstants.materialFactors.x;
 	float metallicFactor  = PushConstants.materialFactors.y;
 
-	uint mrTexID = nonuniformEXT(PushConstants.metallicRoughnessTextureID);
-	vec4 mrSample = texture(globalTextures[mrTexID], inUV);
+	float roughness;
+	float metallic;
 
-	// В glTF: roughness в Зеленом (G), metallic в Синем (B)
-	float roughness = mrSample.g * roughnessFactor;
-	float metallic  = mrSample.b * metallicFactor;
+	// Если у нас заглушка текстуры, то ставим значения по дефолту
+	if (PushConstants.metallicRoughnessTextureID == 0) {
+		roughness = 0.0; // ~0.5
+		metallic  = 0.0;  // 0.0
+	} else {
+		// Если текстура есть - честно читаем её каналы
+		uint mrTexID = nonuniformEXT(PushConstants.metallicRoughnessTextureID);
+		vec4 mrSample = texture(globalTextures[mrTexID], inUV);
+
+		// В glTF: roughness в Зеленом (G), metallic в Синем (B)
+		roughness = mrSample.g * roughnessFactor;
+		metallic  = mrSample.b * metallicFactor;
+	}
 
 	// Ограничиваем roughness снизу, чтобы избежать деления на ноль при расчетах бликов
 	roughness = max(roughness, 0.05);
 
-	// Подготовка векторов (Z-up учитывается направлениями векторов в World Space)
-	vec3 N = normalize(inNormal); // Пока без карты нормалей
+	// --ИНТЕГРАЦИЯ КАРТ НОРМАЛЕЙ--
+
+	vec3 normal_vertex = normalize(inNormal);
+	vec3 tangent_vertex = normalize(inTangent.xyz);
+	
+	// 2. Метод Грамма-Шмидта для повторной ортогонализации тангента относительно нормали
+	tangent_vertex = normalize(tangent_vertex - dot(tangent_vertex, normal_vertex) * normal_vertex);
+	
+	// 3. Вычисляем вектор битангента с учетом знака инверсии UV (компонента w)
+	vec3 bitangent_vertex = cross(normal_vertex, tangent_vertex) * inTangent.w;
+	
+	// 4. Формируем матрицу перехода из Tangent Space в World Space
+	mat3 TBN = mat3(tangent_vertex, bitangent_vertex, normal_vertex);
+	
+	// 5. Выборка нормали из текстуры
+	uint normTexID = nonuniformEXT(PushConstants.normalTextureID);
+	vec3 localNormal = texture(globalTextures[normTexID], inUV).rgb;
+	
+	// 6. Распаковка вектора из диапазона [0, 1] в диапазон [-1, 1]
+	localNormal = localNormal * 2.0 - 1.0;
+	
+	// 7. Перевод нормали в World Space для последующих PBR расчетов
+	vec3 N = normalize(TBN * localNormal);
+
+	// ---------------------------
 
 	// Вычисляем позицию камеры из матрицы view (инвертируем вращение трансляции)
-	mat3 rotMat = mat3(scene.view);
-	vec3 d = vec3(scene.view[3]);
-	vec3 camPos = -d * rotMat;
+	mat4 invView = inverse(scene.view);
+	vec3 camPos = invView[3].xyz; // Четвертый столбец хранит позицию камеры в World Space
 
 	vec3 V = normalize(camPos - inWorldPos);      // Вектор к камере
-	vec3 L = -normalize(scene.sunlightDirection.xyz); // Вектор К солнцу (инвертируем входящий свет)
-	vec3 H = normalize(V + L);                    // Вектор полупути (Half-vector)
+	vec3 L = -normalize(scene.sunlightDirection.xyz); // Вектор К солнцу
+	vec3 H = normalize(V + L);                     // Вектор полупути (Half-vector)
 
 	// Косинусы углов
 	float NdotV = max(dot(N, V), 0.0);

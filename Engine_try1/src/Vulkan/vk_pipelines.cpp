@@ -409,7 +409,7 @@ RealPipeline* PipelineManager::CreatePipelineFromMemory(const PipelineCreateInfo
         // Конфигурация для сетки (Grid)
         pipelineBuilder.set_multisampling_alpha(samplesToUse);
         pipelineBuilder.enable_blending_alphablend();
-        pipelineBuilder.enable_depthtest(VK_TRUE, VK_COMPARE_OP_GREATER_OR_EQUAL);
+        pipelineBuilder.enable_depthtest(VK_FALSE, VK_COMPARE_OP_GREATER_OR_EQUAL);
     }
     else if (info.opacity == PipelineOpacity::AlphaTested) {
         // Конфигурация для листвы/масок (Alpha-test)

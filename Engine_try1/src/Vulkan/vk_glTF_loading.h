@@ -51,7 +51,7 @@ struct GPUDrawPushConstants {
     glm::vec4 baseColorFactor;
 
     // roughness, metallic, emissive
-    glm::vec4 materialFactors{1.0f, 0.0f, 0.0f, 0.0f};
+    glm::vec4 materialFactors{0.5f, 0.0f, 0.0f, 0.0f};
 };
 
 struct GPUSceneData {
@@ -70,6 +70,7 @@ struct Vertex {
     glm::vec3 normal;
     float uv_y;
     glm::vec4 color;
+    glm::vec4 tangent;
 };
 
 struct GPUMeshBuffers {
@@ -102,7 +103,7 @@ struct MaterialAsset {
     uint32_t occlusionTextureID{ 0 };
 
     glm::vec4 baseColorFactor{ 1.0f };
-    float roughnessFactor{ 1.0f };
+    float roughnessFactor{ 0.5f };
     float metallicFactor{0.0f};
 };
 
