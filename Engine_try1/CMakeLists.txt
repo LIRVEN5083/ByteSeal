@@ -135,13 +135,27 @@ elseif(UNIX AND NOT APPLE)
     )
 endif()
 
-find_library(SHADERC_LIB
-        NAMES shaderc_combined
-        PATHS ${Vulkan_LIBRARY_DIRS}
-)
+if(WIN32)
+    # Нагло берём динамическую либу из Vulkan SDK
+    # MinGW отлично дружит с .dll напрямую, если указать к ней полный путь
+    set(SHADERC_LIB "C:/VulkanSDK/1.4.357.0/Bin/shaderc_shared.dll")
 
-if(NOT SHADERC_LIB)
-    message(FATAL_ERROR "Shaderc not found! Make sure Vulkan SDK is installed properly.")
+    # Обязательно подключаем инклюды из SDK
+    target_include_directories(${PROJECT_NAME} PUBLIC "C:/VulkanSDK/1.4.357.0/Include")
+
+    # После сборки копируем shaderc_shared.dll в папку с твоим ByteSeal.exe
+    # Без этого винда выдаст ошибку "Либа не найдена" при запуске приложения
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${SHADERC_LIB}"
+            $<TARGET_FILE_DIR:${PROJECT_NAME}>
+    )
+else()
+    # На Linux оставляем твой старый добрый рабочий поиск статики
+    find_library(SHADERC_LIB
+            NAMES shaderc_combined
+            PATHS ${Vulkan_LIBRARY_DIRS}
+    )
 endif()
 
 target_link_libraries(${PROJECT_NAME}
@@ -152,9 +166,6 @@ target_link_libraries(${PROJECT_NAME}
     fastgltf::fastgltf
     nfd
     ${SHADERC_LIB}
-    glslang
-    SPIRV-Tools
-    SPIRV-Tools-opt
 )
 
 if(WIN32)
