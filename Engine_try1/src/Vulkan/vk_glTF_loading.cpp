@@ -680,7 +680,8 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> load_Meshes(VK_INIT_ENGIN
                         [&](glm::vec3 v, size_t index) {
                             Vertex newvtx;
                             newvtx.position = v;
-                            newvtx.normal = { 1.0f, 0.0f, 0.0f };
+                            newvtx.normal = { 0.0f, 0.0f, 1.0f };
+                            newvtx.tangent = { 1.0f, 0.0f, 0.0f, 1.0f };
                             newvtx.color = glm::vec4 { 1.f };
                             newvtx.uv_x = 0.0f;
                             newvtx.uv_y = 0.0f;
@@ -706,6 +707,17 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> load_Meshes(VK_INIT_ENGIN
                         vertices[initial_vtx + index].uv_x = v.x;
                         vertices[initial_vtx + index].uv_y = v.y;
                     });
+            }
+
+            auto tangents = p.findAttribute("TANGENT");
+            if (tangents != p.attributes.end()) {
+                fastgltf::iterateAccessorWithIndex<glm::vec4>(asset, asset.accessors[tangents->accessorIndex],
+                    [&](glm::vec4 v, size_t index) {
+                        vertices[initial_vtx + index].tangent = v;
+                    });
+            } else {
+                // если в glTF нет тангентов, правильные движки генерируют их
+                // программно с помощью библиотек вроде MikkTSpace.
             }
 
             // 5. Загрузка цветов вершин

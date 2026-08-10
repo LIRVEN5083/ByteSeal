@@ -516,15 +516,13 @@ VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& 
     sceneData.view = glm::lookAt(eye, target, up);
 
     glm::vec3 lightDir = glm::normalize(glm::vec3(-0.5f, -0.6f, -0.8f));
-    float sunPower = 5.0f; // Интенсивность для PBR
+    float sunPower = 7.5f; // Интенсивность для PBR
 
     sceneData.sunlightDirection = glm::vec4(lightDir, sunPower);
+    
+    sceneData.sunlightColor = glm::vec4(1.0f, 0.95f, 0.85f, 1.0f);
 
-    // Цвет солнца (Линейное пространство, слегка теплое)
-    sceneData.sunlightColor = glm::vec4(1.0f, 0.96f, 0.88f, 1.0f);
-
-    // Эмбиент (Слегка синеватый холодный оттенок, имитирующий рассеянный свет неба)
-    sceneData.ambientColor = glm::vec4(0.02f, 0.03f, 0.05f, 1.0f);
+    sceneData.ambientColor = glm::vec4(0.2f, 0.25f, 0.35f, 1.0f);
 
     // Perspective projection
     float aspect = (float)_init._windowExtent.width / (float)_init._windowExtent.height;
