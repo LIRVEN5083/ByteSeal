@@ -136,15 +136,10 @@ elseif(UNIX AND NOT APPLE)
 endif()
 
 if(WIN32)
-    # Нагло берём динамическую либу из Vulkan SDK
-    # MinGW отлично дружит с .dll напрямую, если указать к ней полный путь
     set(SHADERC_LIB "C:/VulkanSDK/1.4.357.0/Bin/shaderc_shared.dll")
 
-    # Обязательно подключаем инклюды из SDK
     target_include_directories(${PROJECT_NAME} PUBLIC "C:/VulkanSDK/1.4.357.0/Include")
 
-    # После сборки копируем shaderc_shared.dll в папку с твоим ByteSeal.exe
-    # Без этого винда выдаст ошибку "Либа не найдена" при запуске приложения
     add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${SHADERC_LIB}"
