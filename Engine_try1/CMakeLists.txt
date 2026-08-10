@@ -151,7 +151,7 @@ else()
 
     find_package(glslang REQUIRED)
     find_package(SPIRV-Tools REQUIRED)
-    
+
     set(SHADERC_DEPS
             glslang::glslang
             glslang::SPIRV
