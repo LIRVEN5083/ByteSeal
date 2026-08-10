@@ -137,6 +137,7 @@ endif()
 
 if(WIN32)
     set(SHADERC_LIB "C:/VulkanSDK/1.4.357.0/Bin/shaderc_shared.dll")
+    set(SHADERC_DEPS "")
 
     target_include_directories(${PROJECT_NAME} PUBLIC "C:/VulkanSDK/1.4.357.0/Include")
 
@@ -146,9 +147,16 @@ if(WIN32)
             $<TARGET_FILE_DIR:${PROJECT_NAME}>
     )
 else()
-    find_library(SHADERC_LIB
-            NAMES shaderc_combined
-            PATHS ${Vulkan_LIBRARY_DIRS}
+    find_library(SHADERC_LIB NAMES shaderc_combined PATHS ${Vulkan_LIBRARY_DIRS} REQUIRED)
+
+    find_package(glslang REQUIRED)
+    find_package(SPIRV-Tools REQUIRED)
+    
+    set(SHADERC_DEPS
+            glslang::glslang
+            glslang::SPIRV
+            SPIRV-Tools-opt
+            SPIRV-Tools
     )
 endif()
 
@@ -160,6 +168,7 @@ target_link_libraries(${PROJECT_NAME}
     fastgltf::fastgltf
     nfd
     ${SHADERC_LIB}
+    ${SHADERC_DEPS}
 )
 
 if(WIN32)
