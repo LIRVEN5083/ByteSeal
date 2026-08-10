@@ -146,7 +146,6 @@ if(WIN32)
             $<TARGET_FILE_DIR:${PROJECT_NAME}>
     )
 else()
-    # На Linux оставляем твой старый добрый рабочий поиск статики
     find_library(SHADERC_LIB
             NAMES shaderc_combined
             PATHS ${Vulkan_LIBRARY_DIRS}
