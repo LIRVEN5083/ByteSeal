@@ -293,14 +293,14 @@ void PipelineBuilder::disable_depthtest(){
 void PipelineBuilder::enable_depthtest(bool depthWriteEnable, VkCompareOp op)
 {
     _depthStencil.depthTestEnable = VK_TRUE;
-    _depthStencil.depthWriteEnable = depthWriteEnable;
+    _depthStencil.depthWriteEnable = depthWriteEnable ? VK_TRUE : VK_FALSE;
     _depthStencil.depthCompareOp = op;
     _depthStencil.depthBoundsTestEnable = VK_FALSE;
     _depthStencil.stencilTestEnable = VK_FALSE;
     _depthStencil.front = {};
     _depthStencil.back = {};
-    _depthStencil.minDepthBounds = 1.f;
-    _depthStencil.maxDepthBounds = 0.f;
+    _depthStencil.minDepthBounds = 0.0f;
+    _depthStencil.maxDepthBounds = 1.0f;
 }
 
 void PipelineBuilder::enable_blending_additive()
@@ -409,7 +409,7 @@ RealPipeline* PipelineManager::CreatePipelineFromMemory(const PipelineCreateInfo
         // Конфигурация для сетки (Grid)
         pipelineBuilder.set_multisampling_alpha(samplesToUse);
         pipelineBuilder.enable_blending_alphablend();
-        pipelineBuilder.enable_depthtest(VK_FALSE, VK_COMPARE_OP_GREATER_OR_EQUAL);
+        pipelineBuilder.enable_depthtest(VK_TRUE, VK_COMPARE_OP_GREATER_OR_EQUAL);
     }
     else if (info.opacity == PipelineOpacity::AlphaTested) {
         // Конфигурация для листвы/масок (Alpha-test)

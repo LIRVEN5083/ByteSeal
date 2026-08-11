@@ -98,7 +98,7 @@ void main()
 	vec4 texColor = texture(globalTextures[texID], inUV);
 	vec4 finalAlbedo = inColor * texColor * PushConstants.baseColorFactor;
 
-	if (finalAlbedo.a < 0.1f) {
+	if (finalAlbedo.a < 0.01f) {
 		discard;
 	}
 
@@ -114,7 +114,7 @@ void main()
 
 	// Если у нас заглушка текстуры, то ставим значения по дефолту
 	if (PushConstants.metallicRoughnessTextureID == 0) {
-		roughness = 0.0; // ~0.5
+		roughness = 0.5; // ~0.5
 		metallic  = 0.0;  // 0.0
 	} else {
 		// Если текстура есть - честно читаем её каналы
@@ -134,23 +134,23 @@ void main()
 	vec3 normal_vertex = normalize(inNormal);
 	vec3 tangent_vertex = normalize(inTangent.xyz);
 	
-	// 2. Метод Грамма-Шмидта для повторной ортогонализации тангента относительно нормали
+	// Метод Грамма-Шмидта для повторной ортогонализации тангента относительно нормали
 	tangent_vertex = normalize(tangent_vertex - dot(tangent_vertex, normal_vertex) * normal_vertex);
 	
-	// 3. Вычисляем вектор битангента с учетом знака инверсии UV (компонента w)
+	// Вычисляем вектор битангента с учетом знака инверсии UV (компонента w)
 	vec3 bitangent_vertex = cross(normal_vertex, tangent_vertex) * inTangent.w;
 	
-	// 4. Формируем матрицу перехода из Tangent Space в World Space
+	// Формируем матрицу перехода из Tangent Space в World Space
 	mat3 TBN = mat3(tangent_vertex, bitangent_vertex, normal_vertex);
 	
-	// 5. Выборка нормали из текстуры
+	// Выборка нормали из текстуры
 	uint normTexID = nonuniformEXT(PushConstants.normalTextureID);
 	vec3 localNormal = texture(globalTextures[normTexID], inUV).rgb;
 	
-	// 6. Распаковка вектора из диапазона [0, 1] в диапазон [-1, 1]
+	// Распаковка вектора из диапазона [0, 1] в диапазон [-1, 1]
 	localNormal = localNormal * 2.0 - 1.0;
 	
-	// 7. Перевод нормали в World Space для последующих PBR расчетов
+	// Перевод нормали в World Space для последующих PBR расчетов
 	vec3 N = normalize(TBN * localNormal);
 
 	// ---------------------------
@@ -188,14 +188,38 @@ void main()
 	vec3 directLight = (kD * albedo / PI + specular) * radiance * NdotL;
 
 	uint occTexID = nonuniformEXT(PushConstants.occlusionTextureID);
-	float ao = texture(globalTextures[occTexID], inUV).r;
+	float ao = 1.0; // По дефолту всё открыто солнцу, никакого затенения
+	// Если нету мапы оклюжена то ставим заглушку
+	if (PushConstants.occlusionTextureID != 0) {
+		uint occTexID = nonuniformEXT(PushConstants.occlusionTextureID);
+		ao = texture(globalTextures[occTexID], inUV).r;
+	}
+
+	vec3 finalDirectLight = directLight * mix(0.3, 1.0, ao);
 
 	vec3 ambient = scene.ambientColor.rgb * albedo * ao;
 
-	vec3 color = ambient + directLight;
+	vec3 color = ambient + finalDirectLight;
 
 	color = color / (color + vec3(1.0));
 	color = pow(color, vec3(1.0 / 2.2));
 
-	outFragColor = vec4(color, finalAlbedo.a);
+	// -- GLASS --
+	float finalAlpha = finalAlbedo.a;
+
+	if (finalAlbedo.a < 0.99f)
+	{
+		float specularIntensity = max(specular.r, max(specular.g, specular.b));
+
+		float fresnelAlpha = pow(clamp(1.0 - NdotV, 0.0, 1.0), 5.0);
+
+		finalAlpha = max(finalAlpha, specularIntensity);
+		finalAlpha = max(finalAlpha, fresnelAlpha * 0.5f); // 0.5 — коэффициент мягкости краев
+
+		// Ограничиваем сверху, чтобы стекло под дикими углами не превращалось в сплошной глухой металл
+		finalAlpha = clamp(finalAlpha, 0.0f, 0.95f);
+	}
+
+	// Передаем РАССЧИТАННУЮ finalAlpha вместо старой finalAlbedo.a!
+	outFragColor = vec4(color, finalAlpha);
 }

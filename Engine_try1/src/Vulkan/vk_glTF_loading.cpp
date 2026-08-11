@@ -1024,18 +1024,8 @@ Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init,
             newMaterial->occlusionTextureID = 0; // Заглушка
         }
 
-        if (gltfMaterial.alphaMode == fastgltf::AlphaMode::Blend) {
-            bool isGenuineTransparent = false;
-            
-            if (newMaterial->baseColorFactor.a < 0.95f) {
-                isGenuineTransparent = true;
-            }
-
-            if (isGenuineTransparent) {
-                newMaterial->pipelineName = "TransparentMesh";
-            } else {
-                newMaterial->pipelineName = "AlphaTestedMesh";
-            }
+        if (gltfMaterial.alphaMode == fastgltf::AlphaMode::Blend){
+            newMaterial->pipelineName = "TransparentMesh";
         }
         else if (gltfMaterial.alphaMode == fastgltf::AlphaMode::Mask) {
             newMaterial->pipelineName = "AlphaTestedMesh";
