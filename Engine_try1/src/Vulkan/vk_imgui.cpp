@@ -555,12 +555,34 @@ void VK_GUI::GUI::draw_gizmo(VK_INIT_ENGINE::_inited_engine& _init, std::unique_
         projMatrix[1][1] *= -1.0f;
     }
 
-    if (currentGizmoOperation != ImGuizmo::SCALE)
+    auto box = entity->GetWorldAABB(_modelManager);
+    glm::vec3 aabbSize = box.max - box.min;
+    float objectSizeFactor = (aabbSize.x + aabbSize.y + aabbSize.z) / 3.0f;
+    glm::vec3 aabbCenter = (box.min + box.max) * 0.5f;
+    pivotOffset = aabbCenter - entity->position;
+    if (objectSizeFactor < 0.001f) { objectSizeFactor = 1.0f; }
+    IMGUIZMO_FIX::SetCustomAABBSize(objectSizeFactor);
+
+    // Блокировка Gizmo от большого расстояния
+    glm::mat4 invView = glm::inverse(sceneData.view);
+    glm::vec3 cameraPos = glm::vec3(invView[3]);
+
+    glm::vec3 finalPos = entity->position + pivotOffset;
+    float distanceToTarget = glm::distance(cameraPos, finalPos);
+
+    float fovY = glm::radians(70.0f);
+    float screenHeight = static_cast<float>(_init._windowExtent.height);
+
+    float gizmoPixelSize = (objectSizeFactor / (distanceToTarget * glm::tan(fovY * 0.5f))) * screenHeight;
+
+    bool canInteract = (gizmoPixelSize > 100.0f);
+
+    if (ImGuizmo::IsUsing())
     {
-        auto box = entity->GetWorldAABB(_modelManager);
-        glm::vec3 aabbCenter = (box.min + box.max) * 0.5f;
-        pivotOffset = aabbCenter - entity->position;
+        canInteract = true;
     }
+
+    IMGUIZMO_FIX::SetAllowInteraction(canInteract);
 
     glm::mat4 modelMatrix = glm::mat4(1.0f);
 
@@ -575,24 +597,41 @@ void VK_GUI::GUI::draw_gizmo(VK_INIT_ENGINE::_inited_engine& _init, std::unique_
     modelMatrix = glm::scale(modelMatrix, entity->scale);
 
     // Манипуляция ImGuizmo
-    ImGuizmo::Manipulate(
-        glm::value_ptr(viewMatrix),
-        glm::value_ptr(projMatrix),
-        currentGizmoOperation,
-        currentGizmoMode,
-        glm::value_ptr(modelMatrix)
-    );
-
-    // Если крутим/двигаем гизмо — сохраняем изменения
-    if (ImGuizmo::IsUsing())
+    if (canInteract)
     {
+        // Возвращаем нормальный размер окна ImGuizmo
+        ImGuizmo::SetRect(0.0f, 0.0f, io.DisplaySize.x, io.DisplaySize.y);
+
+        // Вызываем манипулятор ТОЛЬКО когда объект достаточно близко
+        ImGuizmo::Manipulate(
+            glm::value_ptr(viewMatrix),
+            glm::value_ptr(projMatrix),
+            currentGizmoOperation,
+            currentGizmoMode,
+            glm::value_ptr(modelMatrix)
+        );
+    }
+    else
+    {
+        // Прячем гизмо от мышки на всякий случай
+        ImGuizmo::SetRect(0.0f, 0.0f, 0.0f, 0.0f);
+    }
+
+    static bool wasGizmoUsingLastFrame = false;
+
+    if (ImGuizmo::IsUsing()){
+        if (!wasGizmoUsingLastFrame)
+        {
+            wasGizmoUsingLastFrame = true;
+            return;
+        }
+
         float translation[3];
         float rotation[3];
         float scale[3];
 
         ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(modelMatrix), translation, rotation, scale);
 
-        // Возвращаем позицию обратно, вычитая pivotOffset, чтобы объект не прыгал при манипуляциях
         entity->position.x = translation[0] - pivotOffset.x;
         entity->position.y = translation[1] - pivotOffset.y;
         entity->position.z = translation[2] - pivotOffset.z;
@@ -604,6 +643,9 @@ void VK_GUI::GUI::draw_gizmo(VK_INIT_ENGINE::_inited_engine& _init, std::unique_
         entity->scale.x = scale[0];
         entity->scale.y = scale[1];
         entity->scale.z = scale[2];
+    }
+    else{
+        wasGizmoUsingLastFrame = false;
     }
 }
 

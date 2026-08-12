@@ -42,6 +42,11 @@
 // includes patches for multiview from
 // https://github.com/CedricGuillemet/ImGuizmo/issues/15
 
+namespace IMGUIZMO_FIX{
+   float gCustomAABBSize = 1.0f;
+   bool gAllowGizmoInteraction = true;
+}
+
 namespace IMGUIZMO_NAMESPACE
 {
    static const float ZPI = 3.14159265358979323846f;
@@ -819,7 +824,9 @@ namespace IMGUIZMO_NAMESPACE
 
    static Context gContext;
 
-   static const vec_t directionUnary[3] = { makeVect(1.f, 0.f, 0.f), makeVect(0.f, 1.f, 0.f), makeVect(0.f, 0.f, 1.f) };
+   static const vec_t directionUnary[3] = { vec_t(1.f, 0.f, 0.f), vec_t(0.f, 1.f, 0.f), vec_t(0.f, 0.f, 1.f) };
+
+
    static const char* translationInfoMask[] = { "X : %5.3f", "Y : %5.3f", "Z : %5.3f",
       "Y : %5.3f Z : %5.3f", "X : %5.3f Z : %5.3f", "X : %5.3f Y : %5.3f",
       "X : %5.3f Y : %5.3f Z : %5.3f" };
@@ -1187,7 +1194,7 @@ namespace IMGUIZMO_NAMESPACE
       gContext.mMode = mode;
       gContext.mViewMat = *(matrix_t*)view;
       gContext.mProjectionMat = *(matrix_t*)projection;
-      gContext.mbMouseOver = IsHoveringWindow();
+      gContext.mbMouseOver = IsHoveringWindow() && IMGUIZMO_FIX::gAllowGizmoInteraction;
 
       gContext.mModelLocal = *(matrix_t*)matrix;
       gContext.mModelLocal.OrthoNormalize();
@@ -1223,7 +1230,15 @@ namespace IMGUIZMO_NAMESPACE
       vec_t rightViewInverse = viewInverse.v.right;
       rightViewInverse.TransformVector(gContext.mModelInverse);
       float rightLength = GetSegmentLengthClipSpace(makeVect(0.f, 0.f), rightViewInverse);
-      gContext.mScreenFactor = gContext.mGizmoSizeClipSpace / rightLength;
+      float currentMatrixScale = (gContext.mModelScaleOrigin.x + gContext.mModelScaleOrigin.y + gContext.mModelScaleOrigin.z) / 3.0f;
+      //gContext.mScreenFactor = gContext.mGizmoSizeClipSpace / rightLength;
+
+
+
+      // СУКА КОТОРАЯ ОТВЕТСВЕННА ЗА РАЗМЕР СТРЕЛОК
+      gContext.mScreenFactor = 0.5 * IMGUIZMO_FIX::gCustomAABBSize;
+
+
 
       ImVec2 centerSSpace = worldToPos(makeVect(0.f, 0.f), gContext.mMVP);
       gContext.mScreenSquareCenter = centerSSpace;
@@ -3307,7 +3322,7 @@ namespace IMGUIZMO_NAMESPACE
 
       // Recompute hovering for this widget's own window instead of relying on the last
       // Manipulate() call, otherwise only the most recently drawn view would react.
-      gContext.mbMouseOver = IsHoveringWindow();
+      gContext.mbMouseOver = IsHoveringWindow() && IMGUIZMO_FIX::gAllowGizmoInteraction;
 
       matrix_t svgView, svgProjection;
       svgView = gContext.mViewMat;
@@ -3535,3 +3550,12 @@ namespace IMGUIZMO_NAMESPACE
       ComputeContext(svgView.m16, svgProjection.m16, gContext.mModelSource.m16, gContext.mMode);
    }
 };
+
+namespace IMGUIZMO_FIX{
+   void SetCustomAABBSize(float size) {
+      gCustomAABBSize = size;
+   }
+   void SetAllowInteraction(bool allow) {
+      gAllowGizmoInteraction = allow;
+   }
+}
