@@ -664,8 +664,6 @@ void VK_GUI::GUI::draw_gizmo(VK_INIT_ENGINE::_inited_engine& _init, std::unique_
         if (currentGizmoOperation == ImGuizmo::ROTATE)
         {
             ImVec2 mousePos = ImGui::GetMousePos();
-            // Получаем текущую позицию гизмо на экране (центральный пиксель)
-            // Для точности можно вытащить экранный центр из ImGuizmo, но пока аппроксимируем через мышь/центр
             ImVec2 gizmoScreenPos = ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f);
 
             float currentMouseAngle = atan2f(mousePos.y - gizmoScreenPos.y, mousePos.x - gizmoScreenPos.x);
@@ -691,16 +689,25 @@ void VK_GUI::GUI::draw_gizmo(VK_INIT_ENGINE::_inited_engine& _init, std::unique_
             }
 
             float axisSign = 1.0f;
-            if (activeAxis == 0) { axisSign = -1.0f; }
+            if (activeAxis == 0) { axisSign = 1.0f; }
             if (activeAxis == 1) { axisSign = 1.0f; }
-            if (activeAxis == 2) { axisSign = -1.0f; }
+            if (activeAxis == 2) { axisSign = 1.0f; }
             if (activeAxis == 3) { axisSign = 1.0f; }
 
+            if (activeAxis != 3)
+            {
+                glm::vec3 cameraLookDir = -glm::normalize(glm::vec3(invView[2]));
+                glm::vec3 worldBaseAxis = glm::vec3(0.0f, 0.0f, 1.0f);
+                if (activeAxis == 0) { worldBaseAxis = glm::vec3(1.0f, 0.0f, 0.0f); }
+                if (activeAxis == 1) { worldBaseAxis = glm::vec3(0.0f, 1.0f, 0.0f); }
+                if (activeAxis == 2) { worldBaseAxis = glm::vec3(0.0f, 0.0f, 1.0f); }
 
+                float dotResult = glm::dot(worldBaseAxis, cameraLookDir);
+                if (dotResult < 0.0f) { axisSign = -axisSign; }
+            }
             glm::quat deltaRotation = glm::angleAxis(deltaAngle * axisSign, targetAxis);
             entity->rotation = deltaRotation * entity->rotation;
             entity->rotation = glm::normalize(entity->rotation);
-
             lastMouseAngle = currentMouseAngle;
         }
         else
