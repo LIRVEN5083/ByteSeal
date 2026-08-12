@@ -23,6 +23,7 @@ namespace VK_GUI{
         void draw_context_menu_trs(VK_INIT_ENGINE::_inited_engine& _init, std::unique_ptr<Scene>& _scene, const GPUSceneData& sceneData);
         void draw_gizmo(VK_INIT_ENGINE::_inited_engine& _init, std::unique_ptr<Scene>& _scene, const GPUSceneData& sceneData, ModelManager& _modelManager);
         void gizmo_mode();
+        void draw_main_menu_bar(CONTROLLER::Delta& _delta);
 
         // TODO:: Для model manager и инспектора
         // -1 ну типо то что инспектор пуст

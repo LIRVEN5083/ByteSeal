@@ -138,10 +138,20 @@ void VK_GUI::GUI::draw_model_list_overlay(VK_INIT_ENGINE::_inited_engine& _init,
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// Window manager logic
 
-    ImGuiWindowFlags flags = ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoCollapse;
+    ImGuiViewport* viewport = ImGui::GetMainViewport();
+    float screenWidth = viewport->WorkSize.x;
 
-    ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
+    float menuBarHeight = ImGui::GetFrameHeight();
+
+    float windowWidth = 320.0f;
+
+    ImVec2 finalPos = ImVec2(screenWidth - windowWidth, menuBarHeight);
+
+    ImGui::SetNextWindowPos(finalPos, ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(windowWidth, 0.0f), ImGuiCond_Always);
     ImGui::SetNextWindowBgAlpha(1.0f);
+
+    ImGuiWindowFlags flags = ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoCollapse;
 
     bool triggerFileDialog = false;
     static int contextMenuModelId = -1;
@@ -173,7 +183,7 @@ void VK_GUI::GUI::draw_model_list_overlay(VK_INIT_ENGINE::_inited_engine& _init,
 
         ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.11f, 0.11f, 0.11f, 1.00f));
 
-        if (ImGui::BeginChild("ModelListArea", ImVec2(300.0f, 350.0f), true, 0)) {
+        if (ImGui::BeginChild("ModelListArea", ImVec2(300.0f, 350.0f), ImGuiChildFlags_Borders))  {
 
             if (_modelManager.empty()) {
                 ImGui::SetCursorPos(ImVec2(10, 10));
@@ -344,35 +354,42 @@ void VK_GUI::GUI::draw_model_list_overlay(VK_INIT_ENGINE::_inited_engine& _init,
 
 void VK_GUI::GUI::draw_fps_overlay(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER::Delta _delta){
     float fps = (_delta.delta > 0.00001f && std::isfinite(_delta.delta)) ? (1.0f / _delta.delta) : 0.0f;
-
     static float smoothedFps = 60.0f;
 
     if (std::isfinite(fps) && fps > 0.0f) {
         smoothedFps = glm::mix(smoothedFps, fps, 0.05f);
     }
 
+    // Флаги полной невидимости окна
     ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoDecoration |
                                    ImGuiWindowFlags_AlwaysAutoResize |
                                    ImGuiWindowFlags_NoSavedSettings |
                                    ImGuiWindowFlags_NoFocusOnAppearing |
                                    ImGuiWindowFlags_NoNav |
-                                   ImGuiWindowFlags_NoMove;
+                                   ImGuiWindowFlags_NoMove |
+                                   ImGuiWindowFlags_NoBackground |
+                                   ImGuiWindowFlags_NoInputs;
 
-    int windowWidth = 0;
-    int windowHeight = 0;
-    SDL_GetWindowSize(_init._window, &windowWidth, &windowHeight);
+    ImGuiViewport* viewport = ImGui::GetMainViewport();
+    float screenWidth = viewport->WorkSize.x;
+    float menuBarHeight = ImGui::GetFrameHeight();
 
-    float padding = 10.0f;
-    float posX = static_cast<float>(windowWidth) - padding;
-    float posY = padding;
+    float paddingX = 10.0f;
+    float paddingY = 5.0f;
+
+    float posX = screenWidth - paddingX;
+    float posY = menuBarHeight + paddingY;
 
     ImGui::SetNextWindowPos(ImVec2(posX, posY), ImGuiCond_Always, ImVec2(1.0f, 0.0f));
-    ImGui::SetNextWindowBgAlpha(0.35f);
+
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
 
     if (ImGui::Begin("##FPS_Overlay", nullptr, windowFlags)) {
-        ImGui::Text("FPS: %.1f", smoothedFps);
+        ImGui::TextColored(ImVec4(0.2f, 0.8f, 0.2f, 1.0f), "%.0f FPS", smoothedFps);
     }
     ImGui::End();
+
+    ImGui::PopStyleVar(); // Возвращаем отступы назад
 }
 
 void VK_GUI::GUI::draw_context_menu_trs(VK_INIT_ENGINE::_inited_engine& _init, std::unique_ptr<Scene>& _scene,
@@ -616,6 +633,8 @@ void VK_GUI::GUI::draw_gizmo(VK_INIT_ENGINE::_inited_engine& _init, std::unique_
     modelMatrix = modelMatrix * rotationMatrix;
     modelMatrix = glm::scale(modelMatrix, entity->scale);
 
+    ImGuizmo::GetStyle().RotationLineThickness = 3.0f;
+
     // Манипуляция ImGuizmo
     if (canInteract)
     {
@@ -745,6 +764,47 @@ void VK_GUI::GUI::gizmo_mode(){
     }
 }
 
+void VK_GUI::GUI::draw_main_menu_bar(CONTROLLER::Delta& _delta){
+    if (ImGui::BeginMainMenuBar()) {
+        if (ImGui::BeginMenu("File")) {
+            if (ImGui::MenuItem("New Scene", "Ctrl+N")) {}
+            if (ImGui::MenuItem("Open...", "Ctrl+O")) {}
+            ImGui::Separator();
+            if (ImGui::MenuItem("Exit", "Alt+F4")) {}
+            ImGui::EndMenu();
+        }
+
+        if (ImGui::BeginMenu("Setting")) {
+            static bool vsync = true;
+            if (ImGui::Checkbox("VSync", &vsync)) {}
+            ImGui::EndMenu();
+        }
+
+        if (ImGui::BeginMenu("Tools")) {
+            if (ImGui::MenuItem("Metrics/Debugger")) {}
+            ImGui::EndMenu();
+        }
+
+        float fps = (_delta.delta > 0.00001f && std::isfinite(_delta.delta)) ? (1.0f / _delta.delta) : 0.0f;
+        static float smoothedFps = 60.0f;
+        if (std::isfinite(fps) && fps > 0.0f) {
+            smoothedFps = glm::mix(smoothedFps, fps, 0.05f);
+        }
+
+        char fpsBuffer[32];
+        snprintf(fpsBuffer, sizeof(fpsBuffer), "%.0f FPS", smoothedFps);
+
+        float rightPadding = 15.0f;
+        float posX = ImGui::GetWindowWidth() - ImGui::CalcTextSize(fpsBuffer).x - rightPadding;
+
+        ImGui::SameLine(posX);
+
+        ImGui::TextColored(ImVec4(0.4f, 0.8f, 0.4f, 1.0f), "%s", fpsBuffer);
+
+        ImGui::EndMainMenuBar();
+    }
+}
+
 void VK_GUI::GUI::draw_imgui(VK_INIT_ENGINE::_inited_engine& _init, VkCommandBuffer cmd, VkExtent2D _drawExtent){
     VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(_init._drawImage.imageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
@@ -765,6 +825,8 @@ void VK_GUI::GUI::update_imgui(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER
     ImGui::NewFrame();
     ImGuizmo::BeginFrame();
 
+    draw_main_menu_bar(_delta);
+
     gizmo_mode();
 
     draw_fps_overlay(_init, _delta);
@@ -776,6 +838,7 @@ void VK_GUI::GUI::update_imgui(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER
     draw_context_menu_trs(_init, _scene, sceneData);
 
     draw_gizmo(_init, _scene, sceneData, _modelManager);
+
 
     ImGui::Render();
 }
