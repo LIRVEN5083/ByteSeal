@@ -3466,6 +3466,8 @@ namespace IMGUIZMO_NAMESPACE
                IM_ASSERT(boxCoordInt < 27);
                boxes[boxCoordInt] |= insidePanel && (!isDraging) && gContext.mbMouseOver;
 
+               const char* faceNames[6] = { "Front", "Back", "Left", "Right", "Top", "Bottom" };
+
                // draw face with lighter color
                if (iPass)
                {

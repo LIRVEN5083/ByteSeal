@@ -750,30 +750,74 @@ void VK_GUI::GUI::draw_gizmo(VK_INIT_ENGINE::_inited_engine& _init, std::unique_
 
 void VK_GUI::GUI::draw_view_navigation_widget(const GPUSceneData& sceneData, CONTROLLER::Camera& _camera){
     ImGuiIO& io = ImGui::GetIO();
+    ImDrawList* drawList = ImGui::GetForegroundDrawList(); // Рисуем поверх всего
 
-    glm::mat4 viewMatrix = sceneData.view;
+    // viewport Gizmo position
+    float widgetSize = 100.0f;
+    ImVec2 center = ImVec2(io.DisplaySize.x - 320.0f - widgetSize * 0.5f - 20.0f, 40.0f + widgetSize * 0.5f);
+    float radius = 40.0f; // Длина стрелочек
 
-    float widgetWidth = 100.0f;
-    float widgetHeight = 100.0f;
+    // Getting camera matrix
+    glm::mat4 viewRotation = sceneData.view;
+    viewRotation[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f); // Зануляем Translation
 
-    float posX = io.DisplaySize.x - 320.0f - widgetWidth - 20.0f;
-    float posY = 40.0f; // Ниже главного меню
+    // Base axis
+    struct Axis {
+        glm::vec3 dir;
+        // Red, Green, Blue
+        ImU32 color;
+        // X, Y, Z text
+        const char* label;
+    };
+    // Actual text
+    Axis axes[] = {
+        { glm::vec3(1.0f, 0.0f, 0.0f),  IM_COL32(255, 54, 83, 255),  "X" }, // Красный
+        { glm::vec3(0.0f, 1.0f, 0.0f),  IM_COL32(147, 224, 44, 255), "Y" }, // Зеленый
+        { glm::vec3(0.0f, 0.0f, 1.0f),  IM_COL32(44, 140, 254, 255), "Z" }  // Синий
+    };
 
-    ImGuizmo::SetRect(0.0f, 0.0f, io.DisplaySize.x, io.DisplaySize.y);
+    // Sort struct
+    struct ProjectedAxis {
+        ImVec2 screenPos;
+        float depth;
+        ImU32 color;
+        const char* label;
+    };
+    std::vector<ProjectedAxis> projectedAxes;
 
-    float length = 4.0f;
-    ImGuizmo::ViewManipulate(
-        glm::value_ptr(viewMatrix),
-        length,
-        ImVec2(posX, posY),
-        ImVec2(widgetWidth, widgetHeight),
-        0x00000000
-    );
 
-    if (viewMatrix != sceneData.view)
-    {
-        glm::mat4 invView = glm::inverse(viewMatrix);
-        glm::quat newCameraRotation = glm::quat_cast(invView);
+    for (const auto& axis : axes) {
+        glm::vec4 transformed = viewRotation * glm::vec4(axis.dir, 1.0f);
+
+        float depth = transformed.z;
+
+        ImVec2 screenPos = ImVec2(center.x + transformed.x * radius, center.y - transformed.y * radius);
+
+        projectedAxes.push_back({ screenPos, depth, axis.color, axis.label });
+    }
+
+    // Sorting
+    std::sort(projectedAxes.begin(), projectedAxes.end(), [](const ProjectedAxis& a, const ProjectedAxis& b) {
+        return a.depth < b.depth;
+    });
+
+    // Axis render
+    for (const auto& axis : projectedAxes) {
+        // Line from center to ball
+        drawList->AddLine(center, axis.screenPos, axis.color, 3.0f);
+
+        // Actual ball radius (Where text: x, y, z)
+        float ballRadius = 10.0f;
+        drawList->AddCircleFilled(axis.screenPos, ballRadius, axis.color, 16);
+
+
+        ImVec2 textSize = ImGui::CalcTextSize(axis.label);
+        ImVec2 textPos = ImVec2(axis.screenPos.x - textSize.x * 0.5f, axis.screenPos.y - textSize.y * 0.5f);
+
+
+        drawList->AddText(ImVec2(textPos.x + 1.0f, textPos.y + 1.0f), IM_COL32(0, 0, 0, 255), axis.label);
+
+        drawList->AddText(textPos, IM_COL32(255, 255, 255, 255), axis.label);
     }
 }
 
