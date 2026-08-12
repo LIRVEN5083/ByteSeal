@@ -234,7 +234,7 @@ void VK_GUI::GUI::draw_model_list_overlay(VK_INIT_ENGINE::_inited_engine& _init,
                 if (contextMenuModelId >= 0 && contextMenuModelId < static_cast<int>(models.size())) {
                     Model& model = models[contextMenuModelId];
 
-                    if (ImGui::MenuItem("Inspector")) {
+                    if (ImGui::MenuItem("Properties")) {
                         selectedModelId = contextMenuModelId;
                         showInspector = true;
                         contextMenuModelId = -1;
@@ -750,7 +750,7 @@ void VK_GUI::GUI::draw_gizmo(VK_INIT_ENGINE::_inited_engine& _init, std::unique_
 
 void VK_GUI::GUI::draw_view_navigation_widget(const GPUSceneData& sceneData, CONTROLLER::Camera& _camera){
     ImGuiIO& io = ImGui::GetIO();
-    ImDrawList* drawList = ImGui::GetForegroundDrawList(); // Рисуем поверх всего
+    ImDrawList* drawList = ImGui::GetForegroundDrawList(); // Draw on top of everything
 
     // viewport Gizmo position
     float widgetSize = 100.0f;
@@ -759,7 +759,7 @@ void VK_GUI::GUI::draw_view_navigation_widget(const GPUSceneData& sceneData, CON
 
     // Getting camera matrix
     glm::mat4 viewRotation = sceneData.view;
-    viewRotation[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f); // Зануляем Translation
+    viewRotation[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
 
     // Base axis
     struct Axis {
@@ -768,12 +768,18 @@ void VK_GUI::GUI::draw_view_navigation_widget(const GPUSceneData& sceneData, CON
         ImU32 color;
         // X, Y, Z text
         const char* label;
+
+        bool isNegative;
     };
     // Actual text
     Axis axes[] = {
-        { glm::vec3(1.0f, 0.0f, 0.0f),  IM_COL32(255, 54, 83, 255),  "X" }, // Красный
-        { glm::vec3(0.0f, 1.0f, 0.0f),  IM_COL32(147, 224, 44, 255), "Y" }, // Зеленый
-        { glm::vec3(0.0f, 0.0f, 1.0f),  IM_COL32(44, 140, 254, 255), "Z" }  // Синий
+        { glm::vec3(1.0f, 0.0f, 0.0f),  IM_COL32(255, 54, 83, 255),  "X", false }, // Red
+        { glm::vec3(0.0f, 1.0f, 0.0f),  IM_COL32(147, 224, 44, 255), "Y", false }, // Green
+        { glm::vec3(0.0f, 0.0f, 1.0f),  IM_COL32(44, 140, 254, 255), "Z", false }, // Blue
+
+        { glm::vec3(-1.0f, 0.0f, 0.0f), IM_COL32(255, 54, 83, 100),   "",  true },  // -X
+        { glm::vec3(0.0f, -1.0f, 0.0f), IM_COL32(147, 224, 44, 100),  "",  true },  // -Y
+        { glm::vec3(0.0f, 0.0f, -1.0f), IM_COL32(44, 140, 254, 100),  "",  true }   // -Z
     };
 
     // Sort struct
@@ -782,6 +788,7 @@ void VK_GUI::GUI::draw_view_navigation_widget(const GPUSceneData& sceneData, CON
         float depth;
         ImU32 color;
         const char* label;
+        bool isNegative;
     };
     std::vector<ProjectedAxis> projectedAxes;
 
@@ -793,7 +800,7 @@ void VK_GUI::GUI::draw_view_navigation_widget(const GPUSceneData& sceneData, CON
 
         ImVec2 screenPos = ImVec2(center.x + transformed.x * radius, center.y - transformed.y * radius);
 
-        projectedAxes.push_back({ screenPos, depth, axis.color, axis.label });
+        projectedAxes.push_back({ screenPos, depth, axis.color, axis.label, axis.isNegative });
     }
 
     // Sorting
@@ -803,21 +810,38 @@ void VK_GUI::GUI::draw_view_navigation_widget(const GPUSceneData& sceneData, CON
 
     // Axis render
     for (const auto& axis : projectedAxes) {
-        // Line from center to ball
-        drawList->AddLine(center, axis.screenPos, axis.color, 3.0f);
-
         // Actual ball radius (Where text: x, y, z)
         float ballRadius = 10.0f;
-        drawList->AddCircleFilled(axis.screenPos, ballRadius, axis.color, 16);
+
+        if (axis.isNegative){
+            // Transperent ball
+            drawList->AddCircleFilled(axis.screenPos, ballRadius, axis.color, 16);
+
+            // Unpack RGB
+            uint8_t r = (axis.color >> 0)  & 0xFF;
+            uint8_t g = (axis.color >> 8)  & 0xFF;
+            uint8_t b = (axis.color >> 16) & 0xFF;
+
+            ImU32 darkBorderColor = IM_COL32(r / 2, g / 2, b / 2, 255);
+
+            // Border lines
+            drawList->AddCircle(axis.screenPos, ballRadius, darkBorderColor, 16, 1.5f);
+        }
+        else{
+            // Line from center to ball
+            drawList->AddLine(center, axis.screenPos, axis.color, 3.0f);
+
+            drawList->AddCircleFilled(axis.screenPos, ballRadius, axis.color, 16);
 
 
-        ImVec2 textSize = ImGui::CalcTextSize(axis.label);
-        ImVec2 textPos = ImVec2(axis.screenPos.x - textSize.x * 0.5f, axis.screenPos.y - textSize.y * 0.5f);
+            ImVec2 textSize = ImGui::CalcTextSize(axis.label);
+            ImVec2 textPos = ImVec2(axis.screenPos.x - textSize.x * 0.5f, axis.screenPos.y - textSize.y * 0.5f);
 
 
-        drawList->AddText(ImVec2(textPos.x + 1.0f, textPos.y + 1.0f), IM_COL32(0, 0, 0, 255), axis.label);
+            drawList->AddText(ImVec2(textPos.x + 1.0f, textPos.y + 1.0f), IM_COL32(0, 0, 0, 255), axis.label);
 
-        drawList->AddText(textPos, IM_COL32(255, 255, 255, 255), axis.label);
+            drawList->AddText(textPos, IM_COL32(255, 255, 255, 255), axis.label);
+        }
     }
 }
 
@@ -904,7 +928,7 @@ void VK_GUI::GUI::update_imgui(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER
 
     draw_model_list_overlay(_init, _modelManager, _scene, sceneData, pipelineManager);
 
-    draw_inspector_window(_init, _modelManager);
+    draw_model_properties_window(_init, _modelManager);
 
     draw_context_menu_trs(_init, _scene, sceneData);
 
@@ -915,7 +939,7 @@ void VK_GUI::GUI::update_imgui(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER
     ImGui::Render();
 }
 
-void VK_GUI::GUI::draw_inspector_window(VK_INIT_ENGINE::_inited_engine& _init, ModelManager& modelManager){
+void VK_GUI::GUI::draw_model_properties_window(VK_INIT_ENGINE::_inited_engine& _init, ModelManager& modelManager){
     if (!showInspector || selectedModelId == -1) {
         return;
     }
@@ -941,7 +965,7 @@ void VK_GUI::GUI::draw_inspector_window(VK_INIT_ENGINE::_inited_engine& _init, M
     ImGui::SetNextWindowSize(ImVec2(initialWidth, initialHeight), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowBgAlpha(1.0f);
 
-    std::string title = "Inspector: Model [" + std::to_string(selectedModelId) + "]";
+    std::string title = "Properties: Model [" + std::to_string(selectedModelId) + "]";
 
     if (ImGui::Begin(title.c_str(), &showInspector, flags)) {
 
