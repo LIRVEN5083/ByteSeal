@@ -121,6 +121,7 @@ struct ImGuiWindow;
 namespace IMGUIZMO_FIX{
    void SetCustomAABBSize(float size);
    void SetAllowInteraction(bool allow);
+   int GetCurrentRotateAxis();
 }
 
 namespace IMGUIZMO_NAMESPACE

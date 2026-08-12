@@ -3,15 +3,13 @@
 
 
 glm::mat4 GameEntity::GetLocalMatrix() const {
-    glm::mat4 translationMat = glm::translate(glm::mat4{1.0f}, position);
+    glm::mat4 model = glm::translate(glm::mat4(1.0f), position);
 
-    glm::mat4 rotationMat = glm::rotate(glm::mat4{1.0f}, glm::radians(rotation.x), glm::vec3(1.0f, 0.0f, 0.0f)) *
-                             glm::rotate(glm::mat4{1.0f}, glm::radians(rotation.y), glm::vec3(0.0f, 1.0f, 0.0f)) *
-                             glm::rotate(glm::mat4{1.0f}, glm::radians(rotation.z), glm::vec3(0.0f, 0.0f, 1.0f));
+    // Переводим кватернион напрямую в mat4
+    model = model * glm::toMat4(rotation);
 
-    glm::mat4 scaleMat = glm::scale(glm::mat4{1.0f}, scale);
-
-    return translationMat * rotationMat * scaleMat;
+    model = glm::scale(model, scale);
+    return model;
 }
 
 AABB GameEntity::GetWorldAABB(ModelManager& modelManager) const{

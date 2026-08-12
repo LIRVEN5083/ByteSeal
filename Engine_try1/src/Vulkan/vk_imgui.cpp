@@ -463,14 +463,35 @@ void VK_GUI::GUI::draw_context_menu_trs(VK_INIT_ENGINE::_inited_engine& _init, s
                     ImGui::Spacing();
 
                     // Rotation X, Y, Z (Euler angles)
+                    static glm::vec3 cachedUIAngles(0.0f);
+                    static uint32_t lastEntityId = -1;
+
+                    // Схемка такая в интерфейсе юзаем углы эйлера а когда они начнут клинить бахаем квантерионы
+                    if (selectedEntityId != lastEntityId || (!ImGui::IsItemActive() && !ImGui::IsAnyItemActive())) {
+                        cachedUIAngles = glm::degrees(glm::eulerAngles(rotation));
+                        lastEntityId = selectedEntityId;
+                    }
+
+                    bool isRotationChanged = false;
+
                     ImGui::Text("Rotation X"); ImGui::SameLine(120);
-                    ImGui::DragFloat("##RotX", &rotation.x, 0.5f, 0.0f, 0.0f, "%.1f°");
+                    if (ImGui::DragFloat("##RotX", &cachedUIAngles.x, 0.5f, -360.0f, 360.0f, "%.1f°")) {
+                        isRotationChanged = true;
+                    }
 
                     ImGui::Text("         Y"); ImGui::SameLine(120);
-                    ImGui::DragFloat("##RotY", &rotation.y, 0.5f, 0.0f, 0.0f, "%.1f°");
+                    if (ImGui::DragFloat("##RotY", &cachedUIAngles.y, 0.5f, -360.0f, 360.0f, "%.1f°")) {
+                        isRotationChanged = true;
+                    }
 
                     ImGui::Text("         Z"); ImGui::SameLine(120);
-                    ImGui::DragFloat("##RotZ", &rotation.z, 0.5f, 0.0f, 0.0f, "%.1f°");
+                    if (ImGui::DragFloat("##RotZ", &cachedUIAngles.z, 0.5f, -360.0f, 360.0f, "%.1f°")) {
+                        isRotationChanged = true;
+                    }
+
+                    if (isRotationChanged) {
+                        rotation = glm::quat(glm::radians(cachedUIAngles));
+                    }
 
                     ImGui::Spacing();
 
@@ -515,8 +536,8 @@ void VK_GUI::GUI::draw_context_menu_trs(VK_INIT_ENGINE::_inited_engine& _init, s
 }
 
 void VK_GUI::GUI::draw_gizmo(VK_INIT_ENGINE::_inited_engine& _init, std::unique_ptr<Scene>& _scene,
-    const GPUSceneData& sceneData, ModelManager& _modelManager){
-
+    const GPUSceneData& sceneData, ModelManager& _modelManager)
+{
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
         !ImGui::GetIO().WantCaptureMouse &&
         !ImGuizmo::IsOver())
@@ -561,7 +582,12 @@ void VK_GUI::GUI::draw_gizmo(VK_INIT_ENGINE::_inited_engine& _init, std::unique_
     glm::vec3 aabbCenter = (box.min + box.max) * 0.5f;
     pivotOffset = aabbCenter - entity->position;
     if (objectSizeFactor < 0.001f) { objectSizeFactor = 1.0f; }
-    IMGUIZMO_FIX::SetCustomAABBSize(objectSizeFactor);
+    if (currentGizmoOperation == ImGuizmo::ROTATE){
+        IMGUIZMO_FIX::SetCustomAABBSize(objectSizeFactor/1.5f);
+    }
+    else{
+        IMGUIZMO_FIX::SetCustomAABBSize(objectSizeFactor);
+    }
 
     // Блокировка Gizmo от большого расстояния
     glm::mat4 invView = glm::inverse(sceneData.view);
@@ -585,15 +611,9 @@ void VK_GUI::GUI::draw_gizmo(VK_INIT_ENGINE::_inited_engine& _init, std::unique_
     IMGUIZMO_FIX::SetAllowInteraction(canInteract);
 
     glm::mat4 modelMatrix = glm::mat4(1.0f);
-
-    modelMatrix = glm::translate(modelMatrix, entity->position + pivotOffset);
-
-    // Применяем вращение вокруг этого центра
-    modelMatrix = glm::rotate(modelMatrix, glm::radians(entity->rotation.x), glm::vec3(1.0f, 0.0f, 0.0f));
-    modelMatrix = glm::rotate(modelMatrix, glm::radians(entity->rotation.y), glm::vec3(0.0f, 1.0f, 0.0f));
-    modelMatrix = glm::rotate(modelMatrix, glm::radians(entity->rotation.z), glm::vec3(0.0f, 0.0f, 1.0f));
-
-    // Применяем масштаб
+    modelMatrix = glm::translate(modelMatrix, finalPos);
+    glm::mat4 rotationMatrix = glm::mat4_cast(entity->rotation);
+    modelMatrix = modelMatrix * rotationMatrix;
     modelMatrix = glm::scale(modelMatrix, entity->scale);
 
     // Манипуляция ImGuizmo
@@ -618,33 +638,86 @@ void VK_GUI::GUI::draw_gizmo(VK_INIT_ENGINE::_inited_engine& _init, std::unique_
     }
 
     static bool wasGizmoUsingLastFrame = false;
+    static float lastMouseAngle = 0.0f;
 
-    if (ImGuizmo::IsUsing()){
+    static glm::vec3 startEntityPos{0.0f};
+    static ImVec2 startMousePos = {0.0f, 0.0f};
+
+    if (ImGuizmo::IsUsing())
+    {
         if (!wasGizmoUsingLastFrame)
         {
             wasGizmoUsingLastFrame = true;
+
+            ImVec2 mousePos = ImGui::GetMousePos();
+            startMousePos = mousePos;
+            startEntityPos = entity->position;
+
+            if (currentGizmoOperation == ImGuizmo::ROTATE) {
+                ImVec2 gizmoScreenPos = ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f);
+                lastMouseAngle = atan2f(mousePos.y - gizmoScreenPos.y, mousePos.x - gizmoScreenPos.x);
+            }
             return;
         }
 
-        float translation[3];
-        float rotation[3];
-        float scale[3];
+        // ЕСЛИ МЫ КРУТИМ: включаем бережный режим Blender
+        if (currentGizmoOperation == ImGuizmo::ROTATE)
+        {
+            ImVec2 mousePos = ImGui::GetMousePos();
+            // Получаем текущую позицию гизмо на экране (центральный пиксель)
+            // Для точности можно вытащить экранный центр из ImGuizmo, но пока аппроксимируем через мышь/центр
+            ImVec2 gizmoScreenPos = ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f);
 
-        ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(modelMatrix), translation, rotation, scale);
+            float currentMouseAngle = atan2f(mousePos.y - gizmoScreenPos.y, mousePos.x - gizmoScreenPos.x);
+            float deltaAngle = currentMouseAngle - lastMouseAngle;
 
-        entity->position.x = translation[0] - pivotOffset.x;
-        entity->position.y = translation[1] - pivotOffset.y;
-        entity->position.z = translation[2] - pivotOffset.z;
+            // Нормализуем дельту, чтобы не было прыжков при переходе через Pi / -Pi
+            if (deltaAngle > 3.14159f) { deltaAngle -= 2.0f * 3.14159f; }
+            if (deltaAngle < -3.14159f) { deltaAngle += 2.0f * 3.14159f; }
 
-        entity->rotation.x = rotation[0];
-        entity->rotation.y = rotation[1];
-        entity->rotation.z = rotation[2];
+            float distToCenter = sqrtf(powf(mousePos.x - gizmoScreenPos.x, 2) + powf(mousePos.y - gizmoScreenPos.y, 2));
 
-        entity->scale.x = scale[0];
-        entity->scale.y = scale[1];
-        entity->scale.z = scale[2];
+            if (distToCenter < 100.0f) { deltaAngle *= (distToCenter / 100.0f); }
+            int activeAxis = IMGUIZMO_FIX::GetCurrentRotateAxis();
+            glm::vec3 targetAxis = glm::vec3(0.0f, 0.0f, 1.0f);
+
+            if (activeAxis == 0) { targetAxis = glm::vec3(1.0f, 0.0f, 0.0f); }
+            if (activeAxis == 1) { targetAxis = glm::vec3(0.0f, 1.0f, 0.0f); }
+            if (activeAxis == 2) { targetAxis = glm::vec3(0.0f, 0.0f, 1.0f); }
+            if (activeAxis == 3) { targetAxis = -glm::normalize(glm::vec3(invView[2])); }
+
+            if (currentGizmoMode == ImGuizmo::LOCAL && activeAxis != 3){
+                targetAxis = glm::normalize(glm::vec3(glm::toMat4(entity->rotation) * glm::vec4(targetAxis, 0.0f)));
+            }
+
+            float axisSign = 1.0f;
+            if (activeAxis == 0) { axisSign = -1.0f; }
+            if (activeAxis == 1) { axisSign = 1.0f; }
+            if (activeAxis == 2) { axisSign = -1.0f; }
+            if (activeAxis == 3) { axisSign = 1.0f; }
+
+
+            glm::quat deltaRotation = glm::angleAxis(deltaAngle * axisSign, targetAxis);
+            entity->rotation = deltaRotation * entity->rotation;
+            entity->rotation = glm::normalize(entity->rotation);
+
+            lastMouseAngle = currentMouseAngle;
+        }
+        else
+        {
+            glm::vec3 skew; glm::vec4 perspective; glm::vec3 translation; glm::quat rotationResult; glm::vec3 scale;
+            glm::decompose(modelMatrix, scale, rotationResult, translation, skew, perspective);
+
+            // Возвращаем позицию, просто вычитая pivotOffset
+            entity->position.x = translation.x - pivotOffset.x;
+            entity->position.y = translation.y - pivotOffset.y;
+            entity->position.z = translation.z - pivotOffset.z;
+
+            entity->scale = scale;
+        }
     }
-    else{
+    else
+    {
         wasGizmoUsingLastFrame = false;
     }
 }

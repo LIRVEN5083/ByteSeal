@@ -787,7 +787,7 @@ namespace IMGUIZMO_NAMESPACE
       // per-id ViewManipulate widget states (see ViewManipulateState)
       ImVector<ViewManipulateState> mViewManipulateStates;
 
-      bool mAllowAxisFlip = true;
+      bool mAllowAxisFlip = false;
       float mGizmoSizeClipSpace = 0.1f;
 
       inline ImGuiID GetCurrentID()
@@ -1426,7 +1426,10 @@ namespace IMGUIZMO_NAMESPACE
 
       viewDirNormalized.TransformVector(gContext.mModelInverse);
 
-      gContext.mRadiusSquareCenter = screenRotateSize * gContext.mHeight;
+      // ГАДЁНЫШ В ПОВОРОТАХ)
+      float baseRadius = screenRotateSize * gContext.mHeight;
+      gContext.mRadiusSquareCenter = baseRadius * (gContext.mScreenFactor / 1.35f);
+
 
       bool hasRSC = Intersects(op, ROTATE_SCREEN);
       for (int axis = 0; axis < 3; axis++)
@@ -2359,21 +2362,51 @@ namespace IMGUIZMO_NAMESPACE
 #else
          ImGui::CaptureMouseFromApp();
 #endif
+         // МРАЗЬ КОТОРАЯ НЕ ПОЗВОЛЯЕТ ДВИГАТЬ СТРЕЛКИ
          const float signedLength = IntersectRayPlane(gContext.mRayOrigin, gContext.mRayVector, gContext.mTranslationPlan);
-         const float len = fabsf(signedLength); // near plan
+         const float len = fabsf(signedLength);
          const vec_t newPos = gContext.mRayOrigin + gContext.mRayVector * len;
 
-         // compute delta
          const vec_t newOrigin = newPos - gContext.mRelativeOrigin * gContext.mScreenFactor;
          vec_t delta = newOrigin - gContext.mModel.v.position;
 
-         // 1 axis constraint
-         if (gContext.mCurrentHandleType >= MT_MOVE_X && gContext.mCurrentHandleType <= MT_MOVE_Z)
+         float maxAllowedDelta = gContext.mScreenFactor * 5.0f;
+         bool isUnderModel = (gContext.mCameraEye.z < gContext.mModel.v.position.z);
+         bool isInvalidPlane = (signedLength < 0.0f || fabsf(delta.x) > maxAllowedDelta || fabsf(delta.y) > maxAllowedDelta || fabsf(delta.z) > maxAllowedDelta);
+
+         if (isUnderModel || isInvalidPlane)
          {
-            const int axisIndex = gContext.mCurrentHandleType - MT_MOVE_X;
-            const vec_t& axisValue = *(vec_t*)&gContext.mModel.m[axisIndex];
-            const float lengthOnAxis = Dot(axisValue, delta);
-            delta = axisValue * lengthOnAxis;
+             // Считаем дельту движения мыши по экрану за кадр
+             float mx = io.MouseDelta.x;
+             float my = io.MouseDelta.y;
+
+            vec_t deltaCamPos = gContext.mModel.v.position - gContext.mCameraEye;
+            float distToCam = deltaCamPos.Length();
+            if (distToCam < 0.001f) { distToCam = 1.0f; }
+            float speed = distToCam * 0.0012f;
+
+             vec_t moveVec = (gContext.mCameraRight * mx) - (gContext.mCameraUp * my);
+
+             delta = moveVec * speed;
+
+             if (gContext.mCurrentHandleType >= MT_MOVE_X && gContext.mCurrentHandleType <= MT_MOVE_Z)
+             {
+                 int axisIndex = gContext.mCurrentHandleType - MT_MOVE_X;
+                 vec_t& axisValue = *(vec_t*)&gContext.mModel.m[axisIndex];
+                 float lengthOnAxis = Dot(axisValue, delta);
+                 delta = axisValue * lengthOnAxis;
+             }
+         }
+         else
+         {
+             // Стандартное ограничение по осям для обычных, здоровых углов камеры (оригинальный код либы)
+             if (gContext.mCurrentHandleType >= MT_MOVE_X && gContext.mCurrentHandleType <= MT_MOVE_Z)
+             {
+                 const int axisIndex = gContext.mCurrentHandleType - MT_MOVE_X;
+                 const vec_t& axisValue = *(vec_t*)&gContext.mModel.m[axisIndex];
+                 const float lengthOnAxis = Dot(axisValue, delta);
+                 delta = axisValue * lengthOnAxis;
+             }
          }
 
          // snap
@@ -3557,5 +3590,12 @@ namespace IMGUIZMO_FIX{
    }
    void SetAllowInteraction(bool allow) {
       gAllowGizmoInteraction = allow;
+   }
+   int GetCurrentRotateAxis() {
+      // Превращаем тип ручки в понятный индекс оси (0=X, 1=Y, 2=Z, 3=Screen)
+      if (IMGUIZMO_NAMESPACE::gContext.mCurrentHandleType == IMGUIZMO_NAMESPACE::MT_ROTATE_X) return 0;
+      if (IMGUIZMO_NAMESPACE::gContext.mCurrentHandleType == IMGUIZMO_NAMESPACE::MT_ROTATE_Y) return 1;
+      if (IMGUIZMO_NAMESPACE::gContext.mCurrentHandleType == IMGUIZMO_NAMESPACE::MT_ROTATE_Z) return 2;
+      return 3; // По умолчанию Screen-space
    }
 }
