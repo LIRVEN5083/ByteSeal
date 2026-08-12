@@ -1446,7 +1446,8 @@ namespace IMGUIZMO_NAMESPACE
             continue;
          }
          const bool usingAxis = (gContext.mbUsing && type == MT_ROTATE_Z - axis);
-         const int circleMul = (hasRSC && !usingAxis) ? 1 : 2;
+         // Обрезка круга
+         const int circleMul = 2;
 
          ImVec2* circlePos = (ImVec2*)alloca(sizeof(ImVec2) * (circleMul * halfCircleSegmentCount + 1));
          const bool rightHanded = gContext.mProjectionMat.m[2][3] < 0.f;
@@ -1474,10 +1475,13 @@ namespace IMGUIZMO_NAMESPACE
             gContext.mRadiusSquareCenter = radiusAxis;
          }
       }
+      /* ТУТ БЕЛОЕ КОЛЬЦО */
       if(hasRSC && (!gContext.mbUsing || type == MT_ROTATE_SCREEN) && (!isMultipleAxesMasked && isNoAxesMasked))
       {
+         colors[0] = ImColor(0, 0, 0,0);
          drawList->AddCircle(worldToPos(gContext.mModel.v.position, gContext.mViewProjection), gContext.mRadiusSquareCenter, colors[0], 64, gContext.mStyle.RotationOuterLineThickness);
       }
+
 
       if (gContext.mbUsing && (gContext.GetCurrentID() == gContext.mEditingID) && IsRotateType(type))
       {
@@ -3461,6 +3465,8 @@ namespace IMGUIZMO_NAMESPACE
                int boxCoordInt = int(boxCoord.x * 9.f + boxCoord.y * 3.f + boxCoord.z);
                IM_ASSERT(boxCoordInt < 27);
                boxes[boxCoordInt] |= insidePanel && (!isDraging) && gContext.mbMouseOver;
+
+               const char* faceNames[6] = { "Front", "Back", "Left", "Right", "Top", "Bottom" };
 
                // draw face with lighter color
                if (iPass)

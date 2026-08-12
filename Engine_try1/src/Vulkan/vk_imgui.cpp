@@ -138,10 +138,20 @@ void VK_GUI::GUI::draw_model_list_overlay(VK_INIT_ENGINE::_inited_engine& _init,
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// Window manager logic
 
-    ImGuiWindowFlags flags = ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoCollapse;
+    ImGuiViewport* viewport = ImGui::GetMainViewport();
+    float screenWidth = viewport->WorkSize.x;
 
-    ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
+    float menuBarHeight = ImGui::GetFrameHeight();
+
+    float windowWidth = 320.0f;
+
+    ImVec2 finalPos = ImVec2(screenWidth - windowWidth, menuBarHeight);
+
+    ImGui::SetNextWindowPos(finalPos, ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(windowWidth, 0.0f), ImGuiCond_Always);
     ImGui::SetNextWindowBgAlpha(1.0f);
+
+    ImGuiWindowFlags flags = ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoCollapse;
 
     bool triggerFileDialog = false;
     static int contextMenuModelId = -1;
@@ -173,7 +183,7 @@ void VK_GUI::GUI::draw_model_list_overlay(VK_INIT_ENGINE::_inited_engine& _init,
 
         ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.11f, 0.11f, 0.11f, 1.00f));
 
-        if (ImGui::BeginChild("ModelListArea", ImVec2(300.0f, 350.0f), true, 0)) {
+        if (ImGui::BeginChild("ModelListArea", ImVec2(300.0f, 350.0f), ImGuiChildFlags_Borders))  {
 
             if (_modelManager.empty()) {
                 ImGui::SetCursorPos(ImVec2(10, 10));
@@ -224,7 +234,7 @@ void VK_GUI::GUI::draw_model_list_overlay(VK_INIT_ENGINE::_inited_engine& _init,
                 if (contextMenuModelId >= 0 && contextMenuModelId < static_cast<int>(models.size())) {
                     Model& model = models[contextMenuModelId];
 
-                    if (ImGui::MenuItem("Inspector")) {
+                    if (ImGui::MenuItem("Properties")) {
                         selectedModelId = contextMenuModelId;
                         showInspector = true;
                         contextMenuModelId = -1;
@@ -344,35 +354,42 @@ void VK_GUI::GUI::draw_model_list_overlay(VK_INIT_ENGINE::_inited_engine& _init,
 
 void VK_GUI::GUI::draw_fps_overlay(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER::Delta _delta){
     float fps = (_delta.delta > 0.00001f && std::isfinite(_delta.delta)) ? (1.0f / _delta.delta) : 0.0f;
-
     static float smoothedFps = 60.0f;
 
     if (std::isfinite(fps) && fps > 0.0f) {
         smoothedFps = glm::mix(smoothedFps, fps, 0.05f);
     }
 
+    // Флаги полной невидимости окна
     ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoDecoration |
                                    ImGuiWindowFlags_AlwaysAutoResize |
                                    ImGuiWindowFlags_NoSavedSettings |
                                    ImGuiWindowFlags_NoFocusOnAppearing |
                                    ImGuiWindowFlags_NoNav |
-                                   ImGuiWindowFlags_NoMove;
+                                   ImGuiWindowFlags_NoMove |
+                                   ImGuiWindowFlags_NoBackground |
+                                   ImGuiWindowFlags_NoInputs;
 
-    int windowWidth = 0;
-    int windowHeight = 0;
-    SDL_GetWindowSize(_init._window, &windowWidth, &windowHeight);
+    ImGuiViewport* viewport = ImGui::GetMainViewport();
+    float screenWidth = viewport->WorkSize.x;
+    float menuBarHeight = ImGui::GetFrameHeight();
 
-    float padding = 10.0f;
-    float posX = static_cast<float>(windowWidth) - padding;
-    float posY = padding;
+    float paddingX = 10.0f;
+    float paddingY = 5.0f;
+
+    float posX = screenWidth - paddingX;
+    float posY = menuBarHeight + paddingY;
 
     ImGui::SetNextWindowPos(ImVec2(posX, posY), ImGuiCond_Always, ImVec2(1.0f, 0.0f));
-    ImGui::SetNextWindowBgAlpha(0.35f);
+
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
 
     if (ImGui::Begin("##FPS_Overlay", nullptr, windowFlags)) {
-        ImGui::Text("FPS: %.1f", smoothedFps);
+        ImGui::TextColored(ImVec4(0.2f, 0.8f, 0.2f, 1.0f), "%.0f FPS", smoothedFps);
     }
     ImGui::End();
+
+    ImGui::PopStyleVar(); // Возвращаем отступы назад
 }
 
 void VK_GUI::GUI::draw_context_menu_trs(VK_INIT_ENGINE::_inited_engine& _init, std::unique_ptr<Scene>& _scene,
@@ -616,6 +633,8 @@ void VK_GUI::GUI::draw_gizmo(VK_INIT_ENGINE::_inited_engine& _init, std::unique_
     modelMatrix = modelMatrix * rotationMatrix;
     modelMatrix = glm::scale(modelMatrix, entity->scale);
 
+    ImGuizmo::GetStyle().RotationLineThickness = 3.0f;
+
     // Манипуляция ImGuizmo
     if (canInteract)
     {
@@ -729,6 +748,103 @@ void VK_GUI::GUI::draw_gizmo(VK_INIT_ENGINE::_inited_engine& _init, std::unique_
     }
 }
 
+void VK_GUI::GUI::draw_view_navigation_widget(const GPUSceneData& sceneData, CONTROLLER::Camera& _camera){
+    ImGuiIO& io = ImGui::GetIO();
+    ImDrawList* drawList = ImGui::GetForegroundDrawList(); // Draw on top of everything
+
+    // viewport Gizmo position
+    float widgetSize = 100.0f;
+    ImVec2 center = ImVec2(io.DisplaySize.x - 320.0f - widgetSize * 0.5f - 20.0f, 40.0f + widgetSize * 0.5f);
+    float radius = 40.0f; // Длина стрелочек
+
+    // Getting camera matrix
+    glm::mat4 viewRotation = sceneData.view;
+    viewRotation[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+
+    // Base axis
+    struct Axis {
+        glm::vec3 dir;
+        // Red, Green, Blue
+        ImU32 color;
+        // X, Y, Z text
+        const char* label;
+
+        bool isNegative;
+    };
+    // Actual text
+    Axis axes[] = {
+        { glm::vec3(1.0f, 0.0f, 0.0f),  IM_COL32(255, 54, 83, 255),  "X", false }, // Red
+        { glm::vec3(0.0f, 1.0f, 0.0f),  IM_COL32(147, 224, 44, 255), "Y", false }, // Green
+        { glm::vec3(0.0f, 0.0f, 1.0f),  IM_COL32(44, 140, 254, 255), "Z", false }, // Blue
+
+        { glm::vec3(-1.0f, 0.0f, 0.0f), IM_COL32(255, 54, 83, 100),   "",  true },  // -X
+        { glm::vec3(0.0f, -1.0f, 0.0f), IM_COL32(147, 224, 44, 100),  "",  true },  // -Y
+        { glm::vec3(0.0f, 0.0f, -1.0f), IM_COL32(44, 140, 254, 100),  "",  true }   // -Z
+    };
+
+    // Sort struct
+    struct ProjectedAxis {
+        ImVec2 screenPos;
+        float depth;
+        ImU32 color;
+        const char* label;
+        bool isNegative;
+    };
+    std::vector<ProjectedAxis> projectedAxes;
+
+
+    for (const auto& axis : axes) {
+        glm::vec4 transformed = viewRotation * glm::vec4(axis.dir, 1.0f);
+
+        float depth = transformed.z;
+
+        ImVec2 screenPos = ImVec2(center.x + transformed.x * radius, center.y - transformed.y * radius);
+
+        projectedAxes.push_back({ screenPos, depth, axis.color, axis.label, axis.isNegative });
+    }
+
+    // Sorting
+    std::sort(projectedAxes.begin(), projectedAxes.end(), [](const ProjectedAxis& a, const ProjectedAxis& b) {
+        return a.depth < b.depth;
+    });
+
+    // Axis render
+    for (const auto& axis : projectedAxes) {
+        // Actual ball radius (Where text: x, y, z)
+        float ballRadius = 10.0f;
+
+        if (axis.isNegative){
+            // Transperent ball
+            drawList->AddCircleFilled(axis.screenPos, ballRadius, axis.color, 16);
+
+            // Unpack RGB
+            uint8_t r = (axis.color >> 0)  & 0xFF;
+            uint8_t g = (axis.color >> 8)  & 0xFF;
+            uint8_t b = (axis.color >> 16) & 0xFF;
+
+            ImU32 darkBorderColor = IM_COL32(r / 2, g / 2, b / 2, 255);
+
+            // Border lines
+            drawList->AddCircle(axis.screenPos, ballRadius, darkBorderColor, 16, 1.5f);
+        }
+        else{
+            // Line from center to ball
+            drawList->AddLine(center, axis.screenPos, axis.color, 3.0f);
+
+            drawList->AddCircleFilled(axis.screenPos, ballRadius, axis.color, 16);
+
+
+            ImVec2 textSize = ImGui::CalcTextSize(axis.label);
+            ImVec2 textPos = ImVec2(axis.screenPos.x - textSize.x * 0.5f, axis.screenPos.y - textSize.y * 0.5f);
+
+
+            drawList->AddText(ImVec2(textPos.x + 1.0f, textPos.y + 1.0f), IM_COL32(0, 0, 0, 255), axis.label);
+
+            drawList->AddText(textPos, IM_COL32(255, 255, 255, 255), axis.label);
+        }
+    }
+}
+
 void VK_GUI::GUI::gizmo_mode(){
     if (!ImGui::GetIO().WantTextInput) {
         if (ImGui::IsKeyPressed(ImGuiKey_F)) {
@@ -745,6 +861,47 @@ void VK_GUI::GUI::gizmo_mode(){
     }
 }
 
+void VK_GUI::GUI::draw_main_menu_bar(CONTROLLER::Delta& _delta){
+    if (ImGui::BeginMainMenuBar()) {
+        if (ImGui::BeginMenu("File")) {
+            if (ImGui::MenuItem("New Scene", "Ctrl+N")) {}
+            if (ImGui::MenuItem("Open...", "Ctrl+O")) {}
+            ImGui::Separator();
+            if (ImGui::MenuItem("Exit", "Alt+F4")) {}
+            ImGui::EndMenu();
+        }
+
+        if (ImGui::BeginMenu("Setting")) {
+            static bool vsync = true;
+            if (ImGui::Checkbox("VSync", &vsync)) {}
+            ImGui::EndMenu();
+        }
+
+        if (ImGui::BeginMenu("Tools")) {
+            if (ImGui::MenuItem("Metrics/Debugger")) {}
+            ImGui::EndMenu();
+        }
+
+        float fps = (_delta.delta > 0.00001f && std::isfinite(_delta.delta)) ? (1.0f / _delta.delta) : 0.0f;
+        static float smoothedFps = 60.0f;
+        if (std::isfinite(fps) && fps > 0.0f) {
+            smoothedFps = glm::mix(smoothedFps, fps, 0.05f);
+        }
+
+        char fpsBuffer[32];
+        snprintf(fpsBuffer, sizeof(fpsBuffer), "%.0f FPS", smoothedFps);
+
+        float rightPadding = 15.0f;
+        float posX = ImGui::GetWindowWidth() - ImGui::CalcTextSize(fpsBuffer).x - rightPadding;
+
+        ImGui::SameLine(posX);
+
+        ImGui::TextColored(ImVec4(0.4f, 0.8f, 0.4f, 1.0f), "%s", fpsBuffer);
+
+        ImGui::EndMainMenuBar();
+    }
+}
+
 void VK_GUI::GUI::draw_imgui(VK_INIT_ENGINE::_inited_engine& _init, VkCommandBuffer cmd, VkExtent2D _drawExtent){
     VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(_init._drawImage.imageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
@@ -758,29 +915,31 @@ void VK_GUI::GUI::draw_imgui(VK_INIT_ENGINE::_inited_engine& _init, VkCommandBuf
     vkCmdEndRendering(cmd);
 }
 
-void VK_GUI::GUI::update_imgui(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER::Delta& _delta, ModelManager& _modelManager,
+void VK_GUI::GUI::update_imgui(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER::Delta& _delta, CONTROLLER::Camera _camera, ModelManager& _modelManager,
     std::unique_ptr<Scene>& _scene, const GPUSceneData& sceneData, PipelineManager& pipelineManager){
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplSDL3_NewFrame();
     ImGui::NewFrame();
     ImGuizmo::BeginFrame();
 
-    gizmo_mode();
+    draw_main_menu_bar(_delta);
 
-    draw_fps_overlay(_init, _delta);
+    gizmo_mode();
 
     draw_model_list_overlay(_init, _modelManager, _scene, sceneData, pipelineManager);
 
-    draw_inspector_window(_init, _modelManager);
+    draw_model_properties_window(_init, _modelManager);
 
     draw_context_menu_trs(_init, _scene, sceneData);
 
     draw_gizmo(_init, _scene, sceneData, _modelManager);
 
+    draw_view_navigation_widget(sceneData, _camera);
+
     ImGui::Render();
 }
 
-void VK_GUI::GUI::draw_inspector_window(VK_INIT_ENGINE::_inited_engine& _init, ModelManager& modelManager){
+void VK_GUI::GUI::draw_model_properties_window(VK_INIT_ENGINE::_inited_engine& _init, ModelManager& modelManager){
     if (!showInspector || selectedModelId == -1) {
         return;
     }
@@ -806,7 +965,7 @@ void VK_GUI::GUI::draw_inspector_window(VK_INIT_ENGINE::_inited_engine& _init, M
     ImGui::SetNextWindowSize(ImVec2(initialWidth, initialHeight), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowBgAlpha(1.0f);
 
-    std::string title = "Inspector: Model [" + std::to_string(selectedModelId) + "]";
+    std::string title = "Properties: Model [" + std::to_string(selectedModelId) + "]";
 
     if (ImGui::Begin(title.c_str(), &showInspector, flags)) {
 
