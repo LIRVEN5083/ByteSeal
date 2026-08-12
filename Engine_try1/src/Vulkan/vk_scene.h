@@ -5,6 +5,7 @@ class RenderSystem;
 struct GPUSceneData;
 struct AABB;
 
+#include "vk_types.h"
 #include <stdint.h>
 #include <unordered_map>
 #include <glm/glm.hpp>
@@ -21,8 +22,10 @@ struct GameEntity {
     // Трансформация объекта на сцене
     // Эта данные нам понадобятся в IMGUI
     glm::vec3 position{ 0.0f };
-    glm::vec3 rotation{ 0.0f };
+    glm::quat rotation{ 1.0f, 0.0f, 0.0f, 0.0f };
     glm::vec3 scale{ 1.0f };
+
+    glm::vec3 uiEulerRotation{ 0.0f };
 
     // Связь с ресурсом
     uint32_t modelAssetId{ 0 };

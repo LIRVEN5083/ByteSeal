@@ -118,6 +118,12 @@ void EditTransform(const Camera& camera, matrix_t& matrix)
 
 struct ImGuiWindow;
 
+namespace IMGUIZMO_FIX{
+   void SetCustomAABBSize(float size);
+   void SetAllowInteraction(bool allow);
+   int GetCurrentRotateAxis();
+}
+
 namespace IMGUIZMO_NAMESPACE
 {
    // call inside your own window and before Manipulate() in order to draw gizmo to that window.

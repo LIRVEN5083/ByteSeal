@@ -42,6 +42,11 @@
 // includes patches for multiview from
 // https://github.com/CedricGuillemet/ImGuizmo/issues/15
 
+namespace IMGUIZMO_FIX{
+   float gCustomAABBSize = 1.0f;
+   bool gAllowGizmoInteraction = true;
+}
+
 namespace IMGUIZMO_NAMESPACE
 {
    static const float ZPI = 3.14159265358979323846f;
@@ -782,7 +787,7 @@ namespace IMGUIZMO_NAMESPACE
       // per-id ViewManipulate widget states (see ViewManipulateState)
       ImVector<ViewManipulateState> mViewManipulateStates;
 
-      bool mAllowAxisFlip = true;
+      bool mAllowAxisFlip = false;
       float mGizmoSizeClipSpace = 0.1f;
 
       inline ImGuiID GetCurrentID()
@@ -819,7 +824,9 @@ namespace IMGUIZMO_NAMESPACE
 
    static Context gContext;
 
-   static const vec_t directionUnary[3] = { makeVect(1.f, 0.f, 0.f), makeVect(0.f, 1.f, 0.f), makeVect(0.f, 0.f, 1.f) };
+   static const vec_t directionUnary[3] = { vec_t(1.f, 0.f, 0.f), vec_t(0.f, 1.f, 0.f), vec_t(0.f, 0.f, 1.f) };
+
+
    static const char* translationInfoMask[] = { "X : %5.3f", "Y : %5.3f", "Z : %5.3f",
       "Y : %5.3f Z : %5.3f", "X : %5.3f Z : %5.3f", "X : %5.3f Y : %5.3f",
       "X : %5.3f Y : %5.3f Z : %5.3f" };
@@ -1187,7 +1194,7 @@ namespace IMGUIZMO_NAMESPACE
       gContext.mMode = mode;
       gContext.mViewMat = *(matrix_t*)view;
       gContext.mProjectionMat = *(matrix_t*)projection;
-      gContext.mbMouseOver = IsHoveringWindow();
+      gContext.mbMouseOver = IsHoveringWindow() && IMGUIZMO_FIX::gAllowGizmoInteraction;
 
       gContext.mModelLocal = *(matrix_t*)matrix;
       gContext.mModelLocal.OrthoNormalize();
@@ -1223,7 +1230,15 @@ namespace IMGUIZMO_NAMESPACE
       vec_t rightViewInverse = viewInverse.v.right;
       rightViewInverse.TransformVector(gContext.mModelInverse);
       float rightLength = GetSegmentLengthClipSpace(makeVect(0.f, 0.f), rightViewInverse);
-      gContext.mScreenFactor = gContext.mGizmoSizeClipSpace / rightLength;
+      float currentMatrixScale = (gContext.mModelScaleOrigin.x + gContext.mModelScaleOrigin.y + gContext.mModelScaleOrigin.z) / 3.0f;
+      //gContext.mScreenFactor = gContext.mGizmoSizeClipSpace / rightLength;
+
+
+
+      // СУКА КОТОРАЯ ОТВЕТСВЕННА ЗА РАЗМЕР СТРЕЛОК
+      gContext.mScreenFactor = 0.5 * IMGUIZMO_FIX::gCustomAABBSize;
+
+
 
       ImVec2 centerSSpace = worldToPos(makeVect(0.f, 0.f), gContext.mMVP);
       gContext.mScreenSquareCenter = centerSSpace;
@@ -1411,7 +1426,10 @@ namespace IMGUIZMO_NAMESPACE
 
       viewDirNormalized.TransformVector(gContext.mModelInverse);
 
-      gContext.mRadiusSquareCenter = screenRotateSize * gContext.mHeight;
+      // ГАДЁНЫШ В ПОВОРОТАХ)
+      float baseRadius = screenRotateSize * gContext.mHeight;
+      gContext.mRadiusSquareCenter = baseRadius * (gContext.mScreenFactor / 1.35f);
+
 
       bool hasRSC = Intersects(op, ROTATE_SCREEN);
       for (int axis = 0; axis < 3; axis++)
@@ -2344,21 +2362,51 @@ namespace IMGUIZMO_NAMESPACE
 #else
          ImGui::CaptureMouseFromApp();
 #endif
+         // МРАЗЬ КОТОРАЯ НЕ ПОЗВОЛЯЕТ ДВИГАТЬ СТРЕЛКИ
          const float signedLength = IntersectRayPlane(gContext.mRayOrigin, gContext.mRayVector, gContext.mTranslationPlan);
-         const float len = fabsf(signedLength); // near plan
+         const float len = fabsf(signedLength);
          const vec_t newPos = gContext.mRayOrigin + gContext.mRayVector * len;
 
-         // compute delta
          const vec_t newOrigin = newPos - gContext.mRelativeOrigin * gContext.mScreenFactor;
          vec_t delta = newOrigin - gContext.mModel.v.position;
 
-         // 1 axis constraint
-         if (gContext.mCurrentHandleType >= MT_MOVE_X && gContext.mCurrentHandleType <= MT_MOVE_Z)
+         float maxAllowedDelta = gContext.mScreenFactor * 5.0f;
+         bool isUnderModel = (gContext.mCameraEye.z < gContext.mModel.v.position.z);
+         bool isInvalidPlane = (signedLength < 0.0f || fabsf(delta.x) > maxAllowedDelta || fabsf(delta.y) > maxAllowedDelta || fabsf(delta.z) > maxAllowedDelta);
+
+         if (isUnderModel || isInvalidPlane)
          {
-            const int axisIndex = gContext.mCurrentHandleType - MT_MOVE_X;
-            const vec_t& axisValue = *(vec_t*)&gContext.mModel.m[axisIndex];
-            const float lengthOnAxis = Dot(axisValue, delta);
-            delta = axisValue * lengthOnAxis;
+             // Считаем дельту движения мыши по экрану за кадр
+             float mx = io.MouseDelta.x;
+             float my = io.MouseDelta.y;
+
+            vec_t deltaCamPos = gContext.mModel.v.position - gContext.mCameraEye;
+            float distToCam = deltaCamPos.Length();
+            if (distToCam < 0.001f) { distToCam = 1.0f; }
+            float speed = distToCam * 0.0012f;
+
+             vec_t moveVec = (gContext.mCameraRight * mx) - (gContext.mCameraUp * my);
+
+             delta = moveVec * speed;
+
+             if (gContext.mCurrentHandleType >= MT_MOVE_X && gContext.mCurrentHandleType <= MT_MOVE_Z)
+             {
+                 int axisIndex = gContext.mCurrentHandleType - MT_MOVE_X;
+                 vec_t& axisValue = *(vec_t*)&gContext.mModel.m[axisIndex];
+                 float lengthOnAxis = Dot(axisValue, delta);
+                 delta = axisValue * lengthOnAxis;
+             }
+         }
+         else
+         {
+             // Стандартное ограничение по осям для обычных, здоровых углов камеры (оригинальный код либы)
+             if (gContext.mCurrentHandleType >= MT_MOVE_X && gContext.mCurrentHandleType <= MT_MOVE_Z)
+             {
+                 const int axisIndex = gContext.mCurrentHandleType - MT_MOVE_X;
+                 const vec_t& axisValue = *(vec_t*)&gContext.mModel.m[axisIndex];
+                 const float lengthOnAxis = Dot(axisValue, delta);
+                 delta = axisValue * lengthOnAxis;
+             }
          }
 
          // snap
@@ -3307,7 +3355,7 @@ namespace IMGUIZMO_NAMESPACE
 
       // Recompute hovering for this widget's own window instead of relying on the last
       // Manipulate() call, otherwise only the most recently drawn view would react.
-      gContext.mbMouseOver = IsHoveringWindow();
+      gContext.mbMouseOver = IsHoveringWindow() && IMGUIZMO_FIX::gAllowGizmoInteraction;
 
       matrix_t svgView, svgProjection;
       svgView = gContext.mViewMat;
@@ -3535,3 +3583,19 @@ namespace IMGUIZMO_NAMESPACE
       ComputeContext(svgView.m16, svgProjection.m16, gContext.mModelSource.m16, gContext.mMode);
    }
 };
+
+namespace IMGUIZMO_FIX{
+   void SetCustomAABBSize(float size) {
+      gCustomAABBSize = size;
+   }
+   void SetAllowInteraction(bool allow) {
+      gAllowGizmoInteraction = allow;
+   }
+   int GetCurrentRotateAxis() {
+      // Превращаем тип ручки в понятный индекс оси (0=X, 1=Y, 2=Z, 3=Screen)
+      if (IMGUIZMO_NAMESPACE::gContext.mCurrentHandleType == IMGUIZMO_NAMESPACE::MT_ROTATE_X) return 0;
+      if (IMGUIZMO_NAMESPACE::gContext.mCurrentHandleType == IMGUIZMO_NAMESPACE::MT_ROTATE_Y) return 1;
+      if (IMGUIZMO_NAMESPACE::gContext.mCurrentHandleType == IMGUIZMO_NAMESPACE::MT_ROTATE_Z) return 2;
+      return 3; // По умолчанию Screen-space
+   }
+}
