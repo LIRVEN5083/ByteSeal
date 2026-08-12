@@ -748,6 +748,35 @@ void VK_GUI::GUI::draw_gizmo(VK_INIT_ENGINE::_inited_engine& _init, std::unique_
     }
 }
 
+void VK_GUI::GUI::draw_view_navigation_widget(const GPUSceneData& sceneData, CONTROLLER::Camera& _camera){
+    ImGuiIO& io = ImGui::GetIO();
+
+    glm::mat4 viewMatrix = sceneData.view;
+
+    float widgetWidth = 100.0f;
+    float widgetHeight = 100.0f;
+
+    float posX = io.DisplaySize.x - 320.0f - widgetWidth - 20.0f;
+    float posY = 40.0f; // Ниже главного меню
+
+    ImGuizmo::SetRect(0.0f, 0.0f, io.DisplaySize.x, io.DisplaySize.y);
+
+    float length = 4.0f;
+    ImGuizmo::ViewManipulate(
+        glm::value_ptr(viewMatrix),
+        length,
+        ImVec2(posX, posY),
+        ImVec2(widgetWidth, widgetHeight),
+        0x00000000
+    );
+
+    if (viewMatrix != sceneData.view)
+    {
+        glm::mat4 invView = glm::inverse(viewMatrix);
+        glm::quat newCameraRotation = glm::quat_cast(invView);
+    }
+}
+
 void VK_GUI::GUI::gizmo_mode(){
     if (!ImGui::GetIO().WantTextInput) {
         if (ImGui::IsKeyPressed(ImGuiKey_F)) {
@@ -818,7 +847,7 @@ void VK_GUI::GUI::draw_imgui(VK_INIT_ENGINE::_inited_engine& _init, VkCommandBuf
     vkCmdEndRendering(cmd);
 }
 
-void VK_GUI::GUI::update_imgui(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER::Delta& _delta, ModelManager& _modelManager,
+void VK_GUI::GUI::update_imgui(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER::Delta& _delta, CONTROLLER::Camera _camera, ModelManager& _modelManager,
     std::unique_ptr<Scene>& _scene, const GPUSceneData& sceneData, PipelineManager& pipelineManager){
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplSDL3_NewFrame();
@@ -829,8 +858,6 @@ void VK_GUI::GUI::update_imgui(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER
 
     gizmo_mode();
 
-    draw_fps_overlay(_init, _delta);
-
     draw_model_list_overlay(_init, _modelManager, _scene, sceneData, pipelineManager);
 
     draw_inspector_window(_init, _modelManager);
@@ -839,6 +866,7 @@ void VK_GUI::GUI::update_imgui(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER
 
     draw_gizmo(_init, _scene, sceneData, _modelManager);
 
+    draw_view_navigation_widget(sceneData, _camera);
 
     ImGui::Render();
 }

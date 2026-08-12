@@ -13,7 +13,7 @@ namespace VK_GUI{
     {
     public:
         void draw_imgui(VK_INIT_ENGINE::_inited_engine& _init, VkCommandBuffer cmd, VkExtent2D _drawExtent);
-        void update_imgui(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER::Delta& _delta, ModelManager& _modelManager,
+        void update_imgui(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER::Delta& _delta, CONTROLLER::Camera _camera, ModelManager& _modelManager,
             std::unique_ptr<Scene>& _scene, const GPUSceneData& sceneData, PipelineManager& pipelineManager);
     private:
         void draw_inspector_window(VK_INIT_ENGINE::_inited_engine& _init, ModelManager& modelManager);
@@ -22,6 +22,7 @@ namespace VK_GUI{
         void draw_fps_overlay(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER::Delta _delta);
         void draw_context_menu_trs(VK_INIT_ENGINE::_inited_engine& _init, std::unique_ptr<Scene>& _scene, const GPUSceneData& sceneData);
         void draw_gizmo(VK_INIT_ENGINE::_inited_engine& _init, std::unique_ptr<Scene>& _scene, const GPUSceneData& sceneData, ModelManager& _modelManager);
+        void draw_view_navigation_widget(const GPUSceneData& sceneData, CONTROLLER::Camera& _camera);
         void gizmo_mode();
         void draw_main_menu_bar(CONTROLLER::Delta& _delta);
 
