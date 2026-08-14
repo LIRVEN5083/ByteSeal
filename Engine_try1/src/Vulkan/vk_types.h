@@ -67,6 +67,36 @@ struct AllocatedBuffer {
     VmaAllocationInfo info;     // Обязательно нужен для того что-бы копировать данные через memcpy
 };
 
+// Делим ебанные обьекты по типу аллокации
+// И времени их существования на сцене
+
+// Static - arena-allocator
+// Dynamic - динамическое выделение
+enum class ModelLifetime : uint8_t{
+    Static,
+    Dynamic
+};
+
+struct GPUMeshBuffers {
+
+    AllocatedBuffer indexBuffer;
+    AllocatedBuffer vertexBuffer;
+    VkDeviceAddress vertexBufferAddress;
+
+    ModelLifetime lifetime{ ModelLifetime::Dynamic };
+};
+
+struct GPUTexture {
+    AllocatedImage image;
+    uint32_t globalIndex{ 0 };
+    uint32_t mipLevels;
+
+    VkSampler sampler;
+
+    VkDescriptorSet imguiDescriptorSet{VK_NULL_HANDLE};
+    ModelLifetime lifetime{ ModelLifetime::Dynamic };
+};
+
 
 namespace VK_INIT_ENGINE {
     struct _inited_engine{

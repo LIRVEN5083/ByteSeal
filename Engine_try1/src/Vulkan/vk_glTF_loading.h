@@ -25,15 +25,6 @@ namespace vkutil{
     struct SamplerCreateInfoHash;
     struct SamplerCreateInfoEqual;
 }
-// Делим ебанные обьекты по типу аллокации
-// И времени их существования на сцене
-
-// Static - arena-allocator
-// Dynamic - динамическое выделение
-enum class ModelLifetime : uint8_t{
-    Static,
-    Dynamic
-};
 
 // push constants для работы
 // Сука выравнивание на GPU по 16 байт
@@ -61,6 +52,13 @@ struct GPUSceneData {
     glm::vec4 ambientColor;
     glm::vec4 sunlightDirection; // w for sun power
     glm::vec4 sunlightColor;
+
+    glm::mat4 cascadeMatrices[4];
+
+    glm::vec4 cascadeSplits; // 4 каскада по 4 байта мы упоковываем в вектор из 4 компонентов
+
+    uint32_t shadowMapTextureID;
+    uint32_t padding[3]; // Выравнивание по 16 ByteSeal
 };
 
 struct Vertex {
@@ -71,26 +69,6 @@ struct Vertex {
     float uv_y;
     glm::vec4 color;
     glm::vec4 tangent;
-};
-
-struct GPUMeshBuffers {
-
-    AllocatedBuffer indexBuffer;
-    AllocatedBuffer vertexBuffer;
-    VkDeviceAddress vertexBufferAddress;
-
-    ModelLifetime lifetime{ ModelLifetime::Dynamic };
-};
-
-struct GPUTexture {
-    AllocatedImage image;
-    uint32_t globalIndex{ 0 };
-    uint32_t mipLevels;
-
-    VkSampler sampler;
-
-    VkDescriptorSet imguiDescriptorSet{VK_NULL_HANDLE};
-    ModelLifetime lifetime{ ModelLifetime::Dynamic };
 };
 
 struct MaterialAsset {

@@ -14,6 +14,7 @@ void VK_APPLICATION::VulkanApplication::cleanup(){
         _frames[i]._deletionQueue.flush();
     }
 
+    _lightManager->cleanUp();
     _pipelineManager->cleanup();
     _activeScene->DestroyAllEntites();
     _modelManager.destroy_all();
@@ -492,6 +493,8 @@ void VK_APPLICATION::VulkanApplication::init_scene(){
     _meshManager.init(_init);
     _textureManager.init(_init);
     _activeScene = std::make_unique<Scene>(_modelManager);
+    CSMConfig csmConfig{};
+    _lightManager = std::make_unique<LightManager>(_init._device, _textureManager, csmConfig);
 }
 
 VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& currentFrame){
@@ -524,13 +527,32 @@ VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& 
 
     sceneData.ambientColor = glm::vec4(0.2f, 0.25f, 0.35f, 1.0f);
 
-    // Perspective projection
     float aspect = (float)_init._windowExtent.width / (float)_init._windowExtent.height;
-    sceneData.proj = glm::tweakedInfinitePerspective(glm::radians(70.0f), aspect, 0.1f);
+    float fov = glm::radians(70.0f);
+    float cNear = 0.1f;
+    float cFar = 100.0f;
+
+    sceneData.proj = glm::tweakedInfinitePerspective(fov, aspect, cNear);
     sceneData.proj[1][1] *= -1.0f;
 
     // proj * view
     sceneData.viewproj = sceneData.proj * sceneData.view;
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // КАСКАДЫ ТЕНЕЙ
+    _lightManager->UpdateCascades(sceneData.view, fov, aspect, cNear, cFar, lightDir);
+
+    // Переносим матрицы каскадов в sceneData
+    const glm::mat4* matrices = _lightManager->GetCascadeMatrices();
+    for(int i = 0; i < 4; ++i) {
+        sceneData.cascadeMatrices[i] = matrices[i];
+    }
+
+    // Переносим дистанции отсечения каскадов (упаковываем 4 float в один vec4)
+    const float* splits = _lightManager->GetCascadeSplits();
+    sceneData.cascadeSplits = glm::vec4(splits[0], splits[1], splits[2], splits[3]);
+
+    // Передаем Bindless ID текстуры теней из менеджера
+    sceneData.shadowMapTextureID = _lightManager->GetShadowTextureIndex();
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     VmaAllocationInfo allocInfo;

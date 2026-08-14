@@ -5,6 +5,11 @@
 #include "vk_scene.h"
 #include "../Utils/File_loader.h"
 
+class ModelManager;
+class Scene;
+class PipelineManager;
+struct GPUSceneData;
+
 namespace VK_GUI{
     // TODO: Тема навайбкожена
     void apply_theme();
