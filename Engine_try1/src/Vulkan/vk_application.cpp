@@ -177,7 +177,6 @@ void VK_APPLICATION::VulkanApplication::renderLoop(){
     // ПОДГОТОВКА ОЧЕРЕДИ
     _renderSystem.ClearQueue();
 
-    _renderSystem.Allocate(7000);
     // Сборка сцены
     glm::vec3 cameraPos = { _movement.valueX, _movement.valueY, _movement.valueZ };
     _activeScene->CullingAndSubmit(_renderSystem, *_pipelineManager, cameraPos);
@@ -185,7 +184,7 @@ void VK_APPLICATION::VulkanApplication::renderLoop(){
     // Отрисовка RenderObject
     _renderSystem.PrepareFrame();
     VkDescriptorSet bindlessSet = _textureManager.GetTextureSet();
-    _renderSystem.DrawForward(cmd, _drawExtent, globalDescriptor, bindlessSet);
+    _renderSystem.Draw(cmd, _drawExtent, globalDescriptor, bindlessSet, *_pipelineManager);
 
     // Захардкоженный интерефейс
     _gui.draw_imgui(_init, cmd, _drawExtent);
@@ -426,6 +425,7 @@ void VK_APPLICATION::VulkanApplication::init_pipeline_manager(){
     // Конвеер для базовых моделей (непрозрачных)
     PipelineCreateInfo baseMeshInfo{};
     baseMeshInfo.name = "BaseMesh";
+    baseMeshInfo.passType = RenderPassType::Forward;
     baseMeshInfo.opacity = PipelineOpacity::Opaque;
     baseMeshInfo.useMSAA = true; // Так как в старом коде было _maxSamples
     baseMeshInfo.vertexShaderPath = "../Shaders/BaseMesh/Source/mesh.vert";
@@ -440,6 +440,7 @@ void VK_APPLICATION::VulkanApplication::init_pipeline_manager(){
     // Конвеер для базовых моделей (прозрачных)
     PipelineCreateInfo transparentMeshInfo{};
     transparentMeshInfo.name = "TransparentMesh";
+    transparentMeshInfo.passType = RenderPassType::Forward;
     transparentMeshInfo.opacity = PipelineOpacity::Transparent;
     transparentMeshInfo.useMSAA = true;
     transparentMeshInfo.vertexShaderPath = "../Shaders/BaseMesh/Source/mesh.vert";
@@ -453,6 +454,7 @@ void VK_APPLICATION::VulkanApplication::init_pipeline_manager(){
     // Конвеер для базовых моделей (AlphaTested)
     PipelineCreateInfo alphaTestedMeshInfo{};
     alphaTestedMeshInfo.name = "AlphaTestedMesh";
+    alphaTestedMeshInfo.passType = RenderPassType::Forward;
     alphaTestedMeshInfo.opacity = PipelineOpacity::AlphaTested;
     alphaTestedMeshInfo.useMSAA = true;
     alphaTestedMeshInfo.vertexShaderPath = "../Shaders/BaseMesh/Source/mesh.vert";
@@ -466,6 +468,7 @@ void VK_APPLICATION::VulkanApplication::init_pipeline_manager(){
     // Конвеер для сетки
     PipelineCreateInfo gridInfo{};
     gridInfo.name = "Grid";
+    gridInfo.passType = RenderPassType::Forward;
     gridInfo.opacity = PipelineOpacity::Transparent; // Включает AlphaBlend, отключает запись в глубину
     gridInfo.useMSAA = true; // Использовал set_multisampling_alpha(_maxSamples)
     gridInfo.vertexShaderPath = "../Shaders/InfGrid/Source/grid.vert";
@@ -475,6 +478,10 @@ void VK_APPLICATION::VulkanApplication::init_pipeline_manager(){
     if (gridPipeline) {
         fmt::print("[PipelineManager] Pipeline 'Grid' successfully loaded and built.\n");
     }
+
+    // Проходы рендера
+    _renderSystem.AddPass(std::make_unique<ForwardRenderPass>(_init), *_pipelineManager);
+    _renderSystem.AddPass(std::make_unique<GridRenderPass>(_init), *_pipelineManager);
 }
 
 void VK_APPLICATION::VulkanApplication::init_commands(){

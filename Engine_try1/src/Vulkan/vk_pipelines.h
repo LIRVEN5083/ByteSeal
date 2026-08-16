@@ -180,6 +180,8 @@ public:
 
     void cleanup();
 
+    VkPipelineLayout GetCommonLayout() const;
+
 private:
     VkDevice _device;
     VkPipelineLayout _commonLayout{VK_NULL_HANDLE};

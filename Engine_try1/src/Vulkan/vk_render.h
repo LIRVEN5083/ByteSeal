@@ -22,6 +22,12 @@ struct RenderObject{
 
     glm::mat4 render_matrix;
 
+    PipelineOpacity opacity;
+    RenderPassType passType;
+    float distanceToCamera;
+
+    bool bCastShadows{ true };
+
     // Ключ для сортировки
     uint64_t sortKey{0};
 
@@ -33,42 +39,82 @@ struct RenderContext {
     VkExtent2D drawExtent;
     VkDescriptorSet globalDescriptor;
     VkDescriptorSet bindlessTextureSet;
+    VkPipelineLayout pipelineLayout;
 };
 
 class RenderPass {
 protected:
     VK_INIT_ENGINE::_inited_engine& _init;
+    RenderPassType _type;
 
 public:
-    RenderPass(VK_INIT_ENGINE::_inited_engine& init) : _init(init) {}
+    RenderPass(VK_INIT_ENGINE::_inited_engine& init, RenderPassType type)
+        : _init(init), _type(type) {}
+
     virtual ~RenderPass() = default;
 
-    // Каждый пасс сам настраивает свои пайплайны через PipelineManager
+    RenderPassType GetType() const { return _type; }
+
+    // Вызывается при старте и после ReloadShaders
     virtual void Init(PipelineManager& pipelineManager) = 0;
 
-    // Главный метод отрисовки, который каждый класс реализует по-своему
+    // Запись команд рендеринга для текущего пасса
     virtual void Execute(const RenderContext& ctx, const std::vector<RenderObject>& queue) = 0;
+};
+
+// Основной проход рендера
+class ForwardRenderPass : public RenderPass{
+public:
+    ForwardRenderPass(VK_INIT_ENGINE::_inited_engine& init)
+        : RenderPass(init, RenderPassType::Forward){}
+
+    void Init(PipelineManager& pipelineManager) override;
+
+    void Execute(const RenderContext& ctx, const std::vector<RenderObject>& queue) override;
+
+private:
+    void DrawFilteredObjects(const RenderContext& ctx, const std::vector<RenderObject>& queue, PipelineOpacity opacityFilter);
+
+    RealPipeline* _opaquePipeline{ nullptr };
+    RealPipeline* _alphaTestedPipeline{ nullptr };
+    RealPipeline* _transparentPipeline{ nullptr };
+};
+
+class GridRenderPass : public RenderPass {
+public:
+    GridRenderPass(VK_INIT_ENGINE::_inited_engine& init)
+        : RenderPass(init, RenderPassType::Forward) {}
+    ~GridRenderPass() override = default;
+
+    void Init(PipelineManager& pipelineManager) override;
+    void Execute(const RenderContext& ctx, const std::vector<RenderObject>& queue) override;
+
+private:
+    RealPipeline* _gridPipeline{ nullptr };
 };
 
 class RenderSystem{
 public:
     RenderSystem(VK_INIT_ENGINE::_inited_engine& init) : _init(init){}
 
-    void Allocate(size_t count);
+    void AddPass(std::unique_ptr<RenderPass> pass, PipelineManager& pipelineManager);
 
-    // Создание ключа для RenderObject
     void Submit (RenderObject ro);
 
     // Сортировка по ключу
     void PrepareFrame();
 
-    // TODO: Временная затычка с DESCRIPTOR SET, потом буду нормально передовать
-    void DrawForward(VkCommandBuffer cmd, VkExtent2D drawExtent,
-        VkDescriptorSet globalDescriptor, VkDescriptorSet bindlessTextureSet);
+    void Draw(VkCommandBuffer cmd, VkExtent2D drawExtent,
+              VkDescriptorSet globalDescriptor, VkDescriptorSet bindlessTextureSet,
+              PipelineManager& pipelineManager);
+
+    // Вызывается из Engine.cpp сразу после успешного ReloadAllPipelines()
+    void RefreshPasses(PipelineManager& pipelineManager);
 
     // Очистка очереди
     void ClearQueue() { _mainDrawQueue.clear(); }
 private:
     VK_INIT_ENGINE::_inited_engine& _init;
     std::vector<RenderObject> _mainDrawQueue;
+    std::vector<std::unique_ptr<RenderPass>> _renderPasses;
 };

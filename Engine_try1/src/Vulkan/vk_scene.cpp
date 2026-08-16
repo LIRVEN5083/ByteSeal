@@ -123,40 +123,7 @@ void Scene::DestroyEntitiesByModel(uint32_t modelAssetId){
         _idToIndex[_entities[i].id] = i;
     }
 }
-
 void Scene::CullingAndSubmit(RenderSystem& renderSystem, PipelineManager& pipelineManager, const glm::vec3& cameraPosition){
-
-    RealPipeline* gridPipeline = pipelineManager.GetPipelineByName("Grid");
-    if (gridPipeline)
-    {
-        RenderObject gridRo{};
-        gridRo.render_matrix = glm::mat4(1.0f);
-
-        gridRo.indexBuffer = VK_NULL_HANDLE;
-        gridRo.vertexBufferAddress = 0;
-        gridRo.indexCount = 6;
-        gridRo.firstIndex = 0;
-
-        gridRo.pipeline = gridPipeline->pipeline;
-        gridRo.pipelineLayout = gridPipeline->layout;
-
-        gridRo.colorTextureID = 0;
-        gridRo.metallicRoughnessTextureID = 0;
-        gridRo.normalTextureID = 0;
-        gridRo.occlusionTextureID = 0;
-        gridRo.baseColorFactor = glm::vec4(1.0f);
-        gridRo.materialFactors = glm::vec4(1.0f, 0.0f, 0.0f, 0.0f);
-
-        uint64_t gridOpacity = 2;
-        uint64_t gridKey = 0;
-        gridKey |= (gridOpacity & 0x3ULL) << 62;
-        gridKey |= (static_cast<uint64_t>(gridPipeline->id) & 0x3FFFULL) << 48; // Сдвиг на 48 бит, чтобы ключ совпал по формату с мешами
-
-        gridRo.sortKey = gridKey;
-
-        renderSystem.Submit(gridRo);
-    }
-
      if (_entities.empty()) return;
 
     for (const auto& entity : _entities)

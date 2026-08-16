@@ -617,3 +617,7 @@ void PipelineManager::cleanup(){
         _commonLayout = VK_NULL_HANDLE;
     }
 }
+
+VkPipelineLayout PipelineManager::GetCommonLayout() const{
+    return _commonLayout;
+}
