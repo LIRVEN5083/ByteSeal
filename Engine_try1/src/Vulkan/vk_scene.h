@@ -125,6 +125,7 @@ public:
     const glm::mat4* GetCascadeMatrices() const;
     const float* GetCascadeSplits() const;
     uint32_t GetResolution() const;
+    VkImageView GetShadowTextureView() const;
 
     void cleanUp();
 

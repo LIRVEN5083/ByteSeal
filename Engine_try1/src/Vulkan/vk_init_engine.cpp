@@ -323,9 +323,11 @@ VK_INIT_ENGINE::VulkanInitEngine::VulkanInitEngine(bool Validation_layers){
     features12.descriptorBindingPartiallyBound = VK_TRUE;
     features12.runtimeDescriptorArray = VK_TRUE;
     features12.bufferDeviceAddress = VK_TRUE;
+    features12.shaderOutputLayer = VK_TRUE;
 
     VkPhysicalDeviceFeatures baseFeatures{};
     baseFeatures.samplerAnisotropy = VK_TRUE;
+    baseFeatures.geometryShader = VK_TRUE;
 
     vkb::PhysicalDeviceSelector selector{ vkb_inst };
     vkb::PhysicalDevice physicalDevice = selector

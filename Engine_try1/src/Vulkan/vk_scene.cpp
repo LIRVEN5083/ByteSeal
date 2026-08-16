@@ -360,6 +360,10 @@ uint32_t LightManager::GetResolution() const{
     return m_config.resolution;
 }
 
+VkImageView LightManager::GetShadowTextureView() const {
+    return m_shadowArrayTexture.image.imageView;
+}
+
 void LightManager::cleanUp(){
     if (m_shadowArrayTexture.globalIndex != 0) {
         m_textureManager.FreeTexture(m_shadowArrayTexture);

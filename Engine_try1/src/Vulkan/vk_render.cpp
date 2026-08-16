@@ -159,6 +159,81 @@ void GridRenderPass::Execute(const RenderContext& ctx, const std::vector<RenderO
     vkCmdEndRendering(ctx.cmd);
 }
 
+void ShadowCSMRenderPass::Init(PipelineManager& pipelineManager){
+    _shadowPipeline = pipelineManager.GetPipeline(RenderPassType::ShadowCSM, PipelineOpacity::Opaque);
+}
+
+void ShadowCSMRenderPass::Execute(const RenderContext& ctx, const std::vector<RenderObject>& queue){
+     if (queue.empty() || !_shadowPipeline || !ctx.lightManager) return;
+
+    uint32_t resolution = ctx.lightManager->GetResolution();
+    VkExtent2D shadowExtent = { resolution, resolution };
+
+    VkClearValue depthClear;
+    depthClear.depthStencil.depth = 0.0f; // Reversed-Z для теней
+
+    // Твой LightManager регистрирует текстуру в TextureManager под определенным ID.
+    // Нам нужен VkImageView всего массива слоев для Dynamic Rendering:
+    VkImageView shadowArrayView = ctx.lightManager->GetShadowTextureView();
+
+    VkRenderingAttachmentInfo depthAttachment{};
+    depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    depthAttachment.pNext = nullptr;
+    depthAttachment.imageView = shadowArrayView;
+    depthAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+    depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE; // Сохраняем тени для мешей
+    depthAttachment.clearValue = depthClear;
+
+    VkRenderingInfo renderInfo{};
+    renderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+    renderInfo.pNext = nullptr;
+    renderInfo.renderArea = { {0, 0}, shadowExtent };
+    renderInfo.layerCount = SHADOW_CASCADES_COUNT; // 4 слоя
+    renderInfo.colorAttachmentCount = 0;
+    renderInfo.pColorAttachments = nullptr;
+    renderInfo.pDepthAttachment = &depthAttachment;
+
+    vkCmdBeginRendering(ctx.cmd, &renderInfo);
+
+    VkViewport viewport = { 0.0f, 0.0f, (float)resolution, (float)resolution, 1.0f, 0.0f };
+    vkCmdSetViewport(ctx.cmd, 0, 1, &viewport);
+
+    VkRect2D scissor = { {0, 0}, shadowExtent };
+    vkCmdSetScissor(ctx.cmd, 0, 1, &scissor);
+
+    vkCmdBindPipeline(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _shadowPipeline->pipeline);
+
+    vkCmdBindDescriptorSets(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _shadowPipeline->layout, 0, 1, &ctx.globalDescriptor, 0, nullptr);
+
+    VkBuffer currentIndexBuffer = VK_NULL_HANDLE;
+
+    for (const auto& object : queue) {
+        if (object.pipeline == VK_NULL_HANDLE) continue;
+
+        if (object.indexBuffer != VK_NULL_HANDLE) {
+            if (object.indexBuffer != currentIndexBuffer) {
+                vkCmdBindIndexBuffer(ctx.cmd, object.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+                currentIndexBuffer = object.indexBuffer;
+            }
+        }
+
+        GPUShadowPushConstants push_constants;
+        push_constants.worldMatrix = object.render_matrix;
+        push_constants.vertexBuffer = object.vertexBufferAddress;
+
+        vkCmdPushConstants(ctx.cmd, _shadowPipeline->layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUShadowPushConstants), &push_constants);
+
+        if (object.indexBuffer != VK_NULL_HANDLE) {
+            vkCmdDrawIndexed(ctx.cmd, object.indexCount, SHADOW_CASCADES_COUNT, object.firstIndex, 0, 0);
+        } else {
+            vkCmdDraw(ctx.cmd, object.indexCount, SHADOW_CASCADES_COUNT, 0, 0);
+        }
+    }
+
+    vkCmdEndRendering(ctx.cmd);
+}
+
 void RenderSystem::AddPass(std::unique_ptr<RenderPass> pass, PipelineManager& pipelineManager){
     pass->Init(pipelineManager);
     _renderPasses.push_back(std::move(pass));

@@ -479,7 +479,24 @@ void VK_APPLICATION::VulkanApplication::init_pipeline_manager(){
         fmt::print("[PipelineManager] Pipeline 'Grid' successfully loaded and built.\n");
     }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Конвеер для каскадных теней
+    PipelineCreateInfo shadowInfo{};
+    shadowInfo.name = "Shadow";
+    shadowInfo.passType = RenderPassType::ShadowCSM;
+    shadowInfo.opacity = PipelineOpacity::Opaque;
+    shadowInfo.useMSAA = false;
+    shadowInfo.vertexShaderPath = "../Shaders/SCM/Source/shadow.vert";
+    shadowInfo.fragmentShaderPath = "";
+
+    VkFormat shadowDepthFormat = VK_FORMAT_D32_SFLOAT;
+
+    RealPipeline* shadowPipeline = _pipelineManager->CreatePipeline(shadowInfo, VK_FORMAT_UNDEFINED, shadowDepthFormat, VK_SAMPLE_COUNT_1_BIT);
+    if (shadowPipeline) {
+        fmt::print("[PipelineManager] Pipeline 'ShadowCSM' successfully loaded and built for Layered Rendering.\n");
+    }
     // Проходы рендера
+    _renderSystem.AddPass(std::make_unique<ShadowCSMRenderPass>(_init), *_pipelineManager);
     _renderSystem.AddPass(std::make_unique<ForwardRenderPass>(_init), *_pipelineManager);
     _renderSystem.AddPass(std::make_unique<GridRenderPass>(_init), *_pipelineManager);
 }

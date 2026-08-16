@@ -166,6 +166,14 @@ VkPipeline PipelineBuilder::build_pipeline(VkDevice device){
     // connect the renderInfo to the pNext extension mechanism
     pipelineInfo.pNext = &_renderInfo;
 
+    if (_shaderStages.size() == 1) {
+        colorBlending.attachmentCount = 0;
+        colorBlending.pAttachments = nullptr;
+    } else {
+        colorBlending.attachmentCount = 1;
+        colorBlending.pAttachments = &_colorBlendAttachment;
+    }
+
     pipelineInfo.stageCount = (uint32_t)_shaderStages.size();
     pipelineInfo.pStages = _shaderStages.data();
     pipelineInfo.pVertexInputState = &_vertexInputInfo;
@@ -200,8 +208,10 @@ void PipelineBuilder::set_shaders(VkShaderModule vertexShader, VkShaderModule fr
     _shaderStages.push_back(
         vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_VERTEX_BIT, vertexShader));
 
-    _shaderStages.push_back(
-        vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_FRAGMENT_BIT, fragmentShader));
+    if (fragmentShader != VK_NULL_HANDLE) {
+        _shaderStages.push_back(
+            vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_FRAGMENT_BIT, fragmentShader));
+    }
 }
 
 void PipelineBuilder::set_input_topology(VkPrimitiveTopology topology){
@@ -350,13 +360,20 @@ void PipelineManager::InitCommonLayout(VkDescriptorSetLayout globalSetLayout, Vk
 RealPipeline* PipelineManager::CreatePipeline(const PipelineCreateInfo& info, VkFormat colorFormat,
     VkFormat depthFormat, VkSampleCountFlagBits maxSamples){
 
-    // Компилируем текстовые файлы в наборы чисел
     std::vector<uint32_t> vertCode = UTILS::CompileGLSLToSPIRV(info.vertexShaderPath);
-    std::vector<uint32_t> fragCode = UTILS::CompileGLSLToSPIRV(info.fragmentShaderPath);
-
-    if (vertCode.empty() || fragCode.empty()) {
-        fmt::print(stderr, "[PipelineManager ERROR] Initial shader compilation failed for {}\n", info.name);
+    if (vertCode.empty()) {
+        fmt::print(stderr, "[PipelineManager ERROR] Vertex shader compilation failed for {}\n", info.name);
         return nullptr;
+    }
+
+    // Компилируем фрагментный шейдер ТОЛЬКО если путь к нему не пустой
+    std::vector<uint32_t> fragCode;
+    if (!info.fragmentShaderPath.empty()) {
+        fragCode = UTILS::CompileGLSLToSPIRV(info.fragmentShaderPath);
+        if (fragCode.empty()) {
+            fmt::print(stderr, "[PipelineManager ERROR] Fragment shader compilation failed for {}\n", info.name);
+            return nullptr;
+        }
     }
 
     return CreatePipelineFromMemory(info, vertCode, fragCode, colorFormat, depthFormat, maxSamples);
@@ -381,13 +398,14 @@ RealPipeline* PipelineManager::CreatePipelineFromMemory(const PipelineCreateInfo
     createInfo.pCode = vertCode.data();
     if (vkCreateShaderModule(_device, &createInfo, nullptr, &vertModule) != VK_SUCCESS) return nullptr;
 
-    createInfo.codeSize = fragCode.size() * sizeof(uint32_t);
-    createInfo.pCode = fragCode.data();
-    if (vkCreateShaderModule(_device, &createInfo, nullptr, &fragModule) != VK_SUCCESS) {
-        vkDestroyShaderModule(_device, vertModule, nullptr);
-        return nullptr;
+    if (!info.fragmentShaderPath.empty()){
+        createInfo.codeSize = fragCode.size() * sizeof(uint32_t);
+        createInfo.pCode = fragCode.data();
+        if (vkCreateShaderModule(_device, &createInfo, nullptr, &fragModule) != VK_SUCCESS) {
+            vkDestroyShaderModule(_device, vertModule, nullptr);
+            return nullptr;
+        }
     }
-
 
     PipelineBuilder pipelineBuilder;
 
@@ -431,7 +449,9 @@ RealPipeline* PipelineManager::CreatePipelineFromMemory(const PipelineCreateInfo
     VkPipeline newPipeline = pipelineBuilder.build_pipeline(_device);
 
     vkDestroyShaderModule(_device, vertModule, nullptr);
-    vkDestroyShaderModule(_device, fragModule, nullptr);
+    if (fragModule != VK_NULL_HANDLE){
+        vkDestroyShaderModule(_device, fragModule, nullptr);
+    }
 
     if (newPipeline == VK_NULL_HANDLE) {
         fmt::print(stderr, "[PipelineManager ERROR] pipelineBuilder.build_pipeline returned VK_NULL_HANDLE for {}\n", info.name);

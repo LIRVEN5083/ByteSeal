@@ -45,6 +45,12 @@ struct GPUDrawPushConstants {
     glm::vec4 materialFactors{0.5f, 0.0f, 0.0f, 0.0f};
 };
 
+struct GPUShadowPushConstants {
+    glm::mat4 worldMatrix;
+    VkDeviceAddress vertexBuffer;
+}; // Итого: 72 байта
+
+
 struct GPUSceneData {
     glm::mat4 view;
     glm::mat4 proj;
