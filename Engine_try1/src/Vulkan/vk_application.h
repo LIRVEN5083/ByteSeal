@@ -1,6 +1,6 @@
 #pragma once
 #include "vk_types.h"
-#include "vk_glTF_loading.h"
+#include "vk_render.h"
 #include "vk_scene.h"
 #include "vk_descriptors.h"
 #include "vk_scene.h"

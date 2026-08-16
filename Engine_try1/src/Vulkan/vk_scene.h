@@ -121,13 +121,6 @@ public:
     void UpdateCascades(const glm::mat4& viewMatrix, float fovY, float aspect, float cameraNear, float cameraFar, const glm::vec3& lightDir);
 
     // Геттеры
-    /*
-    uint32_t GetShadowTextureIndex() const { return m_shadowArrayTexture.globalIndex; }
-    const glm::mat4* GetCascadeMatrices() const { return m_cascadeMatrices.data(); }
-    const float* GetCascadeSplits() const { return m_cascadeSplits.data(); }
-    uint32_t GetResolution() const { return m_config.resolution; }
-    */
-
     uint32_t GetShadowTextureIndex() const;
     const glm::mat4* GetCascadeMatrices() const;
     const float* GetCascadeSplits() const;

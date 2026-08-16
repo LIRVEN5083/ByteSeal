@@ -93,9 +93,18 @@ enum class PipelineOpacity{
     Transparent
 };
 
+enum class RenderPassType : uint8_t {
+    Forward,        // Base render
+    ShadowCSM,      // SCM
+    Skybox,         // Sky
+    PostProcess     // Post-effects
+};
+
 struct PipelineCreateInfo {
     // Ident name
     std::string name;
+    // Проход рендера
+    RenderPassType passType;
     // Enum class
     PipelineOpacity opacity;
     // MSAA
