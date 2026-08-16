@@ -23,15 +23,9 @@ struct RenderObject{
     glm::mat4 render_matrix;
 
     PipelineOpacity opacity;
-    RenderPassType passType;
-    float distanceToCamera;
-
-    bool bCastShadows{ true };
 
     // Ключ для сортировки
     uint64_t sortKey{0};
-
-    AABB worldAABB;
 };
 
 struct RenderContext {

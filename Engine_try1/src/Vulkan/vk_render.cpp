@@ -39,17 +39,14 @@ void ForwardRenderPass::Execute(const RenderContext& ctx, const std::vector<Rend
     VkPipeline currentPipeline = VK_NULL_HANDLE;
     VkBuffer currentIndexBuffer = VK_NULL_HANDLE;
 
-    // 🎯 ОДИН ПРОХОД ПО ТВОЕЙ РОДНОЙ ЛОГИКЕ ОЧЕРЕДИ
     for (const auto& object : queue) {
 
-        // Твой оригинальный стейт-кэш пайплайнов
         if (object.pipeline != currentPipeline) {
             vkCmdBindPipeline(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.pipeline);
             vkCmdBindDescriptorSets(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.pipelineLayout, 0, 2, setsToBind, 0, nullptr);
             currentPipeline = object.pipeline;
         }
 
-        // Твой оригинальный стейт-кэш индексных буферов
         if (object.indexBuffer != VK_NULL_HANDLE) {
             if (object.indexBuffer != currentIndexBuffer) {
                 vkCmdBindIndexBuffer(ctx.cmd, object.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
@@ -57,7 +54,6 @@ void ForwardRenderPass::Execute(const RenderContext& ctx, const std::vector<Rend
             }
         }
 
-        // Полный пакет пуш-констант (Мустанг больше не потеряет материалы)
         GPUDrawPushConstants push_constants;
         push_constants.render_matrix = object.render_matrix;
         push_constants.vertexBuffer = object.vertexBufferAddress;
@@ -70,7 +66,6 @@ void ForwardRenderPass::Execute(const RenderContext& ctx, const std::vector<Rend
 
         vkCmdPushConstants(ctx.cmd, object.pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(GPUDrawPushConstants), &push_constants);
 
-        // Поддержка отрисовки с индексами и без (для твоей сетки)
         if (object.indexBuffer != VK_NULL_HANDLE) {
             vkCmdDrawIndexed(ctx.cmd, object.indexCount, 1, object.firstIndex, 0, 0);
         } else {
@@ -124,16 +119,15 @@ void GridRenderPass::Execute(const RenderContext& ctx, const std::vector<RenderO
     if (!_gridPipeline) return;
 
     VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(_init._msaaColorImage.imageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;   // Загружаем 8х кадр с Мустангом
-    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE; // После этого пасса 8х цвет больше не нужен
+    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 
-    // 🎯 ВОТ ТУТ МЫ ДЕЛАЕМ ЕДИНСТВЕННЫЙ RESOLVE НА ВЕСЬ КАДР!
     colorAttachment.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
-    colorAttachment.resolveImageView = _init._drawImage.imageView; // Сливаем сглаженный 1х результат
+    colorAttachment.resolveImageView = _init._drawImage.imageView;
     colorAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
     VkRenderingAttachmentInfo depthAttachment = vkinit::depth_attachment_info(_init._msaaDepthImage.imageView, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
-    depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;   // Загружаем 8х глубину мешей, чтобы сетка пряталась за машиной
+    depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
     depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 
     VkRenderingInfo renderInfo = vkinit::rendering_info(ctx.drawExtent, &colorAttachment, &depthAttachment);
