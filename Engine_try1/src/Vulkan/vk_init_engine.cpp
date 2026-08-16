@@ -317,6 +317,7 @@ VK_INIT_ENGINE::VulkanInitEngine::VulkanInitEngine(bool Validation_layers){
     VkPhysicalDeviceVulkan13Features features{ .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES };
     features.dynamicRendering = true;
     features.synchronization2 = true;
+    features.shaderDemoteToHelperInvocation = VK_TRUE;
 
     VkPhysicalDeviceVulkan12Features features12{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES };
     features12.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
@@ -324,6 +325,7 @@ VK_INIT_ENGINE::VulkanInitEngine::VulkanInitEngine(bool Validation_layers){
     features12.runtimeDescriptorArray = VK_TRUE;
     features12.bufferDeviceAddress = VK_TRUE;
     features12.shaderOutputLayer = VK_TRUE;
+    features12.shaderOutputViewportIndex = VK_TRUE;
 
     VkPhysicalDeviceFeatures baseFeatures{};
     baseFeatures.samplerAnisotropy = VK_TRUE;
@@ -336,6 +338,7 @@ VK_INIT_ENGINE::VulkanInitEngine::VulkanInitEngine(bool Validation_layers){
     .set_required_features_13(features)
     .set_required_features_12(features12)
     .set_surface(this->ready_init._surface)
+    .add_required_extension(VK_EXT_SHADER_VIEWPORT_INDEX_LAYER_EXTENSION_NAME)
     .select()
     .value();
 

@@ -1,7 +1,7 @@
 #version 460
 #extension GL_EXT_nonuniform_qualifier : require
 #extension GL_EXT_buffer_reference : require
-#extension GL_EXT_shader_viewport_index_layer : require
+#extension GL_ARB_shader_viewport_layer_array : require
 
 layout(set = 0, binding = 0) uniform SceneData {
     mat4 view;
