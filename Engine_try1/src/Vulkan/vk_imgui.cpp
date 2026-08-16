@@ -553,8 +553,9 @@ void VK_GUI::GUI::draw_context_menu_trs(VK_INIT_ENGINE::_inited_engine& _init, s
 }
 
 void VK_GUI::GUI::draw_gizmo(VK_INIT_ENGINE::_inited_engine& _init, std::unique_ptr<Scene>& _scene,
-    const GPUSceneData& sceneData, ModelManager& _modelManager)
-{
+    const GPUSceneData& sceneData, ModelManager& _modelManager, CONTROLLER::Camera _camera){
+
+
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
         !ImGui::GetIO().WantCaptureMouse &&
         !ImGuizmo::IsOver())
@@ -613,6 +614,20 @@ void VK_GUI::GUI::draw_gizmo(VK_INIT_ENGINE::_inited_engine& _init, std::unique_
     glm::vec3 finalPos = entity->position + pivotOffset;
     float distanceToTarget = glm::distance(cameraPos, finalPos);
 
+    // Отсечение по величине модели
+    glm::vec3 cameraForward = -glm::normalize(glm::vec3(viewMatrix[0][2], viewMatrix[1][2], viewMatrix[2][2]));
+    glm::vec3 toTarget = finalPos - cameraPos;
+    float zDepth = glm::dot(toTarget, cameraForward);
+    float minSafeDistance = objectSizeFactor * 0.8f;
+    if (minSafeDistance < 0.15f) minSafeDistance = 0.15f;
+    if (zDepth < minSafeDistance)
+    {
+        return;
+    }
+
+    // Грубое отсечение Gizmo по ростояннию к центру
+    //if (distanceToTarget < 1.0f) { return;}
+
     float fovY = glm::radians(70.0f);
     float screenHeight = static_cast<float>(_init._windowExtent.height);
 
@@ -634,6 +649,8 @@ void VK_GUI::GUI::draw_gizmo(VK_INIT_ENGINE::_inited_engine& _init, std::unique_
     modelMatrix = glm::scale(modelMatrix, entity->scale);
 
     ImGuizmo::GetStyle().RotationLineThickness = 3.0f;
+
+    ImGuizmo::Enable(!_camera.isCameraActive);
 
     // Манипуляция ImGuizmo
     if (canInteract)
@@ -932,7 +949,7 @@ void VK_GUI::GUI::update_imgui(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER
 
     draw_context_menu_trs(_init, _scene, sceneData);
 
-    draw_gizmo(_init, _scene, sceneData, _modelManager);
+    draw_gizmo(_init, _scene, sceneData, _modelManager, _camera);
 
     draw_view_navigation_widget(sceneData, _camera);
 

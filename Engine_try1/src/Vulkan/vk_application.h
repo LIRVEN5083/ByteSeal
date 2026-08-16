@@ -1,6 +1,6 @@
 #pragma once
 #include "vk_types.h"
-#include "vk_glTF_loading.h"
+#include "vk_render.h"
 #include "vk_scene.h"
 #include "vk_descriptors.h"
 #include "vk_scene.h"
@@ -85,6 +85,7 @@ namespace VK_APPLICATION {
         ModelManager _modelManager{_init, _meshManager, _textureManager};
         RenderSystem _renderSystem{_init};
         std::unique_ptr<Scene> _activeScene;
+        std::unique_ptr<LightManager> _lightManager;
         VK_GUI::GUI _gui;
 
         void renderLoop();

@@ -25,15 +25,6 @@ namespace vkutil{
     struct SamplerCreateInfoHash;
     struct SamplerCreateInfoEqual;
 }
-// Делим ебанные обьекты по типу аллокации
-// И времени их существования на сцене
-
-// Static - arena-allocator
-// Dynamic - динамическое выделение
-enum class ModelLifetime : uint8_t{
-    Static,
-    Dynamic
-};
 
 // push constants для работы
 // Сука выравнивание на GPU по 16 байт
@@ -61,6 +52,13 @@ struct GPUSceneData {
     glm::vec4 ambientColor;
     glm::vec4 sunlightDirection; // w for sun power
     glm::vec4 sunlightColor;
+
+    glm::mat4 cascadeMatrices[4];
+
+    glm::vec4 cascadeSplits; // 4 каскада по 4 байта мы упоковываем в вектор из 4 компонентов
+
+    uint32_t shadowMapTextureID;
+    uint32_t padding[3]; // Выравнивание по 16 ByteSeal
 };
 
 struct Vertex {
@@ -71,26 +69,6 @@ struct Vertex {
     float uv_y;
     glm::vec4 color;
     glm::vec4 tangent;
-};
-
-struct GPUMeshBuffers {
-
-    AllocatedBuffer indexBuffer;
-    AllocatedBuffer vertexBuffer;
-    VkDeviceAddress vertexBufferAddress;
-
-    ModelLifetime lifetime{ ModelLifetime::Dynamic };
-};
-
-struct GPUTexture {
-    AllocatedImage image;
-    uint32_t globalIndex{ 0 };
-    uint32_t mipLevels;
-
-    VkSampler sampler;
-
-    VkDescriptorSet imguiDescriptorSet{VK_NULL_HANDLE};
-    ModelLifetime lifetime{ ModelLifetime::Dynamic };
 };
 
 struct MaterialAsset {
@@ -321,55 +299,6 @@ private:
 
     std::vector<Model> _models;
     std::unordered_map<std::string, uint32_t> _path_to_id;
-};
-
-
-struct RenderObject{
-    VkBuffer indexBuffer;
-    VkDeviceAddress vertexBufferAddress;
-    uint32_t indexCount;
-    uint32_t firstIndex;
-
-    VkPipeline pipeline;
-    VkPipelineLayout pipelineLayout;
-
-    uint32_t colorTextureID;
-    uint32_t metallicRoughnessTextureID;
-    uint32_t normalTextureID;
-    uint32_t occlusionTextureID;
-
-    glm::vec4 baseColorFactor;
-    glm::vec4 materialFactors;
-
-    glm::mat4 render_matrix;
-
-    // Ключ для сортировки
-    uint64_t sortKey{0};
-
-    AABB worldAABB;
-};
-
-class RenderSystem{
-public:
-    RenderSystem(VK_INIT_ENGINE::_inited_engine& init) : _init(init){}
-
-    void Allocate(size_t count);
-
-    // Создание ключа для RenderObject
-    void Submit (RenderObject ro);
-
-    // Сортировка по ключу
-    void PrepareFrame();
-
-    // TODO: Временная затычка с DESCRIPTOR SET, потом буду нормально передовать
-    void DrawForward(VkCommandBuffer cmd, VkExtent2D drawExtent,
-        VkDescriptorSet globalDescriptor, VkDescriptorSet bindlessTextureSet);
-
-    // Очистка очереди
-    void ClearQueue() { _mainDrawQueue.clear(); }
-private:
-    VK_INIT_ENGINE::_inited_engine& _init;
-    std::vector<RenderObject> _mainDrawQueue;
 };
 
 struct StaticModelConf{

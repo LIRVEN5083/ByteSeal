@@ -14,12 +14,22 @@ layout(set = 0, binding = 0) uniform SceneData {
 	mat4 view;
 	mat4 proj;
 	mat4 viewproj;
+
+	// Направленный источник света
 	vec4 ambientColor;
 	vec4 sunlightDirection;
 	vec4 sunlightColor;
+
+	// Тени
+	mat4 cascadeMatrices[4]; // Матрицы света для 4 каскадов
+	vec4 cascadeSplits;      // Дистанции разделения каскадов упакованы в vec4 (x, y, z, w)
+	uint shadowMapTextureID;
 } scene;
 
 layout(set = 1, binding = 0) uniform sampler2D globalTextures[];
+
+// Для каскадов
+layout(set = 1, binding = 1) uniform sampler2DArray globalTextureArrays[];
 
 struct Vertex {
 	vec3 position; float uv_x;

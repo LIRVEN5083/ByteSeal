@@ -1,4 +1,5 @@
 #pragma once
+#include "vk_glTF_loading.h"
 
 class ModelManager;
 class RenderSystem;
@@ -89,4 +90,52 @@ private:
     std::unordered_map<uint32_t, size_t> _idToIndex;
 
     uint32_t _nextEntityId{ 1 };
+};
+
+class TextureManager;
+struct SamplerOptions;
+
+// Количество каскадов
+static constexpr uint32_t SHADOW_CASCADES_COUNT = 4;
+
+struct CSMConfig {
+    uint32_t resolution = 2048; // Разрешение карты теней
+
+    // Коэффициенты разбиения фрустума (от 0.0 до 1.0).
+    // Первые каскады должны быть маленькими для высокой четкости вблизи игрока.
+    float cascadeSplits[SHADOW_CASCADES_COUNT] = { 0.07f, 0.2f, 0.45f, 1.0f };
+
+    // Practical Split
+    float splitLambda = 0.85f;
+};
+
+// Реализация SCM (Cascad map) и множественного освещения
+class LightManager{
+public:
+
+    LightManager(VkDevice device, TextureManager& textureManager, CSMConfig config = {})
+       : m_device(device), m_textureManager(textureManager), m_config(config) {}
+
+    void init();
+
+    void UpdateCascades(const glm::mat4& viewMatrix, float fovY, float aspect, float cameraNear, float cameraFar, const glm::vec3& lightDir);
+
+    // Геттеры
+    uint32_t GetShadowTextureIndex() const;
+    const glm::mat4* GetCascadeMatrices() const;
+    const float* GetCascadeSplits() const;
+    uint32_t GetResolution() const;
+
+    void cleanUp();
+
+private:
+    VkDevice m_device;
+    TextureManager& m_textureManager;
+    CSMConfig m_config;
+
+    GPUTexture m_shadowArrayTexture;
+
+    // Результаты расчетов для передачи в шейдеры
+    std::array<glm::mat4, SHADOW_CASCADES_COUNT> m_cascadeMatrices;
+    std::array<float, SHADOW_CASCADES_COUNT> m_cascadeSplits;
 };

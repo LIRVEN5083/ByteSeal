@@ -49,6 +49,7 @@ add_executable(${PROJECT_NAME}
         src/Utils/shader_compile.cpp
         src/Vulkan/vk_scene.cpp
         src/Vulkan/vk_imgui.cpp
+        src/Vulkan/vk_render.cpp
 
     src/external/vk-bootstrap/src/VkBootstrap.h
     src/external/vk-bootstrap/src/VkBootstrap.cpp

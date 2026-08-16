@@ -1,5 +1,5 @@
 #include "vk_scene.h"
-#include "vk_glTF_loading.h"
+#include "vk_render.h"
 
 
 glm::mat4 GameEntity::GetLocalMatrix() const {
@@ -123,40 +123,7 @@ void Scene::DestroyEntitiesByModel(uint32_t modelAssetId){
         _idToIndex[_entities[i].id] = i;
     }
 }
-
 void Scene::CullingAndSubmit(RenderSystem& renderSystem, PipelineManager& pipelineManager, const glm::vec3& cameraPosition){
-
-    RealPipeline* gridPipeline = pipelineManager.GetPipeline("Grid");
-    if (gridPipeline)
-    {
-        RenderObject gridRo{};
-        gridRo.render_matrix = glm::mat4(1.0f);
-
-        gridRo.indexBuffer = VK_NULL_HANDLE;
-        gridRo.vertexBufferAddress = 0;
-        gridRo.indexCount = 6;
-        gridRo.firstIndex = 0;
-
-        gridRo.pipeline = gridPipeline->pipeline;
-        gridRo.pipelineLayout = gridPipeline->layout;
-
-        gridRo.colorTextureID = 0;
-        gridRo.metallicRoughnessTextureID = 0;
-        gridRo.normalTextureID = 0;
-        gridRo.occlusionTextureID = 0;
-        gridRo.baseColorFactor = glm::vec4(1.0f);
-        gridRo.materialFactors = glm::vec4(1.0f, 0.0f, 0.0f, 0.0f);
-
-        uint64_t gridOpacity = 2;
-        uint64_t gridKey = 0;
-        gridKey |= (gridOpacity & 0x3ULL) << 62;
-        gridKey |= (static_cast<uint64_t>(gridPipeline->id) & 0x3FFFULL) << 48; // Сдвиг на 48 бит, чтобы ключ совпал по формату с мешами
-
-        gridRo.sortKey = gridKey;
-
-        renderSystem.Submit(gridRo);
-    }
-
      if (_entities.empty()) return;
 
     for (const auto& entity : _entities)
@@ -185,7 +152,7 @@ void Scene::CullingAndSubmit(RenderSystem& renderSystem, PipelineManager& pipeli
                     targetPipelineName = "BaseMesh";
                 }
 
-                RealPipeline* pipeline = pipelineManager.GetPipeline(targetPipelineName);
+                RealPipeline* pipeline = pipelineManager.GetPipelineByName(targetPipelineName);
                 if (!pipeline) continue;
 
                 RenderObject ro;
@@ -263,6 +230,141 @@ RaycastHit Scene::Raycast(const Ray& ray){
     }
 
     return closestHit;
+}
+
+void LightManager::init(){
+     VkImageCreateInfo imageInfo{};
+    imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    imageInfo.imageType = VK_IMAGE_TYPE_2D;
+    imageInfo.extent.width = m_config.resolution;
+    imageInfo.extent.height = m_config.resolution;
+    imageInfo.extent.depth = 1;
+    imageInfo.mipLevels = 1;
+    imageInfo.arrayLayers = SHADOW_CASCADES_COUNT;
+    imageInfo.format = VK_FORMAT_D32_SFLOAT;
+    imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+    imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+    imageInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+    imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    VkImageViewCreateInfo viewInfo{};
+    viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+    viewInfo.format = VK_FORMAT_D32_SFLOAT;
+    viewInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+    viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+    viewInfo.subresourceRange.baseMipLevel = 0;
+    viewInfo.subresourceRange.levelCount = 1;
+    viewInfo.subresourceRange.baseArrayLayer = 0;
+    viewInfo.subresourceRange.layerCount = SHADOW_CASCADES_COUNT;
+
+    SamplerOptions shadowSamplerOptions{};
+    shadowSamplerOptions.minFilter = 9729;
+    shadowSamplerOptions.magFilter = 9729;
+    // В Vulkan / OpenGL значения для CLAMP_TO_BORDER обычно: 33071 (GL_CLAMP_TO_BORDER) или 3 (VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER)
+    shadowSamplerOptions.wrapS = 3;
+    shadowSamplerOptions.wrapT = 3;
+
+    m_shadowArrayTexture = m_textureManager.AllocateTexture(imageInfo, viewInfo, shadowSamplerOptions, ModelLifetime::Static);
+}
+
+void LightManager::UpdateCascades(const glm::mat4& viewMatrix, float fovY, float aspect, float cameraNear,
+    float cameraFar, const glm::vec3& lightDir){
+
+    float cascadeSplits[SHADOW_CASCADES_COUNT];
+
+    // Считаем дистанции каскадов (Practical Split Scheme)
+    for (uint32_t i = 0; i < SHADOW_CASCADES_COUNT; i++) {
+        float p = m_config.cascadeSplits[i];
+        float logSplit = cameraNear * std::pow(cameraFar / cameraNear, p);
+        float uniSplit = cameraNear + (cameraFar - cameraNear) * p;
+        cascadeSplits[i] = glm::mix(uniSplit, logSplit, m_config.splitLambda);
+    }
+
+    float lastSplitDist = cameraNear;
+
+    for (uint32_t i = 0; i < SHADOW_CASCADES_COUNT; i++) {
+        float splitDist = cascadeSplits[i];
+
+         // Собираем ручками матрицу проекции без моей выебистой математики
+        glm::mat4 proj = glm::perspective(fovY, aspect, lastSplitDist, splitDist);
+        proj[1][1] *= -1.0f; // Любимая инверсия проекции
+
+        glm::mat4 invCam = glm::inverse(proj * viewMatrix);
+
+        // 8 угловых точек фрустума в NDC
+        std::array<glm::vec4, 8> frustumCorners = {
+            glm::vec4(-1.0f,  1.0f, 0.0f, 1.0f), glm::vec4( 1.0f,  1.0f, 0.0f, 1.0f),
+            glm::vec4( 1.0f, -1.0f, 0.0f, 1.0f), glm::vec4(-1.0f, -1.0f, 0.0f, 1.0f),
+            glm::vec4(-1.0f,  1.0f, 1.0f, 1.0f), glm::vec4( 1.0f,  1.0f, 1.0f, 1.0f),
+            glm::vec4( 1.0f, -1.0f, 1.0f, 1.0f), glm::vec4(-1.0f, -1.0f, 1.0f, 1.0f),
+        };
+
+        glm::vec3 center(0.0f);
+        for (uint32_t j = 0; j < 8; j++) {
+            glm::vec4 v = invCam * frustumCorners[j];
+            v /= v.w;
+            frustumCorners[j] = v;
+            center += glm::vec3(v);
+        }
+        center /= 8.0f; // Центр каскада вокруг игрока
+
+        // Матрица вида света. Берем z-up
+        glm::vec3 lightPos = center - glm::normalize(lightDir);
+        glm::mat4 lightView = glm::lookAt(lightPos, center, glm::vec3(0.0f, 0.0f, 1.0f));
+
+        // Границы в пространстве света
+        float minX = std::numeric_limits<float>::max(); float maxX = std::numeric_limits<float>::lowest();
+        float minY = std::numeric_limits<float>::max(); float maxY = std::numeric_limits<float>::lowest();
+        float minZ = std::numeric_limits<float>::max(); float maxZ = std::numeric_limits<float>::lowest();
+
+        for (uint32_t j = 0; j < 8; j++) {
+            glm::vec4 vInLightSpace = lightView * frustumCorners[j];
+            minX = std::min(minX, vInLightSpace.x); maxX = std::max(maxX, vInLightSpace.x);
+            minY = std::min(minY, vInLightSpace.y); maxY = std::max(maxY, vInLightSpace.y);
+            minZ = std::min(minZ, vInLightSpace.z); maxZ = std::max(maxZ, vInLightSpace.z);
+        }
+
+        // Большой Z-запас для направленного света (чтобы высокие объекты сзади не отсекались)
+        float zMult = 10.0f;
+        minZ = (minZ < 0) ? minZ * zMult : minZ / zMult;
+        maxZ = (maxZ < 0) ? maxZ / zMult : maxZ * zMult;
+
+        glm::mat4 lightProj = glm::ortho(minX, maxX, minY, maxY, minZ, maxZ);
+
+        // В Vulkan для ортографической матрицы тоже нужен флип Y
+        lightProj[1][1] *= -1.0f;
+
+        m_cascadeMatrices[i] = lightProj * lightView;
+        m_cascadeSplits[i] = splitDist;
+
+        lastSplitDist = splitDist;
+    }
+}
+
+uint32_t LightManager::GetShadowTextureIndex() const{
+    return m_shadowArrayTexture.globalIndex;
+}
+
+const glm::mat4* LightManager::GetCascadeMatrices() const{
+    return m_cascadeMatrices.data();
+}
+
+const float* LightManager::GetCascadeSplits() const{
+    return m_cascadeSplits.data();
+}
+
+uint32_t LightManager::GetResolution() const{
+    return m_config.resolution;
+}
+
+void LightManager::cleanUp(){
+    if (m_shadowArrayTexture.globalIndex != 0) {
+        m_textureManager.FreeTexture(m_shadowArrayTexture);
+        m_shadowArrayTexture.globalIndex = 0;
+    }
 }
 
 Ray::Ray(const glm::vec3& origin, const glm::vec3& direction)
