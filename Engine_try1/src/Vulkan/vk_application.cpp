@@ -122,7 +122,7 @@ void VK_APPLICATION::VulkanApplication::run(){
             resize_swapchain();
         }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        _gui.update_imgui(_init, _delta, _camera, _modelManager, _activeScene,  sceneData, *_pipelineManager);
+        _gui.update_imgui(_init, _delta, _camera, _modelManager, _activeScene,  sceneData, *_pipelineManager, _renderSystem);
         CONTROLLER::update_time(_movement, _delta);
         renderLoop();
         CONTROLLER::made_move(_movement, _camera, _delta);

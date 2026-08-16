@@ -1,5 +1,7 @@
 #include "vk_imgui.h"
 
+#include "vk_render.h"
+
 void VK_GUI::apply_theme(){
     ImGuiStyle& style = ImGui::GetStyle();
     ImVec4* colors = style.Colors;
@@ -92,7 +94,7 @@ void VK_GUI::apply_theme(){
 }
 
 void VK_GUI::GUI::draw_model_list_overlay(VK_INIT_ENGINE::_inited_engine& _init, ModelManager& _modelManager,
-    std::unique_ptr<Scene>& _scene, const GPUSceneData& sceneData, PipelineManager& pipelineManager){
+    std::unique_ptr<Scene>& _scene, const GPUSceneData& sceneData, PipelineManager& pipelineManager, RenderSystem& _renderSystem){
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// Drag and drop
     static bool shouldSpawnDroppedEntity = false;
@@ -176,6 +178,7 @@ void VK_GUI::GUI::draw_model_list_overlay(VK_INIT_ENGINE::_inited_engine& _init,
 
         if (ImGui::Button("Recompile shaders", ImVec2(300.0f, 0.0f))) {
             pipelineManager.ReloadAllPipelines();
+            _renderSystem.RefreshPasses(pipelineManager);
         }
 
         ImGui::Separator();
@@ -933,7 +936,7 @@ void VK_GUI::GUI::draw_imgui(VK_INIT_ENGINE::_inited_engine& _init, VkCommandBuf
 }
 
 void VK_GUI::GUI::update_imgui(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER::Delta& _delta, CONTROLLER::Camera _camera, ModelManager& _modelManager,
-    std::unique_ptr<Scene>& _scene, const GPUSceneData& sceneData, PipelineManager& pipelineManager){
+    std::unique_ptr<Scene>& _scene, const GPUSceneData& sceneData, PipelineManager& pipelineManager, RenderSystem& _renderSystem){
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplSDL3_NewFrame();
     ImGui::NewFrame();
@@ -943,7 +946,7 @@ void VK_GUI::GUI::update_imgui(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER
 
     gizmo_mode();
 
-    draw_model_list_overlay(_init, _modelManager, _scene, sceneData, pipelineManager);
+    draw_model_list_overlay(_init, _modelManager, _scene, sceneData, pipelineManager, _renderSystem);
 
     draw_model_properties_window(_init, _modelManager);
 

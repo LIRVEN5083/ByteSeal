@@ -544,15 +544,23 @@ bool PipelineManager:: ReloadAllPipelines(){
     std::unordered_map<std::string, std::vector<uint32_t>> newFragCodes;
 
     for (const auto& [name, realPipeline] : _pipelinesByName) {
+        // Вершинный шейдер компилируем всегда
         auto vertCode = UTILS::CompileGLSLToSPIRV(realPipeline.vertexShaderPath);
-        auto fragCode = UTILS::CompileGLSLToSPIRV(realPipeline.fragmentShaderPath);
-
-        if (vertCode.empty() || fragCode.empty()) {
-            std::cerr << "[PipelineManager] Hot-reload aborted due to compiler errors.\n";
+        if (vertCode.empty()) {
+            std::cerr << "[PipelineManager] Hot-reload aborted due to Vertex shader compiler errors in " << name << ".\n";
             return false;
         }
-
         newVertCodes[name] = vertCode;
+
+        // Фрагментный шейдер компилируем ТОЛЬКО если путь к нему существует
+        std::vector<uint32_t> fragCode;
+        if (!realPipeline.fragmentShaderPath.empty()) {
+            fragCode = UTILS::CompileGLSLToSPIRV(realPipeline.fragmentShaderPath);
+            if (fragCode.empty()) {
+                std::cerr << "[PipelineManager] Hot-reload aborted due to Fragment shader compiler errors in " << name << ".\n";
+                return false;
+            }
+        }
         newFragCodes[name] = fragCode;
     }
 
