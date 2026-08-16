@@ -126,7 +126,7 @@ void Scene::DestroyEntitiesByModel(uint32_t modelAssetId){
 
 void Scene::CullingAndSubmit(RenderSystem& renderSystem, PipelineManager& pipelineManager, const glm::vec3& cameraPosition){
 
-    RealPipeline* gridPipeline = pipelineManager.GetPipeline("Grid");
+    RealPipeline* gridPipeline = pipelineManager.GetPipelineByName("Grid");
     if (gridPipeline)
     {
         RenderObject gridRo{};
@@ -185,7 +185,7 @@ void Scene::CullingAndSubmit(RenderSystem& renderSystem, PipelineManager& pipeli
                     targetPipelineName = "BaseMesh";
                 }
 
-                RealPipeline* pipeline = pipelineManager.GetPipeline(targetPipelineName);
+                RealPipeline* pipeline = pipelineManager.GetPipelineByName(targetPipelineName);
                 if (!pipeline) continue;
 
                 RenderObject ro;

@@ -87,18 +87,37 @@ public:
     void enable_blending_alphablend();
 };
 
-enum class PipelineOpacity{
-    Opaque,
-    AlphaTested,
-    Transparent
-};
-
 enum class RenderPassType : uint8_t {
     Forward,        // Base render
     ShadowCSM,      // SCM
     Skybox,         // Sky
     PostProcess     // Post-effects
 };
+
+enum class PipelineOpacity{
+    Opaque,
+    AlphaTested,
+    Transparent
+};
+
+struct PipelineKey {
+    RenderPassType passType;
+    PipelineOpacity opacity;
+
+    bool operator==(const PipelineKey& other) const {
+        return passType == other.passType && opacity == other.opacity;
+    }
+};
+
+namespace std {
+    template<>
+    struct hash<PipelineKey> {
+        size_t operator()(const PipelineKey& key) const noexcept {
+            // Комбинируем два enum в один size_t без коллизий
+            return (static_cast<size_t>(key.passType) << 8) | static_cast<size_t>(key.opacity);
+        }
+    };
+}
 
 struct PipelineCreateInfo {
     // Ident name
@@ -115,10 +134,12 @@ struct PipelineCreateInfo {
     std::string fragmentShaderPath;
 };
 
+
 struct RealPipeline {
     std::string name;
     VkPipeline pipeline{ VK_NULL_HANDLE };
     VkPipelineLayout layout{ VK_NULL_HANDLE };
+    RenderPassType passType;
     PipelineOpacity opacity;
 
     uint16_t id{ 0 };
@@ -147,7 +168,9 @@ public:
                                            const std::vector<uint32_t>& fragCode,
                                            VkFormat colorFormat, VkFormat depthFormat, VkSampleCountFlagBits maxSamples);
 
-    RealPipeline* GetPipeline(const std::string& name);
+    RealPipeline* GetPipeline(RenderPassType passType, PipelineOpacity opacity);
+
+    RealPipeline* GetPipelineByName(const std::string& name);
 
     bool DestroyPipeline(const std::string& name);
 
@@ -158,12 +181,12 @@ public:
     void cleanup();
 
 private:
-
-    VkShaderModule loadShaderModule(const std::string& filePath);
-
     VkDevice _device;
-
     VkPipelineLayout _commonLayout{VK_NULL_HANDLE};
 
-    std::unordered_map<std::string, RealPipeline> _pipelines;
+    // Карта по именам
+    std::unordered_map<std::string, RealPipeline> _pipelinesByName;
+
+    // Карта для пассов
+    std::unordered_map<PipelineKey, RealPipeline*> _pipelinesByKey;
 };

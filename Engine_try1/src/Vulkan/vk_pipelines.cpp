@@ -366,8 +366,8 @@ RealPipeline* PipelineManager::CreatePipelineFromMemory(const PipelineCreateInfo
     const std::vector<uint32_t>& vertCode, const std::vector<uint32_t>& fragCode, VkFormat colorFormat,
     VkFormat depthFormat, VkSampleCountFlagBits maxSamples){
 
-    if (_pipelines.find(info.name) != _pipelines.end()) {
-        return &_pipelines[info.name];
+    if (_pipelinesByName.find(info.name) != _pipelinesByName.end()) {
+        return &_pipelinesByName[info.name];
     }
 
     // НАПРЯМУЮ СОЗДАЁМ БИНАРНИКИ И НАПРЯМУЮ СОЗДАЁМ SHADER MODULE
@@ -439,30 +439,52 @@ RealPipeline* PipelineManager::CreatePipelineFromMemory(const PipelineCreateInfo
     }
 
     // Генерируем компактный числовой ID конвейера для нашего sortKey
-    uint16_t newId = static_cast<uint16_t>(_pipelines.size());
+    uint16_t newId = static_cast<uint16_t>(_pipelinesByName.size());
 
     // Сохраняем в карту менеджера конвейеров
-    RealPipeline pipelineData{ info.name, newPipeline, _commonLayout, info.opacity, newId };
+    RealPipeline pipelineData{};
+    pipelineData.name               = info.name;
+    pipelineData.pipeline           = newPipeline;
+    pipelineData.layout             = _commonLayout;
+    pipelineData.passType           = info.passType;
+    pipelineData.opacity            = info.opacity;
+    pipelineData.id                 = newId;
+
     pipelineData.vertexShaderPath   = info.vertexShaderPath;
     pipelineData.fragmentShaderPath = info.fragmentShaderPath;
     pipelineData.colorFormat        = colorFormat;
     pipelineData.depthFormat        = depthFormat;
     pipelineData.maxSamples         = maxSamples;
-    _pipelines[info.name] = pipelineData;
+    _pipelinesByName[info.name] = pipelineData;
 
-    return &_pipelines[info.name];
+    RealPipeline* insertedPtr = &_pipelinesByName[info.name];
+    PipelineKey key{ info.passType, info.opacity };
+    _pipelinesByKey[key] = insertedPtr;
+
+    return insertedPtr;
 }
 
-RealPipeline* PipelineManager::GetPipeline(const std::string& name){
-    auto it = _pipelines.find(name);
-    return (it != _pipelines.end()) ? &it->second : nullptr;
+RealPipeline* PipelineManager::GetPipeline(RenderPassType passType, PipelineOpacity opacity) {
+    auto it = _pipelinesByKey.find({ passType, opacity });
+    if (it != _pipelinesByKey.end()) {
+        return it->second;
+    }
+    return nullptr;
+}
+
+RealPipeline* PipelineManager::GetPipelineByName(const std::string& name) {
+    auto it = _pipelinesByName.find(name);
+    if (it != _pipelinesByName.end()) {
+        return &it->second;
+    }
+    return nullptr;
 }
 
 bool PipelineManager::DestroyPipeline(const std::string& name){
-    auto it = _pipelines.find(name);
+    auto it = _pipelinesByName.find(name);
 
     // Если конвейер с таким именем не найден — возвращаем false
-    if (it == _pipelines.end()) {
+    if (it == _pipelinesByName.end()) {
         return false;
     }
 
@@ -472,17 +494,20 @@ bool PipelineManager::DestroyPipeline(const std::string& name){
     }
 
     // Удаляем запись из хэш-карты менеджера
-    _pipelines.erase(it);
+    _pipelinesByName.erase(it);
     return true;
 }
 
 void PipelineManager::DestroyAllPipelines(){
-    for (auto& [name, pipe] : _pipelines) {
+    for (auto& [name, pipe] : _pipelinesByName) {
         if (pipe.pipeline != VK_NULL_HANDLE) {
             vkDestroyPipeline(_device, pipe.pipeline, nullptr);
+            pipe.pipeline = VK_NULL_HANDLE;
         }
     }
-    _pipelines.clear();
+
+    _pipelinesByKey.clear();
+    _pipelinesByName.clear();
 }
 
 bool PipelineManager:: ReloadAllPipelines(){
@@ -491,7 +516,7 @@ bool PipelineManager:: ReloadAllPipelines(){
     std::unordered_map<std::string, std::vector<uint32_t>> newVertCodes;
     std::unordered_map<std::string, std::vector<uint32_t>> newFragCodes;
 
-    for (const auto& [name, realPipeline] : _pipelines) {
+    for (const auto& [name, realPipeline] : _pipelinesByName) {
         auto vertCode = UTILS::CompileGLSLToSPIRV(realPipeline.vertexShaderPath);
         auto fragCode = UTILS::CompileGLSLToSPIRV(realPipeline.fragmentShaderPath);
 
@@ -508,6 +533,7 @@ bool PipelineManager:: ReloadAllPipelines(){
 
     struct PipelineBackup {
         std::string name;
+        RenderPassType passType;
         PipelineOpacity opacity;
         std::string vertPath;
         std::string fragPath;
@@ -525,9 +551,10 @@ bool PipelineManager:: ReloadAllPipelines(){
     };
     std::vector<PipelineBackup> backupQueue;
 
-    for (const auto& [name, realPipeline] : _pipelines) {
+    for (const auto& [name, realPipeline] : _pipelinesByName) {
         backupQueue.push_back({
             name,
+            realPipeline.passType,
             realPipeline.opacity,
             realPipeline.vertexShaderPath,
             realPipeline.fragmentShaderPath,
@@ -545,7 +572,8 @@ bool PipelineManager:: ReloadAllPipelines(){
         }
     }
 
-    _pipelines.clear();
+    _pipelinesByKey.clear();
+    _pipelinesByName.clear();
 
     std::sort(backupQueue.begin(), backupQueue.end(), [](const PipelineBackup& a, const PipelineBackup& b) {
         return a.oldID < b.oldID;
@@ -554,6 +582,7 @@ bool PipelineManager:: ReloadAllPipelines(){
     for (const auto& pipeline : backupQueue) {
         PipelineCreateInfo info{};
         info.name = pipeline.name;
+        info.passType = pipeline.passType;
         info.opacity = pipeline.opacity;
         info.useMSAA = (pipeline.maxSamples > VK_SAMPLE_COUNT_1_BIT);
         info.vertexShaderPath = pipeline.vertPath;
@@ -586,15 +615,5 @@ void PipelineManager::cleanup(){
     if (_commonLayout != VK_NULL_HANDLE) {
         vkDestroyPipelineLayout(_device, _commonLayout, nullptr);
         _commonLayout = VK_NULL_HANDLE;
-    }
-}
-
-VkShaderModule PipelineManager::loadShaderModule(const std::string& filePath){
-    VkShaderModule Shader;
-    if (!vkutil::load_shader_module("filePath", _device, &Shader)) {
-        fmt::print("[ENGINE CRITICAL ERROR]: Can't load shader", filePath);
-    }
-    else {
-        fmt::print("Loaded shader: ", filePath, "\n");
     }
 }
