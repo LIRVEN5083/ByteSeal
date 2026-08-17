@@ -26,7 +26,7 @@ namespace VK_GUI{
         void draw_model_list_overlay(VK_INIT_ENGINE::_inited_engine& _init, ModelManager& _modelManager,
             std::unique_ptr<Scene>& _scene, const GPUSceneData& sceneData, PipelineManager& pipelineManager, RenderSystem& _renderSystem);
         void draw_fps_overlay(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER::Delta _delta);
-        void draw_context_menu_trs(VK_INIT_ENGINE::_inited_engine& _init, std::unique_ptr<Scene>& _scene, const GPUSceneData& sceneData);
+        void draw_context_menu_trs(VK_INIT_ENGINE::_inited_engine& _init, std::unique_ptr<Scene>& _scene, const GPUSceneData& sceneData, CONTROLLER::Camera _camera);
         void draw_gizmo(VK_INIT_ENGINE::_inited_engine& _init, std::unique_ptr<Scene>& _scene, const GPUSceneData& sceneData, ModelManager& _modelManager, CONTROLLER::Camera _camera);
         void draw_view_navigation_widget(const GPUSceneData& sceneData, CONTROLLER::Camera& _camera);
         void gizmo_mode();

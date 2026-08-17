@@ -396,10 +396,10 @@ void VK_GUI::GUI::draw_fps_overlay(VK_INIT_ENGINE::_inited_engine& _init, CONTRO
 }
 
 void VK_GUI::GUI::draw_context_menu_trs(VK_INIT_ENGINE::_inited_engine& _init, std::unique_ptr<Scene>& _scene,
-    const GPUSceneData& sceneData){
+    const GPUSceneData& sceneData, CONTROLLER::Camera _camera){
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) &&
     !ImGui::GetIO().WantCaptureMouse &&
-    !ImGuizmo::IsOver())  {
+    !ImGuizmo::IsOver() && !_camera.isCameraActive)  {
 
         ImVec2 mousePos = ImGui::GetMousePos();
 
@@ -561,7 +561,7 @@ void VK_GUI::GUI::draw_gizmo(VK_INIT_ENGINE::_inited_engine& _init, std::unique_
 
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
         !ImGui::GetIO().WantCaptureMouse &&
-        !ImGuizmo::IsOver())
+        !ImGuizmo::IsOver() && !_camera.isCameraActive)
     {
         ImVec2 mousePos = ImGui::GetMousePos();
         float screenWidth  = static_cast<float>(_init._windowExtent.width);
@@ -950,7 +950,7 @@ void VK_GUI::GUI::update_imgui(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER
 
     draw_model_properties_window(_init, _modelManager);
 
-    draw_context_menu_trs(_init, _scene, sceneData);
+    draw_context_menu_trs(_init, _scene, sceneData, _camera);
 
     draw_gizmo(_init, _scene, sceneData, _modelManager, _camera);
 
