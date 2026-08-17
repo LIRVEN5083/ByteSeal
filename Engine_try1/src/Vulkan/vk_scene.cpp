@@ -288,18 +288,20 @@ void LightManager::UpdateCascades(const glm::mat4& viewMatrix, float fovY, float
     for (uint32_t i = 0; i < SHADOW_CASCADES_COUNT; i++) {
         float splitDist = cascadeSplits[i];
 
-         // Собираем ручками матрицу проекции без моей выебистой математики
         glm::mat4 proj = glm::perspective(fovY, aspect, lastSplitDist, splitDist);
-        proj[1][1] *= -1.0f; // Любимая инверсия проекции
 
+        // Матрица перехода из NDC обратно в Мировые координаты
         glm::mat4 invCam = glm::inverse(proj * viewMatrix);
 
-        // 8 угловых точек фрустума в NDC
+        // 8 угловых точек фрустума в NDC для Vulkan (Z от 0 до 1)
+        // УЧИТЫВАЕМ REVERSED-Z
         std::array<glm::vec4, 8> frustumCorners = {
-            glm::vec4(-1.0f,  1.0f, 0.0f, 1.0f), glm::vec4( 1.0f,  1.0f, 0.0f, 1.0f),
-            glm::vec4( 1.0f, -1.0f, 0.0f, 1.0f), glm::vec4(-1.0f, -1.0f, 0.0f, 1.0f),
+            // Near plane (z = 1.0f)
             glm::vec4(-1.0f,  1.0f, 1.0f, 1.0f), glm::vec4( 1.0f,  1.0f, 1.0f, 1.0f),
             glm::vec4( 1.0f, -1.0f, 1.0f, 1.0f), glm::vec4(-1.0f, -1.0f, 1.0f, 1.0f),
+            // Far plane (z = 0.0f)
+            glm::vec4(-1.0f,  1.0f, 0.0f, 1.0f), glm::vec4( 1.0f,  1.0f, 0.0f, 1.0f),
+            glm::vec4( 1.0f, -1.0f, 0.0f, 1.0f), glm::vec4(-1.0f, -1.0f, 0.0f, 1.0f),
         };
 
         glm::vec3 center(0.0f);
@@ -309,13 +311,11 @@ void LightManager::UpdateCascades(const glm::mat4& viewMatrix, float fovY, float
             frustumCorners[j] = v;
             center += glm::vec3(v);
         }
-        center /= 8.0f; // Центр каскада вокруг игрока
+        center /= 8.0f;
 
-        // Матрица вида света. Берем z-up
         glm::vec3 lightPos = center - glm::normalize(lightDir);
         glm::mat4 lightView = glm::lookAt(lightPos, center, glm::vec3(0.0f, 0.0f, 1.0f));
 
-        // Границы в пространстве света
         float minX = std::numeric_limits<float>::max(); float maxX = std::numeric_limits<float>::lowest();
         float minY = std::numeric_limits<float>::max(); float maxY = std::numeric_limits<float>::lowest();
         float minZ = std::numeric_limits<float>::max(); float maxZ = std::numeric_limits<float>::lowest();
@@ -327,14 +327,12 @@ void LightManager::UpdateCascades(const glm::mat4& viewMatrix, float fovY, float
             minZ = std::min(minZ, vInLightSpace.z); maxZ = std::max(maxZ, vInLightSpace.z);
         }
 
-        // Большой Z-запас для направленного света (чтобы высокие объекты сзади не отсекались)
-        float zMult = 10.0f;
-        minZ = (minZ < 0) ? minZ * zMult : minZ / zMult;
-        maxZ = (maxZ < 0) ? maxZ / zMult : maxZ * zMult;
+        float zOffset = 100.0f;
+        minZ -= zOffset;
+        maxZ += zOffset;
 
-        glm::mat4 lightProj = glm::ortho(minX, maxX, minY, maxY, minZ, maxZ);
+        glm::mat4 lightProj = glm::ortho(minX, maxX, minY, maxY, maxZ, minZ);
 
-        // В Vulkan для ортографической матрицы тоже нужен флип Y
         lightProj[1][1] *= -1.0f;
 
         m_cascadeMatrices[i] = lightProj * lightView;

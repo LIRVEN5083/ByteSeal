@@ -345,6 +345,8 @@ void PipelineBuilder::enable_blending_alphablend()
 }
 
 void PipelineManager::InitCommonLayout(VkDescriptorSetLayout globalSetLayout, VkDescriptorSetLayout bindlessSetLayout){
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // СОЗДАНИЕ ОСНОВНОГО LAYOUT
     VkPushConstantRange pushConstantRange{};
     pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
     pushConstantRange.offset = 0;
@@ -361,6 +363,26 @@ void PipelineManager::InitCommonLayout(VkDescriptorSetLayout globalSetLayout, Vk
 
     if (vkCreatePipelineLayout(_device, &layoutInfo, nullptr, &_commonLayout) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create common pipeline layout!");
+    }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // СОЗДАНИЕ SCM LAYOUT
+    VkPushConstantRange shadowPushConstantRange{};
+    shadowPushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    shadowPushConstantRange.offset = 0;
+    shadowPushConstantRange.size = sizeof(GPUShadowPushConstants); // 72 байта
+
+    std::vector<VkDescriptorSetLayout> shadowLayouts = { globalSetLayout };
+
+    VkPipelineLayoutCreateInfo shadowLayoutInfo{};
+    shadowLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    shadowLayoutInfo.setLayoutCount = static_cast<uint32_t>(shadowLayouts.size());
+    shadowLayoutInfo.pSetLayouts = shadowLayouts.data();
+    shadowLayoutInfo.pushConstantRangeCount = 1;
+    shadowLayoutInfo.pPushConstantRanges = &shadowPushConstantRange;
+
+    if (vkCreatePipelineLayout(_device, &shadowLayoutInfo, nullptr, &_shadowLayout) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create shadow pipeline layout!");
     }
 }
 
@@ -415,38 +437,53 @@ RealPipeline* PipelineManager::CreatePipelineFromMemory(const PipelineCreateInfo
     }
 
     PipelineBuilder pipelineBuilder;
-
     pipelineBuilder.clear();
 
-    // Принудительно отдаем билдеру наш ОБЩИЙ макет (layout) из менеджера конвейеров
-    pipelineBuilder._pipelineLayout = _commonLayout;
+    // Отдаем билдеру Layout взависимости тени это или нет
+    VkPipelineLayout activeLayout = VK_NULL_HANDLE;
+    if (info.passType == RenderPassType::ShadowCSM) {
+        activeLayout = _shadowLayout;
+    }
+    else{
+        activeLayout = _commonLayout;
+    }
+    pipelineBuilder._pipelineLayout = activeLayout;
 
     // Настраиваем шейдеры и базовые геометрические параметры
     pipelineBuilder.set_shaders(vertModule, fragModule);
     pipelineBuilder.set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-    pipelineBuilder.set_polygon_mode(VK_POLYGON_MODE_FILL);
-    pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
 
     // Определяем сэмплы для MSAA
     VkSampleCountFlagBits samplesToUse = info.useMSAA ? maxSamples : VK_SAMPLE_COUNT_1_BIT;
 
-    if (info.opacity == PipelineOpacity::Transparent) {
-        // Конфигурация для сетки (Grid)
-        pipelineBuilder.set_multisampling_alpha(samplesToUse);
-        pipelineBuilder.enable_blending_alphablend();
+    if (info.passType == RenderPassType::ShadowCSM){
+        pipelineBuilder.set_polygon_mode(VK_POLYGON_MODE_FILL);
+        pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+        pipelineBuilder.set_multisampling(VK_SAMPLE_COUNT_1_BIT); // Тени всегда 1 сепмл
         pipelineBuilder.enable_depthtest(VK_TRUE, VK_COMPARE_OP_GREATER_OR_EQUAL);
     }
-    else if (info.opacity == PipelineOpacity::AlphaTested) {
-        // Конфигурация для листвы/масок (Alpha-test)
-        pipelineBuilder.set_multisampling(samplesToUse);
-        pipelineBuilder.disable_blending();
-        pipelineBuilder.enable_depthtest(VK_TRUE, VK_COMPARE_OP_GREATER_OR_EQUAL);  // Reversed-Z, запись вкл
-    }
-    else {
-        // Конфигурация для обычных моделей (BaseMesh)
-        pipelineBuilder.set_multisampling(samplesToUse);
-        pipelineBuilder.disable_blending();
-        pipelineBuilder.enable_depthtest(VK_TRUE, VK_COMPARE_OP_GREATER_OR_EQUAL);   // Reversed-Z, запись вкл
+    else{
+        pipelineBuilder.set_polygon_mode(VK_POLYGON_MODE_FILL);
+        pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+
+        if (info.opacity == PipelineOpacity::Transparent) {
+            // Конфигурация для сетки (Grid)
+            pipelineBuilder.set_multisampling_alpha(samplesToUse);
+            pipelineBuilder.enable_blending_alphablend();
+            pipelineBuilder.enable_depthtest(VK_TRUE, VK_COMPARE_OP_GREATER_OR_EQUAL);
+        }
+        else if (info.opacity == PipelineOpacity::AlphaTested) {
+            // Конфигурация для листвы/масок (Alpha-test)
+            pipelineBuilder.set_multisampling(samplesToUse);
+            pipelineBuilder.disable_blending();
+            pipelineBuilder.enable_depthtest(VK_TRUE, VK_COMPARE_OP_GREATER_OR_EQUAL);  // Reversed-Z, запись вкл
+        }
+        else {
+            // Конфигурация для обычных моделей (BaseMesh)
+            pipelineBuilder.set_multisampling(samplesToUse);
+            pipelineBuilder.disable_blending();
+            pipelineBuilder.enable_depthtest(VK_TRUE, VK_COMPARE_OP_GREATER_OR_EQUAL);   // Reversed-Z, запись вкл
+        }
     }
 
     // Прокидываем форматы динамического рендеринга
@@ -472,7 +509,7 @@ RealPipeline* PipelineManager::CreatePipelineFromMemory(const PipelineCreateInfo
     RealPipeline pipelineData{};
     pipelineData.name               = info.name;
     pipelineData.pipeline           = newPipeline;
-    pipelineData.layout             = _commonLayout;
+    pipelineData.layout             = activeLayout;
     pipelineData.passType           = info.passType;
     pipelineData.opacity            = info.opacity;
     pipelineData.id                 = newId;
@@ -651,8 +688,14 @@ void PipelineManager::cleanup(){
         vkDestroyPipelineLayout(_device, _commonLayout, nullptr);
         _commonLayout = VK_NULL_HANDLE;
     }
+
+    // Уничтожаем SCM Layout
+    if (_shadowLayout != VK_NULL_HANDLE) {
+        vkDestroyPipelineLayout(_device, _shadowLayout, nullptr);
+        _shadowLayout = VK_NULL_HANDLE;
+    }
 }
 
-VkPipelineLayout PipelineManager::GetCommonLayout() const{
-    return _commonLayout;
-}
+VkPipelineLayout PipelineManager::GetCommonLayout() const {return _commonLayout;}
+
+VkPipelineLayout PipelineManager::GetShadowLayout() const { return _shadowLayout; }

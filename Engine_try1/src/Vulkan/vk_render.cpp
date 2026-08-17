@@ -182,7 +182,7 @@ void ShadowCSMRenderPass::Execute(const RenderContext& ctx, const std::vector<Re
     depthAttachment.imageView = shadowArrayView;
     depthAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
     depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE; // Сохраняем тени для мешей
+    depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
     depthAttachment.clearValue = depthClear;
 
     VkRenderingInfo renderInfo{};
@@ -196,7 +196,7 @@ void ShadowCSMRenderPass::Execute(const RenderContext& ctx, const std::vector<Re
 
     vkCmdBeginRendering(ctx.cmd, &renderInfo);
 
-    VkViewport viewport = { 0.0f, 0.0f, (float)resolution, (float)resolution, 1.0f, 0.0f };
+    VkViewport viewport = { 0.0f, 0.0f, (float)resolution, (float)resolution, 0.0f, 1.0f };
     vkCmdSetViewport(ctx.cmd, 0, 1, &viewport);
 
     VkRect2D scissor = { {0, 0}, shadowExtent };
