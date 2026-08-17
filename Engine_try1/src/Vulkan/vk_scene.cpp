@@ -362,9 +362,13 @@ VkImageView LightManager::GetShadowTextureView() const {
     return m_shadowArrayTexture.image.imageView;
 }
 
+VkImage LightManager::GetShadowImage() const{
+    return m_shadowArrayTexture.image.image;
+}
+
 void LightManager::cleanUp(){
-    if (m_shadowArrayTexture.globalIndex != 0) {
-        m_textureManager.FreeTexture(m_shadowArrayTexture);
+    if (m_shadowArrayTexture.image.image != VK_NULL_HANDLE) {
+        m_textureManager.FreeTexture(m_shadowArrayTexture, 1);
         m_shadowArrayTexture.globalIndex = 0;
     }
 }

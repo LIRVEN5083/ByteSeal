@@ -184,7 +184,7 @@ void VK_APPLICATION::VulkanApplication::renderLoop(){
     // Отрисовка RenderObject
     _renderSystem.PrepareFrame();
     VkDescriptorSet bindlessSet = _textureManager.GetTextureSet();
-    _renderSystem.Draw(cmd, _drawExtent, globalDescriptor, bindlessSet, *_pipelineManager);
+    _renderSystem.Draw(cmd, _drawExtent, globalDescriptor, bindlessSet, *_pipelineManager, *_lightManager);
 
     // Захардкоженный интерефейс
     _gui.draw_imgui(_init, cmd, _drawExtent);
@@ -519,6 +519,7 @@ void VK_APPLICATION::VulkanApplication::init_scene(){
     _activeScene = std::make_unique<Scene>(_modelManager);
     CSMConfig csmConfig{};
     _lightManager = std::make_unique<LightManager>(_init._device, _textureManager, csmConfig);
+    _lightManager->init();
 }
 
 VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& currentFrame){

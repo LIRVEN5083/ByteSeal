@@ -166,14 +166,31 @@ void ShadowCSMRenderPass::Init(PipelineManager& pipelineManager){
 void ShadowCSMRenderPass::Execute(const RenderContext& ctx, const std::vector<RenderObject>& queue){
      if (queue.empty() || !_shadowPipeline || !ctx.lightManager) return;
 
+    VkImageMemoryBarrier2 depthBarrier{};
+    depthBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+    depthBarrier.srcStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+    depthBarrier.srcAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
+    depthBarrier.dstStageMask = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
+    depthBarrier.dstAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+
+    depthBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    depthBarrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+    depthBarrier.image = ctx.lightManager->GetShadowImage();
+    depthBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+    depthBarrier.subresourceRange.levelCount = 1;
+    depthBarrier.subresourceRange.layerCount = 4; // Ваши 4 каскада
+
+    VkDependencyInfo depInfo{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
+    depInfo.imageMemoryBarrierCount = 1;
+    depInfo.pImageMemoryBarriers = &depthBarrier;
+    vkCmdPipelineBarrier2(ctx.cmd, &depInfo);
+
     uint32_t resolution = ctx.lightManager->GetResolution();
     VkExtent2D shadowExtent = { resolution, resolution };
 
     VkClearValue depthClear;
     depthClear.depthStencil.depth = 0.0f; // Reversed-Z для теней
 
-    // Твой LightManager регистрирует текстуру в TextureManager под определенным ID.
-    // Нам нужен VkImageView всего массива слоев для Dynamic Rendering:
     VkImageView shadowArrayView = ctx.lightManager->GetShadowTextureView();
 
     VkRenderingAttachmentInfo depthAttachment{};
@@ -232,6 +249,17 @@ void ShadowCSMRenderPass::Execute(const RenderContext& ctx, const std::vector<Re
     }
 
     vkCmdEndRendering(ctx.cmd);
+
+    VkImageMemoryBarrier2 readBarrier = depthBarrier;
+    readBarrier.srcStageMask = VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
+    readBarrier.srcAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    readBarrier.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT; // Будем читать в основном фрагментном шейдере
+    readBarrier.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
+    readBarrier.oldLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+    readBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+    depInfo.pImageMemoryBarriers = &readBarrier;
+    vkCmdPipelineBarrier2(ctx.cmd, &depInfo);
 }
 
 void RenderSystem::AddPass(std::unique_ptr<RenderPass> pass, PipelineManager& pipelineManager){
@@ -252,14 +280,16 @@ void RenderSystem::PrepareFrame(){
 }
 
 void RenderSystem::Draw(VkCommandBuffer cmd, VkExtent2D drawExtent, VkDescriptorSet globalDescriptor,
-    VkDescriptorSet bindlessTextureSet, PipelineManager& pipelineManager){
+    VkDescriptorSet bindlessTextureSet, PipelineManager& pipelineManager, LightManager& lightManager){
 
     RenderContext ctx{
         cmd,
         drawExtent,
         globalDescriptor,
         bindlessTextureSet,
-        pipelineManager.GetCommonLayout()
+        pipelineManager.GetCommonLayout(),
+        &pipelineManager,
+        &lightManager
     };
 
     // Последовательно выполняем все зарегистрированные пассы

@@ -124,7 +124,7 @@ public:
 
     void Draw(VkCommandBuffer cmd, VkExtent2D drawExtent,
               VkDescriptorSet globalDescriptor, VkDescriptorSet bindlessTextureSet,
-              PipelineManager& pipelineManager);
+              PipelineManager& pipelineManager, LightManager& lightManager);
 
     // Вызывается из Engine.cpp сразу после успешного ReloadAllPipelines()
     void RefreshPasses(PipelineManager& pipelineManager);

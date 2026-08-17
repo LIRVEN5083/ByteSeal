@@ -183,22 +183,21 @@ GPUTexture TextureManager::AllocateTexture(
 }
 
 void TextureManager::FreeTexture(GPUTexture& texture, uint32_t binding){
-    if (texture.globalIndex == 0) {return;}
+    if (binding >= BINDING_COUNT) return;
+    if (binding == 0 && texture.globalIndex == 0) return;
 
     if (texture.image.imageView != VK_NULL_HANDLE) {
         vkDestroyImageView(_device, texture.image.imageView, nullptr);
     }
-
     if (texture.image.image != VK_NULL_HANDLE) {
         vmaDestroyImage(_allocator, texture.image.image, texture.image.allocation);
+        texture.image.image = VK_NULL_HANDLE;
     }
-
     if (texture.imguiDescriptorSet != VK_NULL_HANDLE) {
         ImGui_ImplVulkan_RemoveTexture(texture.imguiDescriptorSet);
         texture.imguiDescriptorSet = VK_NULL_HANDLE;
     }
 
-    // Возвращаем индекс в пул свободных для переиспользования
     _freeIndices[binding].push_back(texture.globalIndex);
 }
 

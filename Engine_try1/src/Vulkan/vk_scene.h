@@ -126,6 +126,7 @@ public:
     const float* GetCascadeSplits() const;
     uint32_t GetResolution() const;
     VkImageView GetShadowTextureView() const;
+    VkImage GetShadowImage() const;
 
     void cleanUp();
 
