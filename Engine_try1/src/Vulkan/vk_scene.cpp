@@ -267,7 +267,7 @@ void LightManager::init(){
     shadowSamplerOptions.wrapS = 3;
     shadowSamplerOptions.wrapT = 3;
 
-    m_shadowArrayTexture = m_textureManager.AllocateTexture(imageInfo, viewInfo, shadowSamplerOptions, ModelLifetime::Static);
+    m_shadowArrayTexture = m_textureManager.AllocateTexture(imageInfo, viewInfo, 1, shadowSamplerOptions, ModelLifetime::Static);
 }
 
 void LightManager::UpdateCascades(const glm::mat4& viewMatrix, float fovY, float aspect, float cameraNear,
