@@ -181,10 +181,12 @@ public:
     void cleanup();
 
     VkPipelineLayout GetCommonLayout() const;
+    VkPipelineLayout GetShadowLayout() const;
 
 private:
     VkDevice _device;
     VkPipelineLayout _commonLayout{VK_NULL_HANDLE};
+    VkPipelineLayout _shadowLayout{VK_NULL_HANDLE};
 
     // Карта по именам
     std::unordered_map<std::string, RealPipeline> _pipelinesByName;

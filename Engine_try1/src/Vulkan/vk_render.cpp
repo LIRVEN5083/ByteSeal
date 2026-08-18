@@ -159,6 +159,109 @@ void GridRenderPass::Execute(const RenderContext& ctx, const std::vector<RenderO
     vkCmdEndRendering(ctx.cmd);
 }
 
+void ShadowCSMRenderPass::Init(PipelineManager& pipelineManager){
+    _shadowPipeline = pipelineManager.GetPipeline(RenderPassType::ShadowCSM, PipelineOpacity::Opaque);
+}
+
+void ShadowCSMRenderPass::Execute(const RenderContext& ctx, const std::vector<RenderObject>& queue){
+     if (queue.empty() || !_shadowPipeline || !ctx.lightManager) return;
+
+    VkImageMemoryBarrier2 depthBarrier{};
+    depthBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+    depthBarrier.srcStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+    depthBarrier.srcAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
+    depthBarrier.dstStageMask = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
+    depthBarrier.dstAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+
+    depthBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    depthBarrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+    depthBarrier.image = ctx.lightManager->GetShadowImage();
+    depthBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+    depthBarrier.subresourceRange.levelCount = 1;
+    depthBarrier.subresourceRange.layerCount = 4; // Ваши 4 каскада
+
+    VkDependencyInfo depInfo{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
+    depInfo.imageMemoryBarrierCount = 1;
+    depInfo.pImageMemoryBarriers = &depthBarrier;
+    vkCmdPipelineBarrier2(ctx.cmd, &depInfo);
+
+    uint32_t resolution = ctx.lightManager->GetResolution();
+    VkExtent2D shadowExtent = { resolution, resolution };
+
+    VkClearValue depthClear;
+    depthClear.depthStencil.depth = 0.0f; // Reversed-Z для теней
+
+    VkImageView shadowArrayView = ctx.lightManager->GetShadowTextureView();
+
+    VkRenderingAttachmentInfo depthAttachment{};
+    depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    depthAttachment.pNext = nullptr;
+    depthAttachment.imageView = shadowArrayView;
+    depthAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+    depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    depthAttachment.clearValue = depthClear;
+
+    VkRenderingInfo renderInfo{};
+    renderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+    renderInfo.pNext = nullptr;
+    renderInfo.renderArea = { {0, 0}, shadowExtent };
+    renderInfo.layerCount = SHADOW_CASCADES_COUNT; // 4 слоя
+    renderInfo.colorAttachmentCount = 0;
+    renderInfo.pColorAttachments = nullptr;
+    renderInfo.pDepthAttachment = &depthAttachment;
+
+    vkCmdBeginRendering(ctx.cmd, &renderInfo);
+
+    VkViewport viewport = { 0.0f, 0.0f, (float)resolution, (float)resolution, 0.0f, 1.0f };
+    vkCmdSetViewport(ctx.cmd, 0, 1, &viewport);
+
+    VkRect2D scissor = { {0, 0}, shadowExtent };
+    vkCmdSetScissor(ctx.cmd, 0, 1, &scissor);
+
+    vkCmdBindPipeline(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _shadowPipeline->pipeline);
+
+    vkCmdBindDescriptorSets(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _shadowPipeline->layout, 0, 1, &ctx.globalDescriptor, 0, nullptr);
+
+    VkBuffer currentIndexBuffer = VK_NULL_HANDLE;
+
+    for (const auto& object : queue) {
+        if (object.pipeline == VK_NULL_HANDLE) continue;
+
+        if (object.indexBuffer != VK_NULL_HANDLE) {
+            if (object.indexBuffer != currentIndexBuffer) {
+                vkCmdBindIndexBuffer(ctx.cmd, object.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+                currentIndexBuffer = object.indexBuffer;
+            }
+        }
+
+        GPUShadowPushConstants push_constants;
+        push_constants.worldMatrix = object.render_matrix;
+        push_constants.vertexBuffer = object.vertexBufferAddress;
+
+        vkCmdPushConstants(ctx.cmd, _shadowPipeline->layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUShadowPushConstants), &push_constants);
+
+        if (object.indexBuffer != VK_NULL_HANDLE) {
+            vkCmdDrawIndexed(ctx.cmd, object.indexCount, SHADOW_CASCADES_COUNT, object.firstIndex, 0, 0);
+        } else {
+            vkCmdDraw(ctx.cmd, object.indexCount, SHADOW_CASCADES_COUNT, 0, 0);
+        }
+    }
+
+    vkCmdEndRendering(ctx.cmd);
+
+    VkImageMemoryBarrier2 readBarrier = depthBarrier;
+    readBarrier.srcStageMask = VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
+    readBarrier.srcAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    readBarrier.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT; // Будем читать в основном фрагментном шейдере
+    readBarrier.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
+    readBarrier.oldLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+    readBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+    depInfo.pImageMemoryBarriers = &readBarrier;
+    vkCmdPipelineBarrier2(ctx.cmd, &depInfo);
+}
+
 void RenderSystem::AddPass(std::unique_ptr<RenderPass> pass, PipelineManager& pipelineManager){
     pass->Init(pipelineManager);
     _renderPasses.push_back(std::move(pass));
@@ -177,14 +280,16 @@ void RenderSystem::PrepareFrame(){
 }
 
 void RenderSystem::Draw(VkCommandBuffer cmd, VkExtent2D drawExtent, VkDescriptorSet globalDescriptor,
-    VkDescriptorSet bindlessTextureSet, PipelineManager& pipelineManager){
+    VkDescriptorSet bindlessTextureSet, PipelineManager& pipelineManager, LightManager& lightManager){
 
     RenderContext ctx{
         cmd,
         drawExtent,
         globalDescriptor,
         bindlessTextureSet,
-        pipelineManager.GetCommonLayout()
+        pipelineManager.GetCommonLayout(),
+        &pipelineManager,
+        &lightManager
     };
 
     // Последовательно выполняем все зарегистрированные пассы

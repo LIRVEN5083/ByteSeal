@@ -122,7 +122,7 @@ void VK_APPLICATION::VulkanApplication::run(){
             resize_swapchain();
         }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        _gui.update_imgui(_init, _delta, _camera, _modelManager, _activeScene,  sceneData, *_pipelineManager);
+        _gui.update_imgui(_init, _delta, _camera, _modelManager, _activeScene,  sceneData, *_pipelineManager, _renderSystem);
         CONTROLLER::update_time(_movement, _delta);
         renderLoop();
         CONTROLLER::made_move(_movement, _camera, _delta);
@@ -184,7 +184,7 @@ void VK_APPLICATION::VulkanApplication::renderLoop(){
     // Отрисовка RenderObject
     _renderSystem.PrepareFrame();
     VkDescriptorSet bindlessSet = _textureManager.GetTextureSet();
-    _renderSystem.Draw(cmd, _drawExtent, globalDescriptor, bindlessSet, *_pipelineManager);
+    _renderSystem.Draw(cmd, _drawExtent, globalDescriptor, bindlessSet, *_pipelineManager, *_lightManager);
 
     // Захардкоженный интерефейс
     _gui.draw_imgui(_init, cmd, _drawExtent);
@@ -479,7 +479,24 @@ void VK_APPLICATION::VulkanApplication::init_pipeline_manager(){
         fmt::print("[PipelineManager] Pipeline 'Grid' successfully loaded and built.\n");
     }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Конвеер для каскадных теней
+    PipelineCreateInfo shadowInfo{};
+    shadowInfo.name = "Shadow";
+    shadowInfo.passType = RenderPassType::ShadowCSM;
+    shadowInfo.opacity = PipelineOpacity::Opaque;
+    shadowInfo.useMSAA = false;
+    shadowInfo.vertexShaderPath = "../Shaders/SCM/Source/shadow.vert";
+    shadowInfo.fragmentShaderPath = "";
+
+    VkFormat shadowDepthFormat = VK_FORMAT_D32_SFLOAT;
+
+    RealPipeline* shadowPipeline = _pipelineManager->CreatePipeline(shadowInfo, VK_FORMAT_UNDEFINED, shadowDepthFormat, VK_SAMPLE_COUNT_1_BIT);
+    if (shadowPipeline) {
+        fmt::print("[PipelineManager] Pipeline 'ShadowCSM' successfully loaded and built for Layered Rendering.\n");
+    }
     // Проходы рендера
+    _renderSystem.AddPass(std::make_unique<ShadowCSMRenderPass>(_init), *_pipelineManager);
     _renderSystem.AddPass(std::make_unique<ForwardRenderPass>(_init), *_pipelineManager);
     _renderSystem.AddPass(std::make_unique<GridRenderPass>(_init), *_pipelineManager);
 }
@@ -502,6 +519,7 @@ void VK_APPLICATION::VulkanApplication::init_scene(){
     _activeScene = std::make_unique<Scene>(_modelManager);
     CSMConfig csmConfig{};
     _lightManager = std::make_unique<LightManager>(_init._device, _textureManager, csmConfig);
+    _lightManager->init();
 }
 
 VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& currentFrame){

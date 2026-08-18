@@ -9,47 +9,59 @@ void TextureManager::init(VK_INIT_ENGINE::_inited_engine& _init){
     _device = _init._device;
     _allocator = _init._allocator;
 
-    VkDescriptorSetLayoutBinding binding{};
-    binding.binding = 0;
-    binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    binding.descriptorCount = MAX_BINDLESS_TEXTURES;
-    binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    std::vector<VkDescriptorSetLayoutBinding> bindings(2);
 
-    VkDescriptorBindingFlags flags = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT | VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
+    bindings[0].binding = 0;
+    bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    bindings[0].descriptorCount = MAX_BINDLESS_TEXTURES;
+    bindings[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+    bindings[1].binding = 1;
+    bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    bindings[1].descriptorCount = MAX_BINDLESS_TEXTURES;
+    bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT;
+
+    // Настраиваем флаги отдельно ДЛЯ КАЖДОГО биндинга
+    VkDescriptorBindingFlags bindlessFlags = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
+                                             VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
+    std::vector<VkDescriptorBindingFlags> flagsArray = { bindlessFlags, bindlessFlags };
+
     VkDescriptorSetLayoutBindingFlagsCreateInfo extInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO };
-    extInfo.bindingCount = 1;
-    extInfo.pBindingFlags = &flags;
+    extInfo.bindingCount = static_cast<uint32_t>(flagsArray.size());
+    extInfo.pBindingFlags = flagsArray.data();
 
+    // Создаем Layout
     VkDescriptorSetLayoutCreateInfo layoutInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
     layoutInfo.pNext = &extInfo;
     layoutInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
-    layoutInfo.bindingCount = 1;
-    layoutInfo.pBindings = &binding;
+    layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
+    layoutInfo.pBindings = bindings.data();
     vkCreateDescriptorSetLayout(_device, &layoutInfo, nullptr, &_textureLayout);
 
-    VkDescriptorPoolSize poolSize{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, MAX_BINDLESS_TEXTURES };
+    VkDescriptorPoolSize poolSize{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, MAX_BINDLESS_TEXTURES * BINDING_COUNT };
     VkDescriptorPoolCreateInfo poolInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
     poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
-    poolInfo.maxSets = 1; // Только один сет!
+    poolInfo.maxSets = 1;
     poolInfo.poolSizeCount = 1;
     poolInfo.pPoolSizes = &poolSize;
     vkCreateDescriptorPool(_device, &poolInfo, nullptr, &_texturePool);
 
+    // Выделяем Descriptor Set
     VkDescriptorSetAllocateInfo allocInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
     allocInfo.descriptorPool = _texturePool;
     allocInfo.descriptorSetCount = 1;
     allocInfo.pSetLayouts = &_textureLayout;
     vkAllocateDescriptorSets(_device, &allocInfo, &_textureSet);
 
-    // Находим нужный тип памяти
+
     VkImageCreateInfo dummyImageInfo{ VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
     dummyImageInfo.imageType = VK_IMAGE_TYPE_2D;
     dummyImageInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
-    dummyImageInfo.extent = { 1024, 1024, 1 }; // Обычный размер
+    dummyImageInfo.extent = { 1024, 1024, 1 };
     dummyImageInfo.mipLevels = 1;
     dummyImageInfo.arrayLayers = 1;
     dummyImageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-    dummyImageInfo.tiling = VK_IMAGE_TILING_OPTIMAL; // Важно: Optimal Tiling!
+    dummyImageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
     dummyImageInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 
     VmaAllocationCreateInfo alloc_create_info{};
@@ -63,7 +75,6 @@ void TextureManager::init(VK_INIT_ENGINE::_inited_engine& _init){
     poolCreateInfo.blockSize = 128 * 1024 * 1024;
     poolCreateInfo.minBlockCount = 1;
 
-    // СОЗДАНИЕ VMA-ARENA
     vmaCreatePool(_init._allocator, &poolCreateInfo, &_textureArena);
 
     VkPhysicalDeviceProperties properties{};
@@ -72,20 +83,12 @@ void TextureManager::init(VK_INIT_ENGINE::_inited_engine& _init){
     VkSamplerCreateInfo samplerInfo{ VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
     samplerInfo.magFilter = VK_FILTER_LINEAR;
     samplerInfo.minFilter = VK_FILTER_LINEAR;
-
-    // MIPMAP_MODE_LINEAR активирует трилинейную фильтрацию
     samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-
     samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
     samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
     samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-
-    // Границы переключения уровней детализации (Level of Detail)
     samplerInfo.minLod = 0.0f;
-
-    // Константа VK_LOD_CLAMP_NONE указывает Vulkan автоматически адаптироваться под любой размер текстуры.
     samplerInfo.maxLod = VK_LOD_CLAMP_NONE;
-
     samplerInfo.mipLodBias = 0.0f;
 
     if (properties.limits.maxSamplerAnisotropy > 1.0f) {
@@ -106,10 +109,18 @@ void TextureManager::init(VK_INIT_ENGINE::_inited_engine& _init){
     create_default_white_texture(_init);
 }
 
-GPUTexture TextureManager::AllocateTexture(VkImageCreateInfo imageInfo,
+GPUTexture TextureManager::AllocateTexture(
+    VkImageCreateInfo imageInfo,
         VkImageViewCreateInfo viewInfo,
+        uint32_t binding,
         const SamplerOptions& params,
         ModelLifetime lifetime){
+
+    if (binding >= BINDING_COUNT) {
+        fmt::print("[ENGINE CRITICAL ERROR]: Binding {} is out of range!", binding);
+        return {};
+    }
+
     GPUTexture texture{};
     texture.lifetime = lifetime;
 
@@ -120,15 +131,16 @@ GPUTexture TextureManager::AllocateTexture(VkImageCreateInfo imageInfo,
     texture.sampler = CreateSampler(params);
 
     // Получить bindless индекс
-    if (!_freeIndices.empty()) {
-        texture.globalIndex = _freeIndices.back();
-        _freeIndices.pop_back();
+    if (!_freeIndices[binding].empty()) {
+        texture.globalIndex = _freeIndices[binding].back();
+        _freeIndices[binding].pop_back();
     } else {
-        texture.globalIndex = _nextIndex++;
+        texture.globalIndex = _nextIndices[binding]++;
         if (texture.globalIndex >= MAX_BINDLESS_TEXTURES) {
-            fmt::print("[ENGINE CRITICAL ERROR]:  Texture index out of range!");
+            fmt::print("[ENGINE CRITICAL ERROR]: Texture index out of range for binding {}!", binding);
         }
     }
+
 
     VmaAllocationCreateInfo poolAllocInfo{};
     poolAllocInfo.usage = VMA_MEMORY_USAGE_AUTO;
@@ -153,7 +165,7 @@ GPUTexture TextureManager::AllocateTexture(VkImageCreateInfo imageInfo,
 
     VkWriteDescriptorSet write{ VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
     write.dstSet = _textureSet;
-    write.dstBinding = 0;
+    write.dstBinding = binding;
     write.dstArrayElement = texture.globalIndex;
     write.descriptorCount = 1;
     write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -170,24 +182,23 @@ GPUTexture TextureManager::AllocateTexture(VkImageCreateInfo imageInfo,
     return texture;
 }
 
-void TextureManager::FreeTexture(GPUTexture& texture){
-    if (texture.globalIndex == 0) {return;}
+void TextureManager::FreeTexture(GPUTexture& texture, uint32_t binding){
+    if (binding >= BINDING_COUNT) return;
+    if (binding == 0 && texture.globalIndex == 0) return;
 
     if (texture.image.imageView != VK_NULL_HANDLE) {
         vkDestroyImageView(_device, texture.image.imageView, nullptr);
     }
-
     if (texture.image.image != VK_NULL_HANDLE) {
         vmaDestroyImage(_allocator, texture.image.image, texture.image.allocation);
+        texture.image.image = VK_NULL_HANDLE;
     }
-
     if (texture.imguiDescriptorSet != VK_NULL_HANDLE) {
         ImGui_ImplVulkan_RemoveTexture(texture.imguiDescriptorSet);
         texture.imguiDescriptorSet = VK_NULL_HANDLE;
     }
 
-    // Возвращаем индекс в пул свободных для переиспользования
-    _freeIndices.push_back(texture.globalIndex);
+    _freeIndices[binding].push_back(texture.globalIndex);
 }
 
 void TextureManager::DestroyAllocationData(){
@@ -221,8 +232,10 @@ void TextureManager::DestroyAllocationData(){
     if (_texturePool) vkDestroyDescriptorPool(_device, _texturePool, nullptr);
     if (_textureLayout) vkDestroyDescriptorSetLayout(_device, _textureLayout, nullptr);
 
-    _nextIndex = 0;
+    _nextIndices = { 0, 0 };
+
     _freeIndices.clear();
+    _freeIndices.resize(BINDING_COUNT);
 }
 
 void TextureManager::create_default_white_texture(VK_INIT_ENGINE::_inited_engine& _init){
@@ -260,7 +273,7 @@ void TextureManager::create_default_white_texture(VK_INIT_ENGINE::_inited_engine
     viewInfo.subresourceRange.layerCount = 1;
 
     SamplerOptions params = {};
-    defaultTexture = AllocateTexture(imgInfo, viewInfo, params, ModelLifetime::Static);
+    defaultTexture = AllocateTexture(imgInfo, viewInfo, 0, params, ModelLifetime::Static);
 
     vkinit::submit_immediate([&](VkCommandBuffer cmd) {
         VkImageMemoryBarrier barrier{ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
@@ -325,9 +338,18 @@ VkSampler TextureManager::CreateSampler(const SamplerOptions& params){
     samplerInfo.addressModeV = vkutil::GetVkAddressMode(params.wrapT);
     samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
 
-    // включаем анизотропию для всех 3D текстур
-    samplerInfo.anisotropyEnable = VK_TRUE;
-    samplerInfo.maxAnisotropy = 16.0f;
+    if (params.compareEnable) {
+        samplerInfo.anisotropyEnable = VK_FALSE;
+        samplerInfo.maxAnisotropy = 1.0f;
+
+        // ВКЛЮЧАЕМ АППАРАТНЫЙ PCF ДЛЯ ТЕНЕЙ
+        samplerInfo.compareEnable = VK_TRUE;
+        samplerInfo.compareOp = VK_COMPARE_OP_GREATER_OR_EQUAL;
+    } else {
+        samplerInfo.anisotropyEnable = VK_TRUE;
+        samplerInfo.maxAnisotropy = 16.0f;
+        samplerInfo.compareEnable = VK_FALSE;
+    }
 
     // Поиск по кешу
     auto it = _samplerCache.find(samplerInfo);
@@ -562,7 +584,7 @@ std::optional<GPUTexture> load_image(VK_INIT_ENGINE::_inited_engine& _init, Text
     viewInfo.subresourceRange.layerCount = 1;
 
     // Выделяем память из VMA Арены и регистрируем в Bindless-сет
-    GPUTexture outTexture = textureManager.AllocateTexture(imgInfo, viewInfo, samplerParams, lifetime);
+    GPUTexture outTexture = textureManager.AllocateTexture(imgInfo, viewInfo, 0, samplerParams, lifetime);
 
     // Отправляем команды копирования на GPU через submit_immediate
     vkinit::submit_immediate([&](VkCommandBuffer cmd) {

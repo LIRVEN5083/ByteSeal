@@ -34,7 +34,13 @@ struct RenderContext {
     VkDescriptorSet globalDescriptor;
     VkDescriptorSet bindlessTextureSet;
     VkPipelineLayout pipelineLayout;
+
+    class PipelineManager* pipelineManager;
+    class LightManager* lightManager;
 };
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// ПРОХОДЫ РЕНДЕРА
 
 class RenderPass {
 protected:
@@ -56,7 +62,8 @@ public:
     virtual void Execute(const RenderContext& ctx, const std::vector<RenderObject>& queue) = 0;
 };
 
-// Основной проход рендера
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// ОСНОВНОЙ ПРОХОД РЕНДЕРА
 class ForwardRenderPass : public RenderPass{
 public:
     ForwardRenderPass(VK_INIT_ENGINE::_inited_engine& init)
@@ -74,6 +81,8 @@ private:
     RealPipeline* _transparentPipeline{ nullptr };
 };
 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// ПРОХОД ДЛЯ СЕТКИ
 class GridRenderPass : public RenderPass {
 public:
     GridRenderPass(VK_INIT_ENGINE::_inited_engine& init)
@@ -85,6 +94,21 @@ public:
 
 private:
     RealPipeline* _gridPipeline{ nullptr };
+};
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// ПРОХОД ДЛЯ КАСКАДНЫХ ТЕНЕЙ
+class ShadowCSMRenderPass : public RenderPass {
+public:
+    ShadowCSMRenderPass(VK_INIT_ENGINE::_inited_engine& init)
+        : RenderPass(init, RenderPassType::ShadowCSM) {}
+    ~ShadowCSMRenderPass() override = default;
+
+    void Init(PipelineManager& pipelineManager) override;
+    void Execute(const RenderContext& ctx, const std::vector<RenderObject>& queue) override;
+
+private:
+    RealPipeline* _shadowPipeline{ nullptr };
 };
 
 class RenderSystem{
@@ -100,9 +124,8 @@ public:
 
     void Draw(VkCommandBuffer cmd, VkExtent2D drawExtent,
               VkDescriptorSet globalDescriptor, VkDescriptorSet bindlessTextureSet,
-              PipelineManager& pipelineManager);
+              PipelineManager& pipelineManager, LightManager& lightManager);
 
-    // Вызывается из Engine.cpp сразу после успешного ReloadAllPipelines()
     void RefreshPasses(PipelineManager& pipelineManager);
 
     // Очистка очереди

@@ -45,6 +45,12 @@ struct GPUDrawPushConstants {
     glm::vec4 materialFactors{0.5f, 0.0f, 0.0f, 0.0f};
 };
 
+struct GPUShadowPushConstants {
+    glm::mat4 worldMatrix;
+    VkDeviceAddress vertexBuffer;
+}; // Итого: 72 байта
+
+
 struct GPUSceneData {
     glm::mat4 view;
     glm::mat4 proj;
@@ -114,21 +120,24 @@ struct SamplerOptions{
     int magFilter{ 9729 }; // LINEAR по умолчанию
     int wrapS{ 10497 };    // REPEAT по умолчанию
     int wrapT{ 10497 };    // REPEAT по умолчанию
+    bool compareEnable = false;
 };
 
 class TextureManager{
 public:
     const uint32_t MAX_BINDLESS_TEXTURES = 1000;
+    const uint32_t BINDING_COUNT = 2;
 
     void init(VK_INIT_ENGINE::_inited_engine& _init);
 
     GPUTexture AllocateTexture(
         VkImageCreateInfo imageInfo,
         VkImageViewCreateInfo viewInfo,
+        uint32_t binding = 0,
         const SamplerOptions& params = {},
         ModelLifetime lifetime = ModelLifetime::Dynamic);
 
-    void FreeTexture(GPUTexture& texture);
+    void FreeTexture(GPUTexture& texture, uint32_t binding = 0);
     void DestroyAllocationData();
 
     void create_default_white_texture(VK_INIT_ENGINE::_inited_engine& _init);
@@ -156,8 +165,8 @@ private:
     // Хэш ддя сэмплеров
     std::unordered_map<VkSamplerCreateInfo, VkSampler, vkutil::SamplerCreateInfoHash, vkutil::SamplerCreateInfoEqual> _samplerCache;
 
-    uint32_t _nextIndex{ 0 };
-    std::vector<uint32_t> _freeIndices;
+    std::vector<uint32_t> _nextIndices{0, 0};
+    std::vector<std::vector<uint32_t>> _freeIndices{ {}, {} };
 };
 
 struct AABB {
