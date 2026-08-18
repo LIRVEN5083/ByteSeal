@@ -202,7 +202,7 @@ void main()
 	float shadowTerm = 1.0; // 1.0 — полный свет, 0.0 — полная тень
 
 	if (uvw.x >= 0.0 && uvw.x <= 1.0 && uvw.y >= 0.0 && uvw.y <= 1.0) {
-		
+    
 		float bias = max(0.008 * (1.0 - dot(normal_vertex, L)), 0.005);
 		if (cascadeIndex > 1) {
 			bias *= 4.0;
@@ -211,36 +211,39 @@ void main()
 		vec2 shadowMapSize = textureSize(globalTextureArray, 0).xy;
 		vec2 texelSize = 1.0 / shadowMapSize;
 
-		float filterRadius = (cascadeIndex == 0) ? 2.0 : 1.0;
+		float filterRadius = (cascadeIndex == 0) ? 2.5 : 1.5;
 
-		float noise = fract(52.582 * fract(dot(uvw.xy * shadowMapSize, vec2(0.06711056, 0.00583715))));
+		float noise = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
 		float randomAngle = noise * 6.2831853;
 		
 		float c = cos(randomAngle);
 		float s = sin(randomAngle);
 		mat2 rotationMatrix = mat2(c, -s, s, c);
 
-		float shadowSum = 0.0;
-
-		vec2 poissonDisk[12] = vec2[](
-			vec2(-0.326212, -0.405805), vec2(-0.840144, -0.073580),
-			vec2(-0.695914,  0.457137), vec2(-0.203345,  0.620716),
-			vec2( 0.962340, -0.194983), vec2( 0.473434, -0.480026),
-			vec2( 0.519456,  0.767022), vec2( 0.185461, -0.893124),
-			vec2( 0.507431,  0.064425), vec2( 0.896420,  0.412458),
-			vec2(-0.321940, -0.932615), vec2(-0.791559, -0.597705)
+		vec2 poissonDisk[4] = vec2[](
+			vec2(-0.7071,  0.7071), vec2( 0.7071,  0.7071),
+			vec2(-0.7071, -0.7071), vec2( 0.7071, -0.7071)
 		);
 
-		for (int i = 0; i < 12; ++i) {
+		float shadowSum = 0.0;
+
+		for (int i = 0; i < 4; ++i) {
 			vec2 offset = rotationMatrix * poissonDisk[i] * texelSize * filterRadius;
-			float sampledDepth = texture(globalTextureArray, vec3(uvw.xy + offset, float(cascadeIndex))).r;
+			vec2 sampleCoord = uvw.xy + offset;
+
+			vec4 depths = textureGather(globalTextureArray, vec3(sampleCoord, float(cascadeIndex)), 0);
 			
-			if (uvw.z >= sampledDepth - bias) {
-				shadowSum += 1.0;
-			}
+			vec4 shadowTests = step(depths - bias, vec4(uvw.z));
+			
+			vec2 f = fract(sampleCoord * shadowMapSize - 0.5);
+			float shadowBottom = mix(shadowTests.x, shadowTests.y, f.x);
+			float shadowTop = mix(shadowTests.w, shadowTests.z, f.x);
+			float pcfSample = mix(shadowBottom, shadowTop, f.y);
+
+			shadowSum += pcfSample;
 		}
 		
-		shadowTerm = shadowSum / 12.0;
+		shadowTerm = shadowSum / 4.0;
 	}
 	// -------------------------------------------------------------------------
 
