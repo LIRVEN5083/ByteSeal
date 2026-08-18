@@ -40,5 +40,11 @@ void main() {
 
     Vertex v = PushConstants.vertexBuffer.vertices[gl_VertexIndex];
 
-    gl_Position = scene.cascadeMatrices[gl_InstanceIndex] * PushConstants.worldMatrix * vec4(v.position, 1.0);
+    // Считаем оригинальную позицию для X и Y
+    vec4 pos = scene.cascadeMatrices[gl_InstanceIndex] * PushConstants.worldMatrix * vec4(v.position, 1.0);
+
+    // Жестко заставляем W быть 1.0, а Z делаем 0.5 (ровно половина глубины)
+    // Координаты X и Y делим на pos.w, чтобы объект не растянуло/не сжало из-за смены W
+    gl_Position = vec4(pos.xy / pos.w, 0.5, 1.0);
 }
+
