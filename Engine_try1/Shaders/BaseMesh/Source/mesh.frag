@@ -29,7 +29,7 @@ layout(set = 0, binding = 0) uniform SceneData {
 layout(set = 1, binding = 0) uniform sampler2D globalTextures[];
 
 // Для каскадов
-layout(set = 1, binding = 1) uniform sampler2DArray globalTextureArrays[];
+layout(set = 1, binding = 1) uniform sampler2DArray globalTextureArray;
 
 struct Vertex {
 	vec3 position; float uv_x;
@@ -103,7 +103,7 @@ vec3 fresnelSchlick(float cosTheta, vec3 F0) {
 
 void main()
 {
-	// Получение базового цвета (Альбедо)
+	// Получение Альбедо
 	uint texID = nonuniformEXT(PushConstants.colorTextureID);
 	vec4 texColor = texture(globalTextures[texID], inUV);
 	vec4 finalAlbedo = inColor * texColor * PushConstants.baseColorFactor;
@@ -112,7 +112,7 @@ void main()
 		discard;
 	}
 
-	// Переводим альбедо из sRGB в Linear Space (если текстура загружена не как SRGB формат)
+	// Переводим альбедо из sRGB в Linear Space
 	vec3 albedo = pow(finalAlbedo.rgb, vec3(2.2));
 
 	// Получение параметров материала
@@ -122,62 +122,47 @@ void main()
 	float roughness;
 	float metallic;
 
-	// Если у нас заглушка текстуры, то ставим значения по дефолту
+	// Заглушка если отсутсвуют карты метала-шероховатости
 	if (PushConstants.metallicRoughnessTextureID == 0) {
-		roughness = 0.5; // ~0.5
-		metallic  = 0.0;  // 0.0
+		roughness = 0.5; 
+		metallic  = 0.0;  
 	} else {
-		// Если текстура есть - честно читаем её каналы
 		uint mrTexID = nonuniformEXT(PushConstants.metallicRoughnessTextureID);
 		vec4 mrSample = texture(globalTextures[mrTexID], inUV);
-
-		// В glTF: roughness в Зеленом (G), metallic в Синем (B)
 		roughness = mrSample.g * roughnessFactor;
 		metallic  = mrSample.b * metallicFactor;
 	}
 
-	// Ограничиваем roughness снизу, чтобы избежать деления на ноль при расчетах бликов
 	roughness = max(roughness, 0.05);
 
 	// --ИНТЕГРАЦИЯ КАРТ НОРМАЛЕЙ--
-
 	vec3 normal_vertex = normalize(inNormal);
 	vec3 tangent_vertex = normalize(inTangent.xyz);
 	
-	// Метод Грамма-Шмидта для повторной ортогонализации тангента относительно нормали
 	tangent_vertex = normalize(tangent_vertex - dot(tangent_vertex, normal_vertex) * normal_vertex);
-	
-	// Вычисляем вектор битангента с учетом знака инверсии UV (компонента w)
 	vec3 bitangent_vertex = cross(normal_vertex, tangent_vertex) * inTangent.w;
-	
-	// Формируем матрицу перехода из Tangent Space в World Space
 	mat3 TBN = mat3(tangent_vertex, bitangent_vertex, normal_vertex);
 	
-	// Выборка нормали из текстуры
 	uint normTexID = nonuniformEXT(PushConstants.normalTextureID);
 	vec3 localNormal = texture(globalTextures[normTexID], inUV).rgb;
-	
-	// Распаковка вектора из диапазона [0, 1] в диапазон [-1, 1]
 	localNormal = localNormal * 2.0 - 1.0;
 	
-	// Перевод нормали в World Space для последующих PBR расчетов
+	// N - мировая нормаль с учетом Normal Map
 	vec3 N = normalize(TBN * localNormal);
 
 	// ---------------------------
 
-	// Вычисляем позицию камеры из матрицы view (инвертируем вращение трансляции)
+	// Вычисляем позицию камеры из матрицы view
 	mat4 invView = inverse(scene.view);
-	vec3 camPos = invView[3].xyz; // Четвертый столбец хранит позицию камеры в World Space
+	vec3 camPos = invView[3].xyz; 
 
 	vec3 V = normalize(camPos - inWorldPos);      // Вектор к камере
 	vec3 L = -normalize(scene.sunlightDirection.xyz); // Вектор К солнцу
-	vec3 H = normalize(V + L);                     // Вектор полупути (Half-vector)
+	vec3 H = normalize(V + L);                     // Вектор полупути
 
-	// Косинусы углов
 	float NdotV = max(dot(N, V), 0.0);
 	float NdotL = max(dot(N, L), 0.0);
 
-	// F0 для диэлектриков в среднем 0.04. Для металлов интерполируем к базовому цвету
 	vec3 F0 = vec3(0.04);
 	F0 = mix(F0, albedo, metallic);
 
@@ -197,39 +182,100 @@ void main()
 	vec3 radiance = scene.sunlightColor.rgb * scene.sunlightDirection.w;
 	vec3 directLight = (kD * albedo / PI + specular) * radiance * NdotL;
 
-	uint occTexID = nonuniformEXT(PushConstants.occlusionTextureID);
-	float ao = 1.0; // По дефолту всё открыто солнцу, никакого затенения
-	// Если нету мапы оклюжена то ставим заглушку
+	// --КАСКАДКИ НАХУЙ НАКОНЕЦ-ТО!--
+
+	vec4 viewPos = scene.view * vec4(inWorldPos, 1.0);
+	float depthValue = -viewPos.z; 
+
+	int cascadeIndex = 3;
+	if (depthValue <= scene.cascadeSplits.x) cascadeIndex = 0;
+	else if (depthValue <= scene.cascadeSplits.y) cascadeIndex = 1;
+	else if (depthValue <= scene.cascadeSplits.z) cascadeIndex = 2;
+
+	vec4 shadowCoord = scene.cascadeMatrices[cascadeIndex] * vec4(inWorldPos, 1.0);
+	shadowCoord.xyz /= shadowCoord.w;
+
+	vec3 uvw;
+	uvw.xy = shadowCoord.xy * 0.5 + 0.5;
+	uvw.z  = shadowCoord.z; 
+
+	float shadowTerm = 1.0; // 1.0 — полный свет, 0.0 — полная тень
+
+	if (uvw.x >= 0.0 && uvw.x <= 1.0 && uvw.y >= 0.0 && uvw.y <= 1.0) {
+		
+		float bias = max(0.008 * (1.0 - dot(normal_vertex, L)), 0.005);
+		if (cascadeIndex > 1) {
+			bias *= 4.0;
+		}
+
+		vec2 shadowMapSize = textureSize(globalTextureArray, 0).xy;
+		vec2 texelSize = 1.0 / shadowMapSize;
+
+		float filterRadius = (cascadeIndex == 0) ? 2.0 : 1.0;
+
+		float noise = fract(52.582 * fract(dot(uvw.xy * shadowMapSize, vec2(0.06711056, 0.00583715))));
+		float randomAngle = noise * 6.2831853;
+		
+		float c = cos(randomAngle);
+		float s = sin(randomAngle);
+		mat2 rotationMatrix = mat2(c, -s, s, c);
+
+		float shadowSum = 0.0;
+
+		vec2 poissonDisk[12] = vec2[](
+			vec2(-0.326212, -0.405805), vec2(-0.840144, -0.073580),
+			vec2(-0.695914,  0.457137), vec2(-0.203345,  0.620716),
+			vec2( 0.962340, -0.194983), vec2( 0.473434, -0.480026),
+			vec2( 0.519456,  0.767022), vec2( 0.185461, -0.893124),
+			vec2( 0.507431,  0.064425), vec2( 0.896420,  0.412458),
+			vec2(-0.321940, -0.932615), vec2(-0.791559, -0.597705)
+		);
+
+		for (int i = 0; i < 12; ++i) {
+			vec2 offset = rotationMatrix * poissonDisk[i] * texelSize * filterRadius;
+			float sampledDepth = texture(globalTextureArray, vec3(uvw.xy + offset, float(cascadeIndex))).r;
+			
+			if (uvw.z >= sampledDepth - bias) {
+				shadowSum += 1.0;
+			}
+		}
+		
+		shadowTerm = shadowSum / 12.0;
+	}
+	// -------------------------------------------------------------------------
+
+	// Получение параметров Ambient Occlusion
+	float ao = 1.0; 
 	if (PushConstants.occlusionTextureID != 0) {
 		uint occTexID = nonuniformEXT(PushConstants.occlusionTextureID);
 		ao = texture(globalTextures[occTexID], inUV).r;
 	}
 
-	vec3 finalDirectLight = directLight * mix(0.3, 1.0, ao);
+	// Тень плавно гасит и диффузную, и спекулярную (бликовую) составляющую солнца
+	vec3 finalDirectLight = directLight * mix(0.3, 1.0, ao) * shadowTerm;
 
+	// Эмбиент остается жить в тени, создавая мягкую красивую полутень
 	vec3 ambient = scene.ambientColor.rgb * albedo * ao;
 
+	// Финальный цвет (Свет + Тени)
 	vec3 color = ambient + finalDirectLight;
 
+	// Тональное отображение (Reinhard Tone Mapping) и Гамма-коррекция
 	color = color / (color + vec3(1.0));
 	color = pow(color, vec3(1.0 / 2.2));
 
-	// -- GLASS --
+	// --GLASS--
 	float finalAlpha = finalAlbedo.a;
 
 	if (finalAlbedo.a < 0.99f)
 	{
 		float specularIntensity = max(specular.r, max(specular.g, specular.b));
-
 		float fresnelAlpha = pow(clamp(1.0 - NdotV, 0.0, 1.0), 5.0);
 
 		finalAlpha = max(finalAlpha, specularIntensity);
-		finalAlpha = max(finalAlpha, fresnelAlpha * 0.5f); // 0.5 — коэффициент мягкости краев
-
-		// Ограничиваем сверху, чтобы стекло под дикими углами не превращалось в сплошной глухой металл
+		finalAlpha = max(finalAlpha, fresnelAlpha * 0.5f); 
 		finalAlpha = clamp(finalAlpha, 0.0f, 0.95f);
 	}
 
-	// Передаем РАССЧИТАННУЮ finalAlpha вместо старой finalAlbedo.a!
 	outFragColor = vec4(color, finalAlpha);
 }

@@ -338,9 +338,18 @@ VkSampler TextureManager::CreateSampler(const SamplerOptions& params){
     samplerInfo.addressModeV = vkutil::GetVkAddressMode(params.wrapT);
     samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
 
-    // включаем анизотропию для всех 3D текстур
-    samplerInfo.anisotropyEnable = VK_TRUE;
-    samplerInfo.maxAnisotropy = 16.0f;
+    if (params.compareEnable) {
+        samplerInfo.anisotropyEnable = VK_FALSE;
+        samplerInfo.maxAnisotropy = 1.0f;
+
+        // ВКЛЮЧАЕМ АППАРАТНЫЙ PCF ДЛЯ ТЕНЕЙ
+        samplerInfo.compareEnable = VK_TRUE;
+        samplerInfo.compareOp = VK_COMPARE_OP_GREATER_OR_EQUAL;
+    } else {
+        samplerInfo.anisotropyEnable = VK_TRUE;
+        samplerInfo.maxAnisotropy = 16.0f;
+        samplerInfo.compareEnable = VK_FALSE;
+    }
 
     // Поиск по кешу
     auto it = _samplerCache.find(samplerInfo);

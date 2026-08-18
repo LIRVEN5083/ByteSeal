@@ -99,7 +99,7 @@ struct SamplerOptions;
 static constexpr uint32_t SHADOW_CASCADES_COUNT = 4;
 
 struct CSMConfig {
-    uint32_t resolution = 2048; // Разрешение карты теней
+    uint32_t resolution = 4096; // Разрешение карты теней
 
     // Коэффициенты разбиения фрустума (от 0.0 до 1.0).
     // Первые каскады должны быть маленькими для высокой четкости вблизи игрока.

@@ -126,7 +126,6 @@ public:
               VkDescriptorSet globalDescriptor, VkDescriptorSet bindlessTextureSet,
               PipelineManager& pipelineManager, LightManager& lightManager);
 
-    // Вызывается из Engine.cpp сразу после успешного ReloadAllPipelines()
     void RefreshPasses(PipelineManager& pipelineManager);
 
     // Очистка очереди

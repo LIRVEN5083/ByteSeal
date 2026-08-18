@@ -261,13 +261,13 @@ void LightManager::init(){
     viewInfo.subresourceRange.layerCount = SHADOW_CASCADES_COUNT;
 
     SamplerOptions shadowSamplerOptions{};
-    shadowSamplerOptions.minFilter = 9729;
-    shadowSamplerOptions.magFilter = 9729;
-    // В Vulkan / OpenGL значения для CLAMP_TO_BORDER обычно: 33071 (GL_CLAMP_TO_BORDER) или 3 (VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER)
+    shadowSamplerOptions.minFilter = 1;
+    shadowSamplerOptions.magFilter = 1;
     shadowSamplerOptions.wrapS = 3;
     shadowSamplerOptions.wrapT = 3;
+    shadowSamplerOptions.compareEnable = true;
 
-    m_shadowArrayTexture = m_textureManager.AllocateTexture(imageInfo, viewInfo, 1, shadowSamplerOptions, ModelLifetime::Static);
+    m_shadowArrayTexture = m_textureManager.AllocateTexture(imageInfo, viewInfo, 1, shadowSamplerOptions, ModelLifetime::Dynamic);
 }
 
 void LightManager::UpdateCascades(const glm::mat4& viewMatrix, float fovY, float aspect, float cameraNear,
@@ -275,13 +275,11 @@ void LightManager::UpdateCascades(const glm::mat4& viewMatrix, float fovY, float
 
     float cascadeSplits[SHADOW_CASCADES_COUNT];
 
-    // Считаем дистанции каскадов (Practical Split Scheme)
-    for (uint32_t i = 0; i < SHADOW_CASCADES_COUNT; i++) {
-        float p = m_config.cascadeSplits[i];
-        float logSplit = cameraNear * std::pow(cameraFar / cameraNear, p);
-        float uniSplit = cameraNear + (cameraFar - cameraNear) * p;
-        cascadeSplits[i] = glm::mix(uniSplit, logSplit, m_config.splitLambda);
-    }
+    // Захардкоженные каскадки
+    cascadeSplits[0] = 4.0f;
+    cascadeSplits[1] = 15.0f;
+    cascadeSplits[2] = 40.0f;
+    cascadeSplits[3] = 100.0f;
 
     float lastSplitDist = cameraNear;
 
@@ -290,11 +288,8 @@ void LightManager::UpdateCascades(const glm::mat4& viewMatrix, float fovY, float
 
         glm::mat4 proj = glm::perspective(fovY, aspect, lastSplitDist, splitDist);
 
-        // Матрица перехода из NDC обратно в Мировые координаты
         glm::mat4 invCam = glm::inverse(proj * viewMatrix);
 
-        // 8 угловых точек фрустума в NDC для Vulkan (Z от 0 до 1)
-        // УЧИТЫВАЕМ REVERSED-Z
         std::array<glm::vec4, 8> frustumCorners = {
             // Near plane (z = 1.0f)
             glm::vec4(-1.0f,  1.0f, 1.0f, 1.0f), glm::vec4( 1.0f,  1.0f, 1.0f, 1.0f),
@@ -327,13 +322,32 @@ void LightManager::UpdateCascades(const glm::mat4& viewMatrix, float fovY, float
             minZ = std::min(minZ, vInLightSpace.z); maxZ = std::max(maxZ, vInLightSpace.z);
         }
 
-        float zOffset = 100.0f;
+        float xyOffset = 10.0f * (float)(i + 1);
+        minX -= xyOffset;
+        maxX += xyOffset;
+        minY -= xyOffset;
+        maxY += xyOffset;
+
+        float zOffset = 15.0f;
         minZ -= zOffset;
         maxZ += zOffset;
 
-        glm::mat4 lightProj = glm::ortho(minX, maxX, minY, maxY, maxZ, minZ);
+        glm::vec4 shadowOrigin = lightView * glm::vec4(center, 1.0f);
 
-        lightProj[1][1] *= -1.0f;
+        float worldUnitsPerTexel = (maxX - minX) / 4096.0f;
+
+        shadowOrigin.x = std::floor(shadowOrigin.x / worldUnitsPerTexel) * worldUnitsPerTexel;
+        shadowOrigin.y = std::floor(shadowOrigin.y / worldUnitsPerTexel) * worldUnitsPerTexel;
+
+        float deltaX = shadowOrigin.x - (lightView * glm::vec4(center, 1.0f)).x;
+        float deltaY = shadowOrigin.y - (lightView * glm::vec4(center, 1.0f)).y;
+
+        minX += deltaX;
+        maxX += deltaX;
+        minY += deltaY;
+        maxY += deltaY;
+
+        glm::mat4 lightProj = glm::ortho(minX, maxX, maxY, minY, maxZ, minZ);
 
         m_cascadeMatrices[i] = lightProj * lightView;
         m_cascadeSplits[i] = splitDist;

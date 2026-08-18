@@ -120,6 +120,7 @@ struct SamplerOptions{
     int magFilter{ 9729 }; // LINEAR по умолчанию
     int wrapS{ 10497 };    // REPEAT по умолчанию
     int wrapT{ 10497 };    // REPEAT по умолчанию
+    bool compareEnable = false;
 };
 
 class TextureManager{
