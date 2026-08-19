@@ -38,37 +38,36 @@ vec3 getSkyColor(vec3 viewDir, vec3 sunDir, float cos_theta) {
 
 void main() {
     vec3 viewDir = normalize(outWorldViewDir);
-    
-    // ЧЕСТНЫЙ ВЕКТОР НА СОЛНЦЕ (БЕЗ МИНУСА):
-    // Берем вектор ровно в том виде, в каком ты отправляешь его с CPU!
-    vec3 sunDir = normalize(scene.sunlightDirection.xyz); 
 
-    // Защищаем косинус угла к зениту для математики Хошека
+    vec3 sunDir = normalize(scene.sunlightDirection.xyz);
+
     float cos_theta = clamp(abs(viewDir.z), 0.01, 1.0);
 
-    // ==================== РАСЧЕТ ПЛАВНОГО ПЕРЕХОДА ДЕНЬ/НОЧЬ ====================
-    // Мы смотрим на высоту солнца в мире (scene.sunlightDirection.z).
-    // Расширяем диапазон smoothstep, чтобы при высоком солнце день раскрывался на 100%
     float dayWeight = smoothstep(-0.02, 0.2, scene.sunlightDirection.z);
-    
+
     if (scene.sunlightDirection.w <= 0.0) {
         dayWeight = 0.0;
     }
 
-    // 1. Считаем дневную атмосферу Хошека
+    float sunsetFactor = smoothstep(0.15, 0.0, clamp(scene.sunlightDirection.z, 0.0, 0.15));
+
+    vec3 sunsetGlowColor = vec3(1.0, 0.45, 0.08);
+
     vec3 dayColor = getSkyColor(viewDir, sunDir, cos_theta);
 
-    // Мягкий дневной множитель яркости неба
-    dayColor *= 1.2f; 
+    dayColor *= 1.2f;
 
-    // Отрисовка кинематографичного диска и ореола солнца (плавно гаснет по dayWeight)
     if (dayWeight > 0.0) {
         float cos_gamma = dot(viewDir, sunDir);
         float angleDistance = acos(clamp(cos_gamma, -1.0, 1.0));
 
         // Атмосферный ореол
         float haloIntensity = exp(-angleDistance * 4.0);
-        dayColor += scene.sunlightColor.xyz * haloIntensity * (scene.sunlightDirection.w * 0.15);
+
+        vec3 currentHaloColor = mix(scene.sunlightColor.xyz, sunsetGlowColor, sunsetFactor * 0.8);
+        float currentHaloPower = mix(0.15, 0.45, sunsetFactor); // Делаем закатное солнце визуально мощнее
+
+        dayColor += currentHaloColor * haloIntensity * (scene.sunlightDirection.w * currentHaloPower);
 
         // Корона
         float coronaIntensity = exp(-angleDistance * 25.0);
@@ -77,20 +76,22 @@ void main() {
         // Ядро диска солнца (рисуется строго в небе)
         if (viewDir.z > 0.0 && cos_gamma > 0.997) {
             float sunDisc = smoothstep(0.997, 0.9992, cos_gamma);
-            dayColor += scene.sunlightColor.xyz * sunDisc * scene.sunlightDirection.w * 5.0;
+
+            vec3 coreColor = mix(scene.sunlightColor.xyz, vec3(1.0, 0.85, 0.5), sunsetFactor);
+            dayColor += coreColor * sunDisc * scene.sunlightDirection.w * 5.0;
         }
+
+        float horizonMask = pow(1.0 - cos_theta, 3.0);
+        dayColor += sunsetGlowColor * horizonMask * (sunsetFactor * 0.35 * scene.sunlightDirection.w);
     }
 
-    // 2. Считаем ночную атмосферу космоса
-    vec3 deepSpace = vec3(0.001, 0.0012, 0.002); 
+    vec3 deepSpace = vec3(0.001, 0.0012, 0.002);
     float horizonFade = pow(1.0 - cos_theta, 4.0);
-    vec3 nightHorizon = vec3(0.002, 0.003, 0.005); 
+    vec3 nightHorizon = vec3(0.002, 0.003, 0.005);
     vec3 nightColor = mix(deepSpace, nightHorizon, horizonFade);
 
-    // ==================== ЛИНЕЙНОЕ СМЕШИВАНИЕ (БЛЕНД) ====================
     vec3 skyColor = mix(nightColor, dayColor, dayWeight);
 
-    // ==================== ЖЕСТКИЙ ОТСЕКАТЕЛЬ ЗЕМЛИ ====================
     float skyMask = step(0.0, viewDir.z);
     vec3 finalColor = skyColor * skyMask;
 
