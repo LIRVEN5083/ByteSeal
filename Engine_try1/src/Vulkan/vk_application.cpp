@@ -495,9 +495,26 @@ void VK_APPLICATION::VulkanApplication::init_pipeline_manager(){
     if (shadowPipeline) {
         fmt::print("[PipelineManager] Pipeline 'ShadowCSM' successfully loaded and built for Layered Rendering.\n");
     }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Конвеер для процедурного SkyBox (Hosek-Wilkie)
+    PipelineCreateInfo skyboxInfo{};
+    skyboxInfo.name = "SkyBox";
+    skyboxInfo.passType = RenderPassType::Skybox;
+    skyboxInfo.opacity = PipelineOpacity::Opaque;
+    skyboxInfo.useMSAA = true;
+    skyboxInfo.vertexShaderPath = "../Shaders/SkyBox_proc/Source/SkyBox.vert";
+    skyboxInfo.fragmentShaderPath = "../Shaders/SkyBox_proc/Source/SkyBox.frag";
+
+    RealPipeline* skyboxPipeline = _pipelineManager->CreatePipeline(skyboxInfo, colorFormat, depthFormat, _maxSamples);
+    if (skyboxPipeline) {
+        fmt::print("[PipelineManager] Pipeline 'SkyBox' successfully loaded and built.\n");
+    }
+
     // Проходы рендера
     _renderSystem.AddPass(std::make_unique<ShadowCSMRenderPass>(_init), *_pipelineManager);
     _renderSystem.AddPass(std::make_unique<ForwardRenderPass>(_init), *_pipelineManager);
+    _renderSystem.AddPass(std::make_unique<SkyBoxRenderPass>(_init), *_pipelineManager);
     _renderSystem.AddPass(std::make_unique<GridRenderPass>(_init), *_pipelineManager);
 }
 
@@ -580,6 +597,21 @@ VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& 
     sceneData.shadowMapTextureID = _lightManager->GetShadowTextureIndex();
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // SkyBox
+    SkyCoefficients sky = _lightManager->ComputeSkyModel(sceneData.sunlightDirection, 3.0f, glm::vec3(0.2f));
+    sceneData.skyA = sky.skyA;
+    sceneData.skyB = sky.skyB;
+    sceneData.skyC = sky.skyC;
+    sceneData.skyD = sky.skyD;
+    sceneData.skyE = sky.skyE;
+    sceneData.skyF = sky.skyF;
+    sceneData.skyG = sky.skyG;
+    sceneData.skyH = sky.skyH;
+    sceneData.skyI = sky.skyI;
+    sceneData.skyZ = sky.skyZ;
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
     VmaAllocationInfo allocInfo;
     vmaGetAllocationInfo(_init._allocator, currentFrame.gpuSceneDataBuffer.allocation, &allocInfo);
 

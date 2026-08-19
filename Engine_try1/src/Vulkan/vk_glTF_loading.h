@@ -65,6 +65,17 @@ struct GPUSceneData {
 
     uint32_t shadowMapTextureID;
     uint32_t padding[3]; // Выравнивание по 16 ByteSeal
+
+    glm::vec4 skyA;
+    glm::vec4 skyB;
+    glm::vec4 skyC;
+    glm::vec4 skyD;
+    glm::vec4 skyE;
+    glm::vec4 skyF;
+    glm::vec4 skyG;
+    glm::vec4 skyH;
+    glm::vec4 skyI;
+    glm::vec4 skyZ;
 };
 
 struct Vertex {

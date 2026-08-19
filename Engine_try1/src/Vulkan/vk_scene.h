@@ -98,6 +98,10 @@ struct SamplerOptions;
 // Количество каскадов
 static constexpr uint32_t SHADOW_CASCADES_COUNT = 4;
 
+struct SkyCoefficients {
+    glm::vec4 skyA, skyB, skyC, skyD, skyE, skyF, skyG, skyH, skyI, skyZ;
+};
+
 struct CSMConfig {
     uint32_t resolution = 4096; // Разрешение карты теней
 
@@ -120,6 +124,8 @@ public:
 
     void UpdateCascades(const glm::mat4& viewMatrix, float fovY, float aspect, float cameraNear, float cameraFar, const glm::vec3& lightDir);
 
+    SkyCoefficients ComputeSkyModel(const glm::vec3& lightDir, float turbidity = 2.0f, const glm::vec3& groundAlbedo = glm::vec3(0.3f));
+
     // Геттеры
     uint32_t GetShadowTextureIndex() const;
     const glm::mat4* GetCascadeMatrices() const;
@@ -131,6 +137,8 @@ public:
     void cleanUp();
 
 private:
+    SkyCoefficients ComputeHosekWilkieParams(float turbidity, const glm::vec3& albedo, float sunElevation);
+
     VkDevice m_device;
     TextureManager& m_textureManager;
     CSMConfig m_config;
