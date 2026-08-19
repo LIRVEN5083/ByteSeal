@@ -308,7 +308,7 @@ void LightManager::UpdateCascades(const glm::mat4& viewMatrix, float fovY, float
         }
         center /= 8.0f;
 
-        glm::vec3 lightPos = center - glm::normalize(lightDir);
+        glm::vec3 lightPos = center + glm::normalize(lightDir);
         glm::mat4 lightView = glm::lookAt(lightPos, center, glm::vec3(0.0f, 0.0f, 1.0f));
 
         float minX = std::numeric_limits<float>::max(); float maxX = std::numeric_limits<float>::lowest();

@@ -58,19 +58,24 @@ void main()
 
 	vec4 worldPos = PushConstants.render_matrix * vec4(v.position, 1.0f);
 	outWorldPos = worldPos.xyz;
+	gl_Position = scene.viewproj * worldPos;
 
-	//output data
-	gl_Position = scene.viewproj * PushConstants.render_matrix *vec4(v.position, 1.0f);
+	mat3 modelMat3 = mat3(PushConstants.render_matrix);
+	mat3 normalMatrix = mat3(
+		normalize(modelMat3[0]),
+		normalize(modelMat3[1]),
+		normalize(modelMat3[2])
+	);
 
-	mat3 normalMatrix = mat3(PushConstants.render_matrix);
+	vec3 N = normalize(normalMatrix * v.normal);
+	outNormal = N;
 
-	// Для мап нормалей
-    outNormal = normalMatrix * v.normal;
-    outTangent = vec4(normalMatrix * v.tangent.xyz, v.tangent.w);
+	vec3 T = normalize(normalMatrix * v.tangent.xyz);
+	T = normalize(T - dot(T, N) * N);
+
+	outTangent = vec4(T, v.tangent.w);
 
 	// Для альбедо текстур
-    outUV = vec2(v.uv_x, v.uv_y);
-    outColor = v.color;
-
-    gl_Position = scene.viewproj * worldPos;
+	outUV = vec2(v.uv_x, v.uv_y);
+	outColor = v.color;
 }

@@ -147,7 +147,7 @@ void main()
 	localNormal = localNormal * 2.0 - 1.0;
 	
 	// N - мировая нормаль с учетом Normal Map
-	vec3 N = normalize(TBN * localNormal);
+	vec3 N = normalize(inNormal);
 
 	// ---------------------------
 
@@ -155,9 +155,9 @@ void main()
 	mat4 invView = inverse(scene.view);
 	vec3 camPos = invView[3].xyz; 
 
-	vec3 V = normalize(camPos - inWorldPos);      // Вектор к камере
-	vec3 L = normalize(scene.sunlightDirection.xyz); // Вектор К солнцу
-	vec3 H = normalize(V + L);                     // Вектор полупути
+	vec3 V = normalize(camPos - inWorldPos);
+	vec3 L = normalize(scene.sunlightDirection.xyz);
+	vec3 H = normalize(V + L);
 
 	float NdotV = max(dot(N, V), 0.0);
 	float NdotL = max(dot(N, L), 0.0);
