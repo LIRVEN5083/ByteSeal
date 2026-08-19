@@ -23,7 +23,6 @@ layout(set = 0, binding = 0) uniform SceneData {
 	// Тени
 	mat4 cascadeMatrices[4]; // Матрицы света для 4 каскадов
 	vec4 cascadeSplits;      // Дистанции разделения каскадов упакованы в vec4 (x, y, z, w)
-	uint shadowMapTextureID;
 } scene;
 
 layout(set = 1, binding = 0) uniform sampler2D globalTextures[];
@@ -157,7 +156,7 @@ void main()
 	vec3 camPos = invView[3].xyz; 
 
 	vec3 V = normalize(camPos - inWorldPos);      // Вектор к камере
-	vec3 L = -normalize(scene.sunlightDirection.xyz); // Вектор К солнцу
+	vec3 L = normalize(scene.sunlightDirection.xyz); // Вектор К солнцу
 	vec3 H = normalize(V + L);                     // Вектор полупути
 
 	float NdotV = max(dot(N, V), 0.0);
@@ -185,7 +184,7 @@ void main()
 	// --КАСКАДКИ НАХУЙ НАКОНЕЦ-ТО!--
 
 	vec4 viewPos = scene.view * vec4(inWorldPos, 1.0);
-	float depthValue = -viewPos.z; 
+	float depthValue = -viewPos.z;
 
 	int cascadeIndex = 3;
 	if (depthValue <= scene.cascadeSplits.x) cascadeIndex = 0;
@@ -197,12 +196,13 @@ void main()
 
 	vec3 uvw;
 	uvw.xy = shadowCoord.xy * 0.5 + 0.5;
-	uvw.z  = shadowCoord.z; 
+	uvw.z  = shadowCoord.z;
 
 	float shadowTerm = 1.0; // 1.0 — полный свет, 0.0 — полная тень
 
 	if (uvw.x >= 0.0 && uvw.x <= 1.0 && uvw.y >= 0.0 && uvw.y <= 1.0) {
-    
+
+
 		float bias = max(0.008 * (1.0 - dot(normal_vertex, L)), 0.005);
 		if (cascadeIndex > 1) {
 			bias *= 4.0;
@@ -215,7 +215,7 @@ void main()
 
 		float noise = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
 		float randomAngle = noise * 6.2831853;
-		
+
 		float c = cos(randomAngle);
 		float s = sin(randomAngle);
 		mat2 rotationMatrix = mat2(c, -s, s, c);
@@ -232,9 +232,10 @@ void main()
 			vec2 sampleCoord = uvw.xy + offset;
 
 			vec4 depths = textureGather(globalTextureArray, vec3(sampleCoord, float(cascadeIndex)), 0);
-			
+
+
 			vec4 shadowTests = step(depths - bias, vec4(uvw.z));
-			
+
 			vec2 f = fract(sampleCoord * shadowMapSize - 0.5);
 			float shadowBottom = mix(shadowTests.x, shadowTests.y, f.x);
 			float shadowTop = mix(shadowTests.w, shadowTests.z, f.x);
@@ -242,7 +243,7 @@ void main()
 
 			shadowSum += pcfSample;
 		}
-		
+
 		shadowTerm = shadowSum / 4.0;
 	}
 	// -------------------------------------------------------------------------

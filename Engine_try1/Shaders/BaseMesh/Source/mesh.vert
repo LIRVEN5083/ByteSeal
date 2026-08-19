@@ -20,7 +20,6 @@ layout(set = 0, binding = 0) uniform SceneData {
 	// Тени
 	mat4 cascadeMatrices[4]; // Матрицы света для 4 каскадов
 	vec4 cascadeSplits;      // Дистанции разделения каскадов упакованы в vec4 (x, y, z, w)
-	uint shadowMapTextureID;
 } scene;
 
 struct Vertex {

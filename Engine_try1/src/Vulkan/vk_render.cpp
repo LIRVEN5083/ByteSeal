@@ -269,12 +269,15 @@ void SkyBoxRenderPass::Init(PipelineManager& pipelineManager){
 void SkyBoxRenderPass::Execute(const RenderContext& ctx, const std::vector<RenderObject>& queue){
     if (!_skyboxPipeline) return;
 
+    VkClearValue depthClear;
+    depthClear.depthStencil.depth = 1.0f;
     VkRenderingAttachmentInfo colorAttachment{};
     colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
     colorAttachment.imageView = _init._msaaColorImage.imageView;
     colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
     colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    colorAttachment.clearValue = depthClear;
 
     VkRenderingAttachmentInfo depthAttachment{};
     depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
@@ -293,10 +296,16 @@ void SkyBoxRenderPass::Execute(const RenderContext& ctx, const std::vector<Rende
 
     vkCmdBeginRendering(ctx.cmd, &renderingInfo);
 
+    VkViewport viewport = { 0.0f, 0.0f, (float)ctx.drawExtent.width, (float)ctx.drawExtent.height, 0.0f, 1.0f };
+    vkCmdSetViewport(ctx.cmd, 0, 1, &viewport);
+
+    VkRect2D scissor = { {0, 0}, ctx.drawExtent };
+    vkCmdSetScissor(ctx.cmd, 0, 1, &scissor);
+
     vkCmdBindPipeline(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _skyboxPipeline->pipeline);
     vkCmdBindDescriptorSets(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _skyboxPipeline->layout, 0, 1, &ctx.globalDescriptor, 0, nullptr);
 
-    vkCmdDraw(ctx.cmd, 36, 1, 0, 0);
+    vkCmdDraw(ctx.cmd, 3, 1, 0, 0);
 
     vkCmdEndRendering(ctx.cmd);
 }

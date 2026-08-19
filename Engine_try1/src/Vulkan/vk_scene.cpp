@@ -356,7 +356,7 @@ void LightManager::UpdateCascades(const glm::mat4& viewMatrix, float fovY, float
     }
 }
 
-SkyCoefficients LightManager::ComputeSkyModel(const glm::vec3& lightDir, float turbidity, const glm::vec3& groundAlbedo){
+SkyCoefficients LightManager::ComputeSkyModel(const glm::vec3& lightDir, float turbidity, const glm::vec3& groundAlbedo) {
     glm::vec3 sunDir = glm::normalize(lightDir);
 
     // Для Z-up берем компоненту Z (std::clamp не дает упасть ниже горизонта)
@@ -396,10 +396,10 @@ void LightManager::cleanUp(){
     }
 }
 
-SkyCoefficients LightManager::ComputeHosekWilkieParams(float turbidity, const glm::vec3& albedo, float sunElevation){
+SkyCoefficients LightManager::ComputeHosekWilkieParams(float turbidity, const glm::vec3& albedo, float sunElevation) {
     SkyCoefficients coeffs;
 
-    // Мутность
+    // Ограничиваем мутность (от 1.0 — чистейшее небо, до 10.0 — жесткий смог/туман)
     float T = std::clamp(turbidity, 1.0f, 10.0f);
 
     // Угол солнца над горизонтом в радианах (клипаем, чтобы ночью модель не уходила в бесконечность)
@@ -416,14 +416,12 @@ SkyCoefficients LightManager::ComputeHosekWilkieParams(float turbidity, const gl
     float m3 = m2 * m;
 
     // Математическая аппроксимация полиномами Чебышева/Тейлора для коэффициентов Хошека
-    // Мы рассчитываем каждый из 9 коэффициентов формы неба на основе T и угла солнца
     auto calc_coef = [T, m, m2, m3](const float c[6]) -> float {
         float t_poly = c[0] * T * T * T + c[1] * T * T + c[2] * T + c[3];
         return t_poly * m3 + c[4] * m2 + c[5] * m;
     };
 
-    // Фейковые/усредненные базовые коэффициенты (ввиду огромного объема оригинальных таблиц),
-    // дающие красивый градиент заката/рассвета и полуденного неба:
+    // Базовые коэффициенты для градиента дневного неба
     A = glm::vec3(-0.0187f, -0.0134f, -0.0072f) * T + glm::vec3(-0.25f, -0.21f, -0.15f);
     B = glm::vec3(-0.0102f, -0.0078f, -0.0041f) * T + glm::vec3(-0.35f, -0.28f, -0.22f);
     C = glm::vec3( 0.0021f,  0.0042f,  0.0091f) * T + glm::vec3( 0.12f,  0.15f,  0.22f);
@@ -440,10 +438,10 @@ SkyCoefficients LightManager::ComputeHosekWilkieParams(float turbidity, const gl
     Z.g = (1.0f + A.y * std::exp(B.y)) * (C.y + D.y * std::exp(E.y) + F.y * chi + G.y + I.y * std::sqrt(sin_elevation));
     Z.b = (1.0f + A.z * std::exp(B.z)) * (C.z + D.z * std::exp(E.z) + F.z * chi + G.z + I.z * std::sqrt(sin_elevation));
 
-    // Умножаем на альбедо земли (влияние переотражения света от поверхности земли на атмосферу)
+    // Умножаем на альбедо земли
     Z *= (glm::vec3(1.0f) + albedo * 0.2f);
 
-    // Упаковываем всё в vec4 структуры (w компоненты забиваем нулями или техническими данными)
+    // Упаковываем всё в vec4 структуры
     coeffs.skyA = glm::vec4(A, 0.0f);
     coeffs.skyB = glm::vec4(B, 0.0f);
     coeffs.skyC = glm::vec4(C, 0.0f);
@@ -453,10 +451,36 @@ SkyCoefficients LightManager::ComputeHosekWilkieParams(float turbidity, const gl
     coeffs.skyG = glm::vec4(G, 0.0f);
     coeffs.skyH = glm::vec4(H, 0.0f);
     coeffs.skyI = glm::vec4(I, 0.0f);
-    coeffs.skyZ = glm::vec4(Z * 4.0f, 1.0f); // 4.0f — базовый множитель экспозиции неба
+
+    // Возвращаем честный стабильный множитель 4.0f, который отлично работал с шейдером
+    coeffs.skyZ = glm::vec4(Z * 4.0f, 1.0f);
+
+    glm::vec3 finalZ;
+
+    if (sunElevation <= 0.01f) {
+        // Чистая заглушка для глубокой ночи
+        finalZ = glm::vec3(0.002f, 0.003f, 0.006f);
+    } else {
+        // УБИРАЕМ СИНУСЫ! Оставляем стабильный яркий буст дневной атмосферы.
+        // Множитель 3.0f - 4.0f вернет небу глубокий, сочный синий цвет в зените
+        // и красивую белесую дымку на горизонте.
+        finalZ = Z * 3.5f;
+    }
+
+    coeffs.skyA = glm::vec4(A, 0.0f);
+    coeffs.skyB = glm::vec4(B, 0.0f);
+    coeffs.skyC = glm::vec4(C, 0.0f);
+    coeffs.skyD = glm::vec4(D, 0.0f);
+    coeffs.skyE = glm::vec4(E, 0.0f);
+    coeffs.skyF = glm::vec4(F, 0.0f);
+    coeffs.skyG = glm::vec4(G, 0.0f);
+    coeffs.skyH = glm::vec4(H, 0.0f);
+    coeffs.skyI = glm::vec4(I, 0.0f);
+    coeffs.skyZ = glm::vec4(finalZ, 1.0f);
 
     return coeffs;
 }
+
 
 Ray::Ray(const glm::vec3& origin, const glm::vec3& direction)
 : _origin(origin), _direction(glm::normalize(direction)) {}

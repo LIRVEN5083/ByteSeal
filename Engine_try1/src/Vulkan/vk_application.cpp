@@ -560,14 +560,27 @@ VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& 
     glm::vec3 target = eye + _camera.front;
     sceneData.view = glm::lookAt(eye, target, up);
 
-    glm::vec3 lightDir = glm::normalize(glm::vec3(-0.5f, -0.6f, -0.8f));
-    float sunPower = 7.5f; // Интенсивность для PBR
+    glm::vec3 lightDir;
+    const glm::vec3 START_LIGHT_DIR = glm::normalize(glm::vec3(0.15f, 0.2f, 0.95f));
+    const float rotationSpeed = 0.5f;
+
+    // 2. Считаем, сколько СЕКУНД прошло с самого запуска программы
+    auto now = std::chrono::high_resolution_clock::now();
+    float totalTime = std::chrono::duration<float>(now - _delta.startTime).count();
+
+    // 3. Считаем общий угол поворота от начальной точки
+    float totalAngle = rotationSpeed * totalTime;
+
+    // 4. Каждый кадр крутим ИСХОДНЫЙ вектор на ОБЩИЙ угол
+    lightDir = glm::rotateY(START_LIGHT_DIR, totalAngle);
+    lightDir = glm::normalize(lightDir);
+    float sunPower = 8.5f; // Интенсивность для PBR
 
     sceneData.sunlightDirection = glm::vec4(lightDir, sunPower);
     
-    sceneData.sunlightColor = glm::vec4(1.0f, 0.95f, 0.85f, 1.0f);
+    sceneData.sunlightColor = glm::vec4(1.0f, 0.98f, 0.92f, 1.0f);
 
-    sceneData.ambientColor = glm::vec4(0.2f, 0.25f, 0.35f, 1.0f);
+    sceneData.ambientColor = glm::vec4(0.3f, 0.42f, 0.58f, 1.0f);
 
     float aspect = (float)_init._windowExtent.width / (float)_init._windowExtent.height;
     float fov = glm::radians(70.0f);
@@ -593,12 +606,9 @@ VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& 
     const float* splits = _lightManager->GetCascadeSplits();
     sceneData.cascadeSplits = glm::vec4(splits[0], splits[1], splits[2], splits[3]);
 
-    // Передаем Bindless ID текстуры теней из менеджера
-    sceneData.shadowMapTextureID = _lightManager->GetShadowTextureIndex();
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // SkyBox
-    SkyCoefficients sky = _lightManager->ComputeSkyModel(sceneData.sunlightDirection, 3.0f, glm::vec3(0.2f));
+    SkyCoefficients sky = _lightManager->ComputeSkyModel(lightDir, 3.0f, glm::vec3(0.2f));
     sceneData.skyA = sky.skyA;
     sceneData.skyB = sky.skyB;
     sceneData.skyC = sky.skyC;
@@ -609,7 +619,6 @@ VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& 
     sceneData.skyH = sky.skyH;
     sceneData.skyI = sky.skyI;
     sceneData.skyZ = sky.skyZ;
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     VmaAllocationInfo allocInfo;
