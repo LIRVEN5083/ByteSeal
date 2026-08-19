@@ -462,6 +462,16 @@ RealPipeline* PipelineManager::CreatePipelineFromMemory(const PipelineCreateInfo
         pipelineBuilder.set_multisampling(VK_SAMPLE_COUNT_1_BIT); // Тени всегда 1 сепмл
         pipelineBuilder.enable_depthtest(VK_TRUE, VK_COMPARE_OP_GREATER_OR_EQUAL);
     }
+    else if (info.passType == RenderPassType::Skybox){
+        pipelineBuilder.set_polygon_mode(VK_POLYGON_MODE_FILL);
+
+        pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+
+        pipelineBuilder.set_multisampling(samplesToUse);
+        pipelineBuilder.disable_blending();
+
+        pipelineBuilder.enable_depthtest(VK_FALSE, VK_COMPARE_OP_GREATER_OR_EQUAL);
+    }
     else{
         pipelineBuilder.set_polygon_mode(VK_POLYGON_MODE_FILL);
         pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);

@@ -495,9 +495,26 @@ void VK_APPLICATION::VulkanApplication::init_pipeline_manager(){
     if (shadowPipeline) {
         fmt::print("[PipelineManager] Pipeline 'ShadowCSM' successfully loaded and built for Layered Rendering.\n");
     }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Конвеер для процедурного SkyBox (Hosek-Wilkie)
+    PipelineCreateInfo skyboxInfo{};
+    skyboxInfo.name = "SkyBox";
+    skyboxInfo.passType = RenderPassType::Skybox;
+    skyboxInfo.opacity = PipelineOpacity::Opaque;
+    skyboxInfo.useMSAA = true;
+    skyboxInfo.vertexShaderPath = "../Shaders/SkyBox_proc/Source/SkyBox.vert";
+    skyboxInfo.fragmentShaderPath = "../Shaders/SkyBox_proc/Source/SkyBox.frag";
+
+    RealPipeline* skyboxPipeline = _pipelineManager->CreatePipeline(skyboxInfo, colorFormat, depthFormat, _maxSamples);
+    if (skyboxPipeline) {
+        fmt::print("[PipelineManager] Pipeline 'SkyBox' successfully loaded and built.\n");
+    }
+
     // Проходы рендера
     _renderSystem.AddPass(std::make_unique<ShadowCSMRenderPass>(_init), *_pipelineManager);
     _renderSystem.AddPass(std::make_unique<ForwardRenderPass>(_init), *_pipelineManager);
+    _renderSystem.AddPass(std::make_unique<SkyBoxRenderPass>(_init), *_pipelineManager);
     _renderSystem.AddPass(std::make_unique<GridRenderPass>(_init), *_pipelineManager);
 }
 
@@ -543,14 +560,27 @@ VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& 
     glm::vec3 target = eye + _camera.front;
     sceneData.view = glm::lookAt(eye, target, up);
 
-    glm::vec3 lightDir = glm::normalize(glm::vec3(-0.5f, -0.6f, -0.8f));
-    float sunPower = 7.5f; // Интенсивность для PBR
+    glm::vec3 lightDir;
+    const glm::vec3 START_LIGHT_DIR = glm::normalize(glm::vec3(0.15f, 0.2f, 0.95f));
+    const float rotationSpeed = 0.5f;
+
+    // 2. Считаем, сколько СЕКУНД прошло с самого запуска программы
+    auto now = std::chrono::high_resolution_clock::now();
+    float totalTime = std::chrono::duration<float>(now - _delta.startTime).count();
+
+    // 3. Считаем общий угол поворота от начальной точки
+    float totalAngle = rotationSpeed * totalTime;
+
+    // 4. Каждый кадр крутим ИСХОДНЫЙ вектор на ОБЩИЙ угол
+    lightDir = glm::rotateY(START_LIGHT_DIR, totalAngle);
+    lightDir = glm::normalize(lightDir);
+    float sunPower = 8.5f; // Интенсивность для PBR
 
     sceneData.sunlightDirection = glm::vec4(lightDir, sunPower);
     
-    sceneData.sunlightColor = glm::vec4(1.0f, 0.95f, 0.85f, 1.0f);
+    sceneData.sunlightColor = glm::vec4(1.0f, 0.98f, 0.92f, 1.0f);
 
-    sceneData.ambientColor = glm::vec4(0.2f, 0.25f, 0.35f, 1.0f);
+    sceneData.ambientColor = glm::vec4(0.3f, 0.42f, 0.58f, 1.0f);
 
     float aspect = (float)_init._windowExtent.width / (float)_init._windowExtent.height;
     float fov = glm::radians(70.0f);
@@ -576,10 +606,21 @@ VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& 
     const float* splits = _lightManager->GetCascadeSplits();
     sceneData.cascadeSplits = glm::vec4(splits[0], splits[1], splits[2], splits[3]);
 
-    // Передаем Bindless ID текстуры теней из менеджера
-    sceneData.shadowMapTextureID = _lightManager->GetShadowTextureIndex();
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // SkyBox
+    SkyCoefficients sky = _lightManager->ComputeSkyModel(lightDir, 3.0f, glm::vec3(0.2f));
+    sceneData.skyA = sky.skyA;
+    sceneData.skyB = sky.skyB;
+    sceneData.skyC = sky.skyC;
+    sceneData.skyD = sky.skyD;
+    sceneData.skyE = sky.skyE;
+    sceneData.skyF = sky.skyF;
+    sceneData.skyG = sky.skyG;
+    sceneData.skyH = sky.skyH;
+    sceneData.skyI = sky.skyI;
+    sceneData.skyZ = sky.skyZ;
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
     VmaAllocationInfo allocInfo;
     vmaGetAllocationInfo(_init._allocator, currentFrame.gpuSceneDataBuffer.allocation, &allocInfo);
 

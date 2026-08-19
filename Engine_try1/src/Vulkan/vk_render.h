@@ -110,7 +110,23 @@ public:
 private:
     RealPipeline* _shadowPipeline{ nullptr };
 };
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// ПРОХОД для SkyBox
+class SkyBoxRenderPass : public RenderPass{
+public:
+    SkyBoxRenderPass(VK_INIT_ENGINE::_inited_engine& init)
+        : RenderPass(init, RenderPassType::Skybox) {}
+    ~SkyBoxRenderPass() override = default;
 
+    void Init(PipelineManager& pipelineManager) override;
+
+    void Execute(const RenderContext& ctx, const std::vector<RenderObject>& queue) override;
+
+private:
+    RealPipeline* _skyboxPipeline{ nullptr };
+};
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 class RenderSystem{
 public:
     RenderSystem(VK_INIT_ENGINE::_inited_engine& init) : _init(init){}
