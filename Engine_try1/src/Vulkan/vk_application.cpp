@@ -517,8 +517,11 @@ void VK_APPLICATION::VulkanApplication::init_pipeline_manager(){
     _renderSystem.AddPass(std::make_unique<SkyBoxRenderPass>(_init), *_pipelineManager);
     _renderSystem.AddPass(std::make_unique<GridRenderPass>(_init), *_pipelineManager);
 
-    _renderSystem.SetPassEnabled(RenderPassType::Skybox, false);
-    //_renderSystem.SetPassEnabled(RenderPassType::Grid, false);
+    /* МОЖНА ТЕПЕРЬ ОТКЛЮЧАТЬ ПРОХОДЫ! МУХЕХЕХЕХЕ
+    _renderSystem.SetPassEnabled(RenderPassType::Skybox, true);
+    _renderSystem.SetPassEnabled(RenderPassType::Grid, false);
+    _renderSystem.SetPassEnabled(RenderPassType::ShadowCSM, false);
+    */
 }
 
 void VK_APPLICATION::VulkanApplication::init_commands(){

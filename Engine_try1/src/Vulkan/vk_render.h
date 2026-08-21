@@ -153,6 +153,8 @@ public:
 
     void SetPassEnabled(RenderPassType type, bool enabled);
 
+    void ExecuteMSAAResolve(VkCommandBuffer cmd, VkExtent2D drawExtent);
+
     // Очистка очереди
     void ClearQueue() { _mainDrawQueue.clear(); }
 private:
