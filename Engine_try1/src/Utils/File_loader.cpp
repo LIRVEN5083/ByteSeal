@@ -1,6 +1,6 @@
 #include "File_loader.h"
 
-std::string UTILS::OpenModelDialog(){
+std::string UTILS::Open_GLTF_Dialog(){
     NFD::UniquePath outPath;
 
     nfdfilteritem_t filterItem[2] = {
@@ -14,4 +14,8 @@ std::string UTILS::OpenModelDialog(){
         return std::string(outPath.get());
     }
     return "";
+}
+
+std::string UTILS::Open_HDR_Dialog(){
+
 };
