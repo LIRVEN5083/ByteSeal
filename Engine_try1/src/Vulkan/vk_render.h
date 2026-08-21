@@ -119,6 +119,13 @@ private:
 };
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // ПРОХОД для SkyBox
+
+enum class SkyBoxType : uint32_t{
+    Panoramic = 0,
+    Cubemap = 1,
+    Procedural = 2
+};
+
 class SkyBoxRenderPass : public RenderPass{
 public:
     SkyBoxRenderPass(VK_INIT_ENGINE::_inited_engine& init)
@@ -129,8 +136,11 @@ public:
 
     void Execute(const RenderContext& ctx, const std::vector<RenderObject>& queue) override;
 
+    void SetSkyboxType(SkyBoxType type) { _currentType = type; }
+    SkyBoxType GetSkyboxType() const { return _currentType; }
 private:
     RealPipeline* _skyboxPipeline{ nullptr };
+    SkyBoxType _currentType{ SkyBoxType::Procedural };
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -154,6 +164,8 @@ public:
     void SetPassEnabled(RenderPassType type, bool enabled);
 
     void ExecuteMSAAResolve(VkCommandBuffer cmd, VkExtent2D drawExtent);
+
+    void ToggleSkyBox();
 
     // Очистка очереди
     void ClearQueue() { _mainDrawQueue.clear(); }

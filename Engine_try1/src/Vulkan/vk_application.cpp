@@ -498,13 +498,28 @@ void VK_APPLICATION::VulkanApplication::init_pipeline_manager(){
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Конвеер для процедурного SkyBox (Hosek-Wilkie)
+    PipelineCreateInfo skyboxProcInfo{};
+    skyboxProcInfo.name = "SkyBox_proc";
+    skyboxProcInfo.passType = RenderPassType::Skybox;
+    skyboxProcInfo.opacity = PipelineOpacity::Opaque;
+    skyboxProcInfo.useMSAA = true;
+    skyboxProcInfo.vertexShaderPath = "../Shaders/SkyBox_proc/Source/SkyBox.vert";
+    skyboxProcInfo.fragmentShaderPath = "../Shaders/SkyBox_proc/Source/SkyBox.frag";
+
+    RealPipeline* skybox_procPipeline = _pipelineManager->CreatePipeline(skyboxProcInfo, colorFormat, depthFormat, _maxSamples);
+    if (skybox_procPipeline) {
+        fmt::print("[PipelineManager] Pipeline 'SkyBox_proc' successfully loaded and built.\n");
+    }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Конвеер для обычных HDR SkyBox
     PipelineCreateInfo skyboxInfo{};
     skyboxInfo.name = "SkyBox";
     skyboxInfo.passType = RenderPassType::Skybox;
     skyboxInfo.opacity = PipelineOpacity::Opaque;
     skyboxInfo.useMSAA = true;
-    skyboxInfo.vertexShaderPath = "../Shaders/SkyBox_proc/Source/SkyBox.vert";
-    skyboxInfo.fragmentShaderPath = "../Shaders/SkyBox_proc/Source/SkyBox.frag";
+    skyboxInfo.vertexShaderPath = "../Shaders/SkyBox/Source/SkyBox.vert";
+    skyboxInfo.fragmentShaderPath = "../Shaders/SkyBox/Source/SkyBox.frag";
 
     RealPipeline* skyboxPipeline = _pipelineManager->CreatePipeline(skyboxInfo, colorFormat, depthFormat, _maxSamples);
     if (skyboxPipeline) {
@@ -580,9 +595,10 @@ VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& 
     // 4. Каждый кадр крутим ИСХОДНЫЙ вектор на ОБЩИЙ угол
     lightDir = glm::rotateY(START_LIGHT_DIR, totalAngle);
     lightDir = glm::normalize(lightDir);
+    lightDir = START_LIGHT_DIR;
     float sunPower = 8.5f; // Интенсивность для PBR
 
-    sceneData.sunlightDirection = glm::vec4(lightDir, sunPower);
+    sceneData.sunlightDirection = glm::vec4( lightDir, sunPower);
     
     sceneData.sunlightColor = glm::vec4(1.0f, 0.98f, 0.92f, 1.0f);
 

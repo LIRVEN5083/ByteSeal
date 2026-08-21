@@ -134,7 +134,7 @@ struct SamplerOptions{
 class TextureManager{
 public:
     const uint32_t MAX_BINDLESS_TEXTURES = 1000;
-    const uint32_t BINDING_COUNT = 2;
+    const uint32_t BINDING_COUNT = 3;
 
     void init(VK_INIT_ENGINE::_inited_engine& _init);
 

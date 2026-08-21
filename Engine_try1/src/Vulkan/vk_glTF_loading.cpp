@@ -9,7 +9,7 @@ void TextureManager::init(VK_INIT_ENGINE::_inited_engine& _init){
     _device = _init._device;
     _allocator = _init._allocator;
 
-    std::vector<VkDescriptorSetLayoutBinding> bindings(2);
+    std::vector<VkDescriptorSetLayoutBinding> bindings(3);
 
     bindings[0].binding = 0;
     bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -21,10 +21,15 @@ void TextureManager::init(VK_INIT_ENGINE::_inited_engine& _init){
     bindings[1].descriptorCount = MAX_BINDLESS_TEXTURES;
     bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT;
 
+    bindings[2].binding = 2;
+    bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    bindings[2].descriptorCount = 1;
+    bindings[2].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT;
+
     // Настраиваем флаги отдельно ДЛЯ КАЖДОГО биндинга
     VkDescriptorBindingFlags bindlessFlags = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
                                              VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
-    std::vector<VkDescriptorBindingFlags> flagsArray = { bindlessFlags, bindlessFlags };
+    std::vector<VkDescriptorBindingFlags> flagsArray = { bindlessFlags, bindlessFlags, VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT };
 
     VkDescriptorSetLayoutBindingFlagsCreateInfo extInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO };
     extInfo.bindingCount = static_cast<uint32_t>(flagsArray.size());
@@ -34,7 +39,7 @@ void TextureManager::init(VK_INIT_ENGINE::_inited_engine& _init){
     VkDescriptorSetLayoutCreateInfo layoutInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
     layoutInfo.pNext = &extInfo;
     layoutInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
-    layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
+    layoutInfo.bindingCount = static_cast<uint32_t>(flagsArray.size());
     layoutInfo.pBindings = bindings.data();
     vkCreateDescriptorSetLayout(_device, &layoutInfo, nullptr, &_textureLayout);
 

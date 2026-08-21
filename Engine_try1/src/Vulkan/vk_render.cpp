@@ -303,7 +303,7 @@ void SkyBoxRenderPass::Execute(const RenderContext& ctx, const std::vector<Rende
     vkCmdSetScissor(ctx.cmd, 0, 1, &scissor);
 
     vkCmdBindPipeline(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _skyboxPipeline->pipeline);
-    vkCmdBindDescriptorSets(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _skyboxPipeline->layout, 0, 1, &ctx.globalDescriptor, 0, nullptr);
+    vkCmdBindDescriptorSets(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _skyboxPipeline->layout, 0, 2, &ctx.globalDescriptor, 0, nullptr);
 
     vkCmdDraw(ctx.cmd, 3, 1, 0, 0);
 
@@ -391,4 +391,19 @@ void RenderSystem::ExecuteMSAAResolve(VkCommandBuffer cmd, VkExtent2D drawExtent
 
     vkCmdBeginRendering(cmd, &renderingInfo);
     vkCmdEndRendering(cmd);
+}
+
+void RenderSystem::ToggleSkyBox(){
+    for (auto& pass : _renderPasses) {
+        if (pass->GetType() == RenderPassType::Skybox) {
+            auto* skyboxPass = static_cast<SkyBoxRenderPass*>(pass.get());
+
+            if (skyboxPass->GetSkyboxType() == SkyBoxType::Panoramic) {
+                skyboxPass->SetSkyboxType(SkyBoxType::Procedural);
+            } else {
+                skyboxPass->SetSkyboxType(SkyBoxType::Panoramic);
+            }
+            break;
+        }
+    }
 }
