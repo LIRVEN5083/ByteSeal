@@ -89,6 +89,7 @@ public:
 
 enum class RenderPassType : uint8_t {
     Forward,        // Base render
+    Grid,
     ShadowCSM,      // SCM
     Skybox,         // Sky
     PostProcess     // Post-effects

@@ -46,6 +46,7 @@ class RenderPass {
 protected:
     VK_INIT_ENGINE::_inited_engine& _init;
     RenderPassType _type;
+    bool _isActive{true};
 
 public:
     RenderPass(VK_INIT_ENGINE::_inited_engine& init, RenderPassType type)
@@ -54,6 +55,12 @@ public:
     virtual ~RenderPass() = default;
 
     RenderPassType GetType() const { return _type; }
+
+    // Переключение состояния RenderPass
+    void SetEnabled(bool enabled) { _isActive = enabled; }
+    bool IsEnabled() const { return _isActive; }
+    void Toggle() { _isActive = !_isActive; }
+
 
     // Вызывается при старте и после ReloadShaders
     virtual void Init(PipelineManager& pipelineManager) = 0;
@@ -86,7 +93,7 @@ private:
 class GridRenderPass : public RenderPass {
 public:
     GridRenderPass(VK_INIT_ENGINE::_inited_engine& init)
-        : RenderPass(init, RenderPassType::Forward) {}
+        : RenderPass(init, RenderPassType::Grid) {}
     ~GridRenderPass() override = default;
 
     void Init(PipelineManager& pipelineManager) override;
@@ -143,6 +150,8 @@ public:
               PipelineManager& pipelineManager, LightManager& lightManager);
 
     void RefreshPasses(PipelineManager& pipelineManager);
+
+    void SetPassEnabled(RenderPassType type, bool enabled);
 
     // Очистка очереди
     void ClearQueue() { _mainDrawQueue.clear(); }

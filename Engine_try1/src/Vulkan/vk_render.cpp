@@ -10,7 +10,7 @@ void ForwardRenderPass::Init(PipelineManager& pipelineManager){
 void ForwardRenderPass::Execute(const RenderContext& ctx, const std::vector<RenderObject>& queue){
     VkClearValue clearColor;
     clearColor.color = { { 0.3f, 0.3f, 0.3f, 1.0f } };
-
+    
     VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(_init._msaaColorImage.imageView, &clearColor, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -342,6 +342,9 @@ void RenderSystem::Draw(VkCommandBuffer cmd, VkExtent2D drawExtent, VkDescriptor
 
     // Последовательно выполняем все зарегистрированные пассы
     for (auto& pass : _renderPasses) {
+        // Если проход выключен то скип
+        if (!pass->IsEnabled()){continue;}
+
         pass->Execute(ctx, _mainDrawQueue);
     }
 }
@@ -351,4 +354,13 @@ void RenderSystem::RefreshPasses(PipelineManager& pipelineManager){
         pass->Init(pipelineManager);
     }
     std::cout << "[RenderSystem] All render passes successfully re-linked to new pipelines.\n";
+}
+
+void RenderSystem::SetPassEnabled(RenderPassType type, bool enabled) {
+    for (auto& pass : _renderPasses) {
+        if (pass->GetType() == type) {
+            pass->SetEnabled(enabled);
+            break;
+        }
+    }
 }
