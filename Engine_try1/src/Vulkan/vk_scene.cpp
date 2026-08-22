@@ -2,6 +2,58 @@
 #include "vk_render.h"
 
 
+bool FrustumPlane::IsAABBInFront(const glm::vec3& min, const glm::vec3& max) const{
+    // Находим ближайшую к плоскости точку AABB (p-vertex)
+    glm::vec3 p = min;
+    if (normal.x >= 0) p.x = max.x;
+    if (normal.y >= 0) p.y = max.y;
+    if (normal.z >= 0) p.z = max.z;
+
+    return glm::dot(normal, p) + distance >= 0.0f;
+}
+
+bool CameraFrustum::IsBoxVisible(const glm::vec3& min, const glm::vec3& max) const{
+    // Если AABB находится "позади" хотя бы одной из 6 плоскостей — он невидим
+    for (const auto& plane : planes) {
+        if (!plane.IsAABBInFront(min, max)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+CameraFrustum CreateFrustumFromMatrix(const glm::mat4& mat){
+    CameraFrustum frustum;
+
+    // Левая
+    frustum.planes[0].normal = glm::vec3(mat[0][3] + mat[0][0], mat[1][3] + mat[1][0], mat[2][3] + mat[2][0]);
+    frustum.planes[0].distance = mat[3][3] + mat[3][0];
+    // Правая
+    frustum.planes[1].normal = glm::vec3(mat[0][3] - mat[0][0], mat[1][3] - mat[1][0], mat[2][3] - mat[2][0]);
+    frustum.planes[1].distance = mat[3][3] - mat[3][0];
+    // Нижняя
+    frustum.planes[2].normal = glm::vec3(mat[0][3] + mat[0][1], mat[1][3] + mat[1][1], mat[2][3] + mat[2][1]);
+    frustum.planes[2].distance = mat[3][3] + mat[3][1];
+    // Верхняя
+    frustum.planes[3].normal = glm::vec3(mat[0][3] - mat[0][1], mat[1][3] - mat[1][1], mat[2][3] - mat[2][1]);
+    frustum.planes[3].distance = mat[3][3] - mat[3][1];
+    // Ближняя (Near)
+    frustum.planes[4].normal = glm::vec3(mat[0][3] - mat[0][2], mat[1][3] - mat[1][2], mat[2][3] - mat[2][2]);
+    frustum.planes[4].distance = mat[3][3] - mat[3][2];
+    // Дальняя (Far)
+    frustum.planes[5].normal = glm::vec3(mat[0][2], mat[1][2], mat[2][2]);
+    frustum.planes[5].distance = mat[3][2];
+
+    // Нормализуем плоскости
+    for (auto& plane : frustum.planes) {
+        float length = glm::length(plane.normal);
+        plane.normal /= length;
+        plane.distance /= length;
+    }
+
+    return frustum;
+}
+
 glm::mat4 GameEntity::GetLocalMatrix() const {
     glm::mat4 model = glm::translate(glm::mat4(1.0f), position);
 
@@ -123,13 +175,24 @@ void Scene::DestroyEntitiesByModel(uint32_t modelAssetId){
         _idToIndex[_entities[i].id] = i;
     }
 }
-void Scene::CullingAndSubmit(RenderSystem& renderSystem, PipelineManager& pipelineManager, const glm::vec3& cameraPosition){
+
+void Scene::CullingAndSubmit(RenderSystem& renderSystem, PipelineManager& pipelineManager,
+    const glm::vec3& cameraPosition, const glm::mat4& viewProjectionMatrix){
      if (_entities.empty()) return;
+
+    CameraFrustum frustum = CreateFrustumFromMatrix(viewProjectionMatrix);
 
     for (const auto& entity : _entities)
     {
         if (!entity.bIsVisible) continue;
         if (!_modelManager.has_model(entity.modelAssetId)) continue;
+
+        AABB worldAABB = entity.GetWorldAABB(_modelManager);
+
+        // Проверяем коробку объекта против 6 плоскостей камеры
+        if (!frustum.IsBoxVisible(worldAABB.min, worldAABB.max)) {
+            continue; // ОБЪЕКТ НЕ ВИДЕН! Скипаем весь цикл генерации RenderObject
+        }
 
         Model& model = _modelManager.GetModel(entity.modelAssetId);
         if (!model.bIsValid || !model.rootNode) continue;
