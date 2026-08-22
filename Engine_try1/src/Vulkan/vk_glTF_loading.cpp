@@ -1278,6 +1278,7 @@ void ModelManager:: destroy_model(uint32_t id){
 }
 
 void ModelManager::destroy_dynamic_models() {
+    vkDeviceWaitIdle(_init._device);
     for (size_t i = 0; i < _models.size(); ++i) {
         if (_models[i].bIsValid && _models[i].lifetime == ModelLifetime::Dynamic) {
 
