@@ -1,5 +1,4 @@
 #include "vk_application.h"
-
 #include <iostream>
 
 VK_APPLICATION::VulkanApplication::VulkanApplication(VK_INIT_ENGINE::_inited_engine& inited_engine)
@@ -527,10 +526,10 @@ void VK_APPLICATION::VulkanApplication::init_pipeline_manager(){
     }
 
     // Проходы рендера
-    _renderSystem.AddPass(std::make_unique<ShadowCSMRenderPass>(_init), *_pipelineManager);
-    _renderSystem.AddPass(std::make_unique<ForwardRenderPass>(_init), *_pipelineManager);
-    _renderSystem.AddPass(std::make_unique<SkyBoxRenderPass>(_init), *_pipelineManager);
-    _renderSystem.AddPass(std::make_unique<GridRenderPass>(_init), *_pipelineManager);
+    RenderPass* SCM_RP = _renderSystem.AddPass(std::make_unique<ShadowCSMRenderPass>(_init), *_pipelineManager);
+    RenderPass* Forward_RP = _renderSystem.AddPass(std::make_unique<ForwardRenderPass>(_init), *_pipelineManager);
+    RenderPass* SkyBox_RP = _renderSystem.AddPass(std::make_unique<SkyBoxRenderPass>(_init), *_pipelineManager);
+    RenderPass* Grid_RP = _renderSystem.AddPass(std::make_unique<GridRenderPass>(_init), *_pipelineManager);
 
     /* МОЖНА ТЕПЕРЬ ОТКЛЮЧАТЬ ПРОХОДЫ! МУХЕХЕХЕХЕ
     _renderSystem.SetPassEnabled(RenderPassType::Skybox, true);
@@ -538,7 +537,8 @@ void VK_APPLICATION::VulkanApplication::init_pipeline_manager(){
     _renderSystem.SetPassEnabled(RenderPassType::ShadowCSM, false);
     */
 
-   // _renderSystem.ToggleSkyBox();
+    _renderSystem.ToggleSkyBox();
+    SkyBoxUpload("../Data/Panoramic/Sky.hdr", _init, _textureManager, SkyBox_RP);
 }
 
 void VK_APPLICATION::VulkanApplication::init_commands(){

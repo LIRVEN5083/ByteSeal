@@ -898,7 +898,7 @@ void VK_GUI::GUI::draw_main_menu_bar(CONTROLLER::Delta& _delta){
         }
 
         if (ImGui::BeginMenu("Tools")) {
-            if (ImGui::MenuItem("Metrics/Debugger")) {}
+            if (ImGui::MenuItem("SkyBox")) {}
             ImGui::EndMenu();
         }
 

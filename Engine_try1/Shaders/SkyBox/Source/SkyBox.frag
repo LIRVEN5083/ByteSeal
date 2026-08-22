@@ -12,7 +12,7 @@ layout(set = 1, binding = 2) uniform sampler2D skyPanoramaTex;
 const vec2 invAtan = vec2(0.15915494, 0.31830988); // 1.0 / (2.0 * PI) и 1.0 / PI
 
 vec2 SampleSphericalMap(vec3 v) {
-    vec2 uv = vec2(atan(v.z, v.x), asin(v.y));
+    vec2 uv = vec2(atan(v.y, v.x), asin(v.z));
 
     uv *= invAtan;
     uv += 0.5;

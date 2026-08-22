@@ -262,6 +262,7 @@ void ShadowCSMRenderPass::Execute(const RenderContext& ctx, const std::vector<Re
     vkCmdPipelineBarrier2(ctx.cmd, &depInfo);
 }
 
+
 void SkyBoxRenderPass::Init(PipelineManager& pipelineManager){
      _panoramicPipeline = pipelineManager.GetPipelineByName("SkyBox");
     _procPipeline = pipelineManager.GetPipelineByName("SkyBox_proc");
@@ -313,9 +314,19 @@ void SkyBoxRenderPass::Execute(const RenderContext& ctx, const std::vector<Rende
     vkCmdEndRendering(ctx.cmd);
 }
 
-void RenderSystem::AddPass(std::unique_ptr<RenderPass> pass, PipelineManager& pipelineManager){
+void SkyBoxRenderPass::SetPanoramicTexture(const GPUTexture& texture){
+    _panoramicTexture = texture;
+    _hasTexture = true;
+}
+
+RenderPass* RenderSystem::AddPass(std::unique_ptr<RenderPass> pass, PipelineManager& pipelineManager){
+    RenderPass* rawPassPtr = pass.get();
+
     pass->Init(pipelineManager);
+
     _renderPasses.push_back(std::move(pass));
+
+    return rawPassPtr;
 }
 
 void RenderSystem::Submit(RenderObject ro){

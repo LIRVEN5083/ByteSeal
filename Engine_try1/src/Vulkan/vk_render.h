@@ -1,5 +1,5 @@
 #pragma once
-
+struct RealPipeline;
 #include "vk_types.h"
 #include "vk_glTF_loading.h"
 
@@ -138,10 +138,17 @@ public:
 
     void SetSkyboxType(SkyBoxType type) { _currentType = type; }
     SkyBoxType GetSkyboxType() const { return _currentType; }
+    void SetPanoramicTexture(const GPUTexture& texture);
+    GPUTexture& GetPanoramicTexture() {return _panoramicTexture;}
+    bool HasTexture() const { return _hasTexture; }
+
 private:
     RealPipeline* _procPipeline{ nullptr };
     RealPipeline* _panoramicPipeline{ nullptr };
     SkyBoxType _currentType{ SkyBoxType::Procedural };
+
+    GPUTexture _panoramicTexture{};
+    bool _hasTexture{ false };
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -149,7 +156,7 @@ class RenderSystem{
 public:
     RenderSystem(VK_INIT_ENGINE::_inited_engine& init) : _init(init){}
 
-    void AddPass(std::unique_ptr<RenderPass> pass, PipelineManager& pipelineManager);
+    RenderPass* AddPass(std::unique_ptr<RenderPass> pass, PipelineManager& pipelineManager);
 
     void Submit (RenderObject ro);
 

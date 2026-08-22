@@ -23,7 +23,7 @@ void TextureManager::init(VK_INIT_ENGINE::_inited_engine& _init){
 
     bindings[2].binding = 2;
     bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    bindings[2].descriptorCount = 1;
+    bindings[2].descriptorCount = MAX_BINDLESS_TEXTURES;
     bindings[2].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT;
 
     // Настраиваем флаги отдельно ДЛЯ КАЖДОГО биндинга
@@ -149,12 +149,15 @@ GPUTexture TextureManager::AllocateTexture(
 
     VmaAllocationCreateInfo poolAllocInfo{};
     poolAllocInfo.usage = VMA_MEMORY_USAGE_AUTO;
-    if (lifetime == ModelLifetime::Static){
-        poolAllocInfo.pool = _textureArena;
-    }
-    else if (lifetime == ModelLifetime::Dynamic)
-    {
+    if (binding == 2 || imageInfo.extent.width >= 8192) {
         poolAllocInfo.pool = VK_NULL_HANDLE;
+        poolAllocInfo.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
+    }
+    else if (lifetime == ModelLifetime::Dynamic) {
+        poolAllocInfo.pool = VK_NULL_HANDLE;
+    }
+    else {
+        poolAllocInfo.pool = _textureArena;
     }
 
     vmaCreateImage(_allocator, &imageInfo, &poolAllocInfo, &texture.image.image, &texture.image.allocation, nullptr);
@@ -184,7 +187,21 @@ GPUTexture TextureManager::AllocateTexture(
         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
     );
 
+    if (binding == 2) {
+        _activeSkyboxTexture = texture;
+    }
+
     return texture;
+}
+
+void TextureManager::FreeSkyboxTexutre(GPUTexture& skyboxTexture){
+    if (skyboxTexture.image.image == VK_NULL_HANDLE) return;
+
+    vkDeviceWaitIdle(_device);
+
+    FreeTexture(skyboxTexture, 2);
+
+    fmt::print("[TextureManager] Skybox panorama successfully freed.\n");
 }
 
 void TextureManager::FreeTexture(GPUTexture& texture, uint32_t binding){
@@ -207,6 +224,11 @@ void TextureManager::FreeTexture(GPUTexture& texture, uint32_t binding){
 }
 
 void TextureManager::DestroyAllocationData(){
+    if (_activeSkyboxTexture.image.image != VK_NULL_HANDLE) {
+        vkDeviceWaitIdle(_device);
+        FreeTexture(_activeSkyboxTexture, 2);
+        _activeSkyboxTexture.image.image = VK_NULL_HANDLE;
+    }
     if (defaultTexture.imguiDescriptorSet != VK_NULL_HANDLE) {
         ImGui_ImplVulkan_RemoveTexture(defaultTexture.imguiDescriptorSet);
         defaultTexture.imguiDescriptorSet = VK_NULL_HANDLE;
@@ -228,17 +250,17 @@ void TextureManager::DestroyAllocationData(){
         defaultTexture.image.image = VK_NULL_HANDLE;
     }
 
+    if (_texturePool) vkDestroyDescriptorPool(_device, _texturePool, nullptr);
+    if (_textureLayout) vkDestroyDescriptorSetLayout(_device, _textureLayout, nullptr);
 
     if (_textureArena) {
         vmaDestroyPool(_allocator, _textureArena);
         _textureArena = VK_NULL_HANDLE;
     }
 
-    if (_texturePool) vkDestroyDescriptorPool(_device, _texturePool, nullptr);
-    if (_textureLayout) vkDestroyDescriptorSetLayout(_device, _textureLayout, nullptr);
+    _nextIndices = { 0, 0, 0 };
 
-    _nextIndices = { 0, 0 };
-
+    _nextIndices = { 0, 0, 0 };
     _freeIndices.clear();
     _freeIndices.resize(BINDING_COUNT);
 }
@@ -400,6 +422,139 @@ void Model::destroy(VK_INIT_ENGINE::_inited_engine& _init, MeshManager& meshMana
     Meshes.clear();
     meshNodes.clear();
     rootNode.reset();
+}
+
+std::optional<GPUTexture> load_panoramic_hdr(VK_INIT_ENGINE::_inited_engine& _init, TextureManager& textureManager,
+    const float* pixelData, uint32_t width, uint32_t height){
+
+    VkFormat format = VK_FORMAT_R16G16B16A16_SFLOAT;
+    size_t numPixels = static_cast<size_t>(width) * height;
+    size_t dataSize = numPixels * 4 * sizeof(uint16_t); // 4 канала по 16 бит (2 байта)
+
+    AllocatedBuffer stagingBuffer = vkinit::create_buffer(
+        dataSize,
+        _init._allocator,
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        VMA_MEMORY_USAGE_CPU_TO_GPU
+    );
+
+
+    void* mappedData;
+    vmaMapMemory(_init._allocator, stagingBuffer.allocation, &mappedData);
+
+    uint16_t* dst = reinterpret_cast<uint16_t*>(mappedData);
+    for (size_t i = 0; i < numPixels; ++i) {
+        // Извлекаем каналы из исходного массива float (stbi выдал 3 канала)
+        float r = pixelData[i * 3 + 0];
+        float g = pixelData[i * 3 + 1];
+        float b = pixelData[i * 3 + 2];
+
+        // Используем GLM для упаковки каждого float32 в float16 (half-precision)
+        dst[i * 4 + 0] = glm::packHalf1x16(r);
+        dst[i * 4 + 1] = glm::packHalf1x16(g);
+        dst[i * 4 + 2] = glm::packHalf1x16(b);
+        dst[i * 4 + 3] = glm::packHalf1x16(1.0f);
+    }
+
+    vmaUnmapMemory(_init._allocator, stagingBuffer.allocation);
+
+    uint32_t mipLevels = 1;
+
+    // Настраиваем образ
+    VkImageCreateInfo imgInfo{ VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
+    imgInfo.imageType = VK_IMAGE_TYPE_2D;
+    imgInfo.format = format;
+    imgInfo.extent = { width, height, 1 };
+    imgInfo.mipLevels = mipLevels;
+    imgInfo.arrayLayers = 1;
+    imgInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+    imgInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+    imgInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+
+    VkImageViewCreateInfo viewInfo{ VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
+    viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    viewInfo.format = format;
+    viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    viewInfo.subresourceRange.levelCount = mipLevels;
+    viewInfo.subresourceRange.layerCount = 1;
+
+    // Настройки сэмплера для панорам: ClampToEdge защитит от швов на стыках
+    SamplerOptions samplerParams{};
+    samplerParams.wrapS = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    samplerParams.wrapT = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+
+    // ВАЖНО: Третий аргумент — индекс биндинга. Передаем 2, чтобы текстура улетела в bindings[2]
+    GPUTexture outTexture = textureManager.AllocateTexture(imgInfo, viewInfo, 2, samplerParams, ModelLifetime::Static);
+
+    // Копируем на GPU через submit_immediate
+    vkinit::submit_immediate([&](VkCommandBuffer cmd) {
+        VkImageMemoryBarrier barrier{ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
+        barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        barrier.image = outTexture.image.image;
+        barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        barrier.subresourceRange.levelCount = outTexture.mipLevels;
+        barrier.subresourceRange.layerCount = 1;
+        barrier.srcAccessMask = 0;
+        barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+
+        vkCmdPipelineBarrier(cmd,
+            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            0, 0, nullptr, 0, nullptr, 1, &barrier);
+
+        VkBufferImageCopy copyRegion{};
+        copyRegion.bufferOffset = 0;
+        copyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        copyRegion.imageSubresource.mipLevel = 0;
+        copyRegion.imageSubresource.layerCount = 1;
+        copyRegion.imageExtent = imgInfo.extent;
+
+        vkCmdCopyBufferToImage(cmd, stagingBuffer.buffer, outTexture.image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
+
+        // Переводим в финальный Layout для чтения шейдером
+        barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+        vkCmdPipelineBarrier(cmd,
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+            0, 0, nullptr, 0, nullptr, 1, &barrier);
+
+    }, _init);
+
+    vmaDestroyBuffer(_init._allocator, stagingBuffer.buffer, stagingBuffer.allocation);
+
+    return outTexture;
+}
+
+void SkyBoxUpload(const std::string& filePath, VK_INIT_ENGINE::_inited_engine& _init, TextureManager& textureManager, RenderPass *renderPass){
+    int width, height, channels;
+    float* pixelData = stbi_loadf(filePath.c_str(), &width, &height, &channels, 3);
+
+    if (pixelData) {
+        fmt::print("[Engine] Loading HDR Panorama: {} ({}x{})\n", filePath, width, height);
+        auto panoramicTex = load_panoramic_hdr(_init, textureManager, pixelData, width, height);
+        stbi_image_free(pixelData);
+
+        if (panoramicTex.has_value()) {
+            // "Магия" полиморфизма: пытаемся безопасно превратить RenderPass* в SkyBoxRenderPass*
+            if (auto* skyboxPass = dynamic_cast<SkyBoxRenderPass*>(renderPass)) {
+                if (skyboxPass->HasTexture()) {
+                    GPUTexture oldTex = skyboxPass->GetPanoramicTexture();
+                    textureManager.FreeSkyboxTexutre(oldTex); // Вычистили старые 256 МБ на GPU
+                }
+                skyboxPass->SetPanoramicTexture(panoramicTex.value());
+                skyboxPass->SetSkyboxType(SkyBoxType::Panoramic);
+            } else {
+                fmt::print("[Engine Error] Passed RenderPass is not a SkyBoxRenderPass!\n");
+            }
+        }
+    } else {
+        fmt::print("[Engine Error] Failed to load HDR file: {}\n", filePath);
+    }
 }
 
 void MeshManager::init(VK_INIT_ENGINE::_inited_engine& _init){
