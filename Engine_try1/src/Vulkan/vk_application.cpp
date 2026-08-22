@@ -178,7 +178,7 @@ void VK_APPLICATION::VulkanApplication::renderLoop(){
 
     // Сборка сцены
     glm::vec3 cameraPos = { _movement.valueX, _movement.valueY, _movement.valueZ };
-    _activeScene->CullingAndSubmit(_renderSystem, *_pipelineManager, cameraPos);
+    _activeScene->CullingAndSubmit(_renderSystem, *_pipelineManager, cameraPos, sceneData.viewproj);
 
     // Отрисовка RenderObject
     _renderSystem.PrepareFrame();

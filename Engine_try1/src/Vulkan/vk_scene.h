@@ -15,6 +15,24 @@ struct AABB;
 
 class PipelineManager;
 
+struct FrustumPlane {
+    glm::vec3 normal;
+    float distance;
+
+    // Метод проверки: находится ли AABB хотя бы частично внутри (впереди плоскости)
+    bool IsAABBInFront(const glm::vec3& min, const glm::vec3& max) const;
+};
+
+struct CameraFrustum {
+    std::array<FrustumPlane, 6> planes;
+
+    // Виден ли AABB
+    bool IsBoxVisible(const glm::vec3& min, const glm::vec3& max) const;
+};
+
+// Математика Грибба-Хартмана ну мы типо делаем CPU Culling
+CameraFrustum CreateFrustumFromMatrix(const glm::mat4& mat);
+
 struct GameEntity {
     uint32_t id{ 0 };
     std::string name;
@@ -79,7 +97,8 @@ public:
     void DestroyAllDynamicEntites();
     void DestroyEntitiesByModel(uint32_t modelAssetId);
 
-    void CullingAndSubmit(RenderSystem& renderSystem, PipelineManager& pipelineManager, const glm::vec3& cameraPosition);
+    void CullingAndSubmit(RenderSystem& renderSystem, PipelineManager& pipelineManager,
+        const glm::vec3& cameraPosition, const glm::mat4& viewProjectionMatrix);
 
     RaycastHit Raycast(const Ray& ray);
 
