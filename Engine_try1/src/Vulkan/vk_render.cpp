@@ -263,11 +263,14 @@ void ShadowCSMRenderPass::Execute(const RenderContext& ctx, const std::vector<Re
 }
 
 void SkyBoxRenderPass::Init(PipelineManager& pipelineManager){
-    _skyboxPipeline = pipelineManager.GetPipelineByName("SkyBox");
+     _panoramicPipeline = pipelineManager.GetPipelineByName("SkyBox");
+    _procPipeline = pipelineManager.GetPipelineByName("SkyBox_proc");
 }
 
 void SkyBoxRenderPass::Execute(const RenderContext& ctx, const std::vector<RenderObject>& queue){
-    if (!_skyboxPipeline) return;
+    RealPipeline* activePipeline = (_currentType == SkyBoxType::Procedural) ? _procPipeline : _panoramicPipeline;
+
+    if (!activePipeline) return;
 
     VkClearValue depthClear;
     depthClear.depthStencil.depth = 1.0f;
@@ -302,8 +305,8 @@ void SkyBoxRenderPass::Execute(const RenderContext& ctx, const std::vector<Rende
     VkRect2D scissor = { {0, 0}, ctx.drawExtent };
     vkCmdSetScissor(ctx.cmd, 0, 1, &scissor);
 
-    vkCmdBindPipeline(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _skyboxPipeline->pipeline);
-    vkCmdBindDescriptorSets(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _skyboxPipeline->layout, 0, 2, &ctx.globalDescriptor, 0, nullptr);
+    vkCmdBindPipeline(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, activePipeline->pipeline);
+    vkCmdBindDescriptorSets(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, activePipeline->layout, 0, 2, &ctx.globalDescriptor, 0, nullptr);
 
     vkCmdDraw(ctx.cmd, 3, 1, 0, 0);
 
@@ -355,7 +358,7 @@ void RenderSystem::RefreshPasses(PipelineManager& pipelineManager){
     for (auto& pass : _renderPasses) {
         pass->Init(pipelineManager);
     }
-    std::cout << "[RenderSystem] All render passes successfully re-linked to new pipelines.\n";
+    std::cout << "[RenderSystem]: All render passes successfully re-linked to new pipelines.\n";
 }
 
 void RenderSystem::SetPassEnabled(RenderPassType type, bool enabled) {
@@ -397,11 +400,12 @@ void RenderSystem::ToggleSkyBox(){
     for (auto& pass : _renderPasses) {
         if (pass->GetType() == RenderPassType::Skybox) {
             auto* skyboxPass = static_cast<SkyBoxRenderPass*>(pass.get());
-
+            fmt::print("[RenderSystem]: Skybox switched to Procedural (Hosek-Wilkie).\n");
             if (skyboxPass->GetSkyboxType() == SkyBoxType::Panoramic) {
                 skyboxPass->SetSkyboxType(SkyBoxType::Procedural);
             } else {
                 skyboxPass->SetSkyboxType(SkyBoxType::Panoramic);
+                fmt::print("[RenderSystem]: Skybox switched to Panoramic (HDR).\n");
             }
             break;
         }

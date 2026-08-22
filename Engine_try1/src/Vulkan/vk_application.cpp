@@ -537,6 +537,8 @@ void VK_APPLICATION::VulkanApplication::init_pipeline_manager(){
     _renderSystem.SetPassEnabled(RenderPassType::Grid, false);
     _renderSystem.SetPassEnabled(RenderPassType::ShadowCSM, false);
     */
+
+   // _renderSystem.ToggleSkyBox();
 }
 
 void VK_APPLICATION::VulkanApplication::init_commands(){

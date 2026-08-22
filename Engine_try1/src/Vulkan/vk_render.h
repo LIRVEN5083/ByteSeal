@@ -139,7 +139,8 @@ public:
     void SetSkyboxType(SkyBoxType type) { _currentType = type; }
     SkyBoxType GetSkyboxType() const { return _currentType; }
 private:
-    RealPipeline* _skyboxPipeline{ nullptr };
+    RealPipeline* _procPipeline{ nullptr };
+    RealPipeline* _panoramicPipeline{ nullptr };
     SkyBoxType _currentType{ SkyBoxType::Procedural };
 };
 
