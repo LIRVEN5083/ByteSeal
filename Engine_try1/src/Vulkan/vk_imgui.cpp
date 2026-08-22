@@ -293,7 +293,7 @@ void VK_GUI::GUI::draw_model_list_overlay(VK_INIT_ENGINE::_inited_engine& _init,
     else if (delayedTrigger) {
         delayedTrigger = false;
 
-        std::string path = UTILS::OpenModelDialog();
+        std::string path = UTILS::Open_GLTF_Dialog();
         if (!path.empty()) {
             _modelManager.LoadModel(path, _confDynamic.lifetime, _confDynamic.useArena);
         }
@@ -898,7 +898,7 @@ void VK_GUI::GUI::draw_main_menu_bar(CONTROLLER::Delta& _delta){
         }
 
         if (ImGui::BeginMenu("Tools")) {
-            if (ImGui::MenuItem("Metrics/Debugger")) {}
+            if (ImGui::MenuItem("SkyBox")) {}
             ImGui::EndMenu();
         }
 

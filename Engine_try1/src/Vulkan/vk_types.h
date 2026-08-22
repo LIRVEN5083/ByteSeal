@@ -25,6 +25,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/matrix_decompose.hpp>
 #include <glm/gtx/rotate_vector.hpp>
+#include <glm/gtc/packing.hpp>
 #include <gli/gli.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtx/string_cast.hpp>
@@ -145,3 +146,17 @@ namespace VK_INIT_ENGINE {
         bool _isInitialized = false;
     };
 }
+
+enum class RenderPassType : uint8_t {
+    Forward,        // Base render
+    Grid,
+    ShadowCSM,      // SCM
+    Skybox,         // Sky
+    PostProcess     // Post-effects
+};
+
+enum class PipelineOpacity{
+    Opaque,
+    AlphaTested,
+    Transparent
+};

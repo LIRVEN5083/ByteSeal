@@ -3,5 +3,7 @@
 #include <nfd.hpp>
 
 namespace UTILS{
-    std::string OpenModelDialog();
+    std::string Open_GLTF_Dialog();
+
+    std::string Open_HDR_Dialog();
 }

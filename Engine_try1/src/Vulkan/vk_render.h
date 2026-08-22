@@ -1,5 +1,5 @@
 #pragma once
-
+struct RealPipeline;
 #include "vk_types.h"
 #include "vk_glTF_loading.h"
 
@@ -46,6 +46,7 @@ class RenderPass {
 protected:
     VK_INIT_ENGINE::_inited_engine& _init;
     RenderPassType _type;
+    bool _isActive{true};
 
 public:
     RenderPass(VK_INIT_ENGINE::_inited_engine& init, RenderPassType type)
@@ -54,6 +55,12 @@ public:
     virtual ~RenderPass() = default;
 
     RenderPassType GetType() const { return _type; }
+
+    // Переключение состояния RenderPass
+    void SetEnabled(bool enabled) { _isActive = enabled; }
+    bool IsEnabled() const { return _isActive; }
+    void Toggle() { _isActive = !_isActive; }
+
 
     // Вызывается при старте и после ReloadShaders
     virtual void Init(PipelineManager& pipelineManager) = 0;
@@ -86,7 +93,7 @@ private:
 class GridRenderPass : public RenderPass {
 public:
     GridRenderPass(VK_INIT_ENGINE::_inited_engine& init)
-        : RenderPass(init, RenderPassType::Forward) {}
+        : RenderPass(init, RenderPassType::Grid) {}
     ~GridRenderPass() override = default;
 
     void Init(PipelineManager& pipelineManager) override;
@@ -112,6 +119,13 @@ private:
 };
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // ПРОХОД для SkyBox
+
+enum class SkyBoxType : uint32_t{
+    Panoramic = 0,
+    Cubemap = 1,
+    Procedural = 2
+};
+
 class SkyBoxRenderPass : public RenderPass{
 public:
     SkyBoxRenderPass(VK_INIT_ENGINE::_inited_engine& init)
@@ -122,8 +136,19 @@ public:
 
     void Execute(const RenderContext& ctx, const std::vector<RenderObject>& queue) override;
 
+    void SetSkyboxType(SkyBoxType type) { _currentType = type; }
+    SkyBoxType GetSkyboxType() const { return _currentType; }
+    void SetPanoramicTexture(const GPUTexture& texture);
+    GPUTexture& GetPanoramicTexture() {return _panoramicTexture;}
+    bool HasTexture() const { return _hasTexture; }
+
 private:
-    RealPipeline* _skyboxPipeline{ nullptr };
+    RealPipeline* _procPipeline{ nullptr };
+    RealPipeline* _panoramicPipeline{ nullptr };
+    SkyBoxType _currentType{ SkyBoxType::Procedural };
+
+    GPUTexture _panoramicTexture{};
+    bool _hasTexture{ false };
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -131,7 +156,7 @@ class RenderSystem{
 public:
     RenderSystem(VK_INIT_ENGINE::_inited_engine& init) : _init(init){}
 
-    void AddPass(std::unique_ptr<RenderPass> pass, PipelineManager& pipelineManager);
+    RenderPass* AddPass(std::unique_ptr<RenderPass> pass, PipelineManager& pipelineManager);
 
     void Submit (RenderObject ro);
 
@@ -143,6 +168,12 @@ public:
               PipelineManager& pipelineManager, LightManager& lightManager);
 
     void RefreshPasses(PipelineManager& pipelineManager);
+
+    void SetPassEnabled(RenderPassType type, bool enabled);
+
+    void ExecuteMSAAResolve(VkCommandBuffer cmd, VkExtent2D drawExtent);
+
+    void ToggleSkyBox();
 
     // Очистка очереди
     void ClearQueue() { _mainDrawQueue.clear(); }

@@ -1,5 +1,4 @@
 #include "vk_application.h"
-
 #include <iostream>
 
 VK_APPLICATION::VulkanApplication::VulkanApplication(VK_INIT_ENGINE::_inited_engine& inited_engine)
@@ -498,13 +497,28 @@ void VK_APPLICATION::VulkanApplication::init_pipeline_manager(){
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Конвеер для процедурного SkyBox (Hosek-Wilkie)
+    PipelineCreateInfo skyboxProcInfo{};
+    skyboxProcInfo.name = "SkyBox_proc";
+    skyboxProcInfo.passType = RenderPassType::Skybox;
+    skyboxProcInfo.opacity = PipelineOpacity::Opaque;
+    skyboxProcInfo.useMSAA = true;
+    skyboxProcInfo.vertexShaderPath = "../Shaders/SkyBox_proc/Source/SkyBox.vert";
+    skyboxProcInfo.fragmentShaderPath = "../Shaders/SkyBox_proc/Source/SkyBox.frag";
+
+    RealPipeline* skybox_procPipeline = _pipelineManager->CreatePipeline(skyboxProcInfo, colorFormat, depthFormat, _maxSamples);
+    if (skybox_procPipeline) {
+        fmt::print("[PipelineManager] Pipeline 'SkyBox_proc' successfully loaded and built.\n");
+    }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Конвеер для обычных HDR SkyBox
     PipelineCreateInfo skyboxInfo{};
     skyboxInfo.name = "SkyBox";
     skyboxInfo.passType = RenderPassType::Skybox;
     skyboxInfo.opacity = PipelineOpacity::Opaque;
     skyboxInfo.useMSAA = true;
-    skyboxInfo.vertexShaderPath = "../Shaders/SkyBox_proc/Source/SkyBox.vert";
-    skyboxInfo.fragmentShaderPath = "../Shaders/SkyBox_proc/Source/SkyBox.frag";
+    skyboxInfo.vertexShaderPath = "../Shaders/SkyBox/Source/SkyBox.vert";
+    skyboxInfo.fragmentShaderPath = "../Shaders/SkyBox/Source/SkyBox.frag";
 
     RealPipeline* skyboxPipeline = _pipelineManager->CreatePipeline(skyboxInfo, colorFormat, depthFormat, _maxSamples);
     if (skyboxPipeline) {
@@ -512,10 +526,19 @@ void VK_APPLICATION::VulkanApplication::init_pipeline_manager(){
     }
 
     // Проходы рендера
-    _renderSystem.AddPass(std::make_unique<ShadowCSMRenderPass>(_init), *_pipelineManager);
-    _renderSystem.AddPass(std::make_unique<ForwardRenderPass>(_init), *_pipelineManager);
-    _renderSystem.AddPass(std::make_unique<SkyBoxRenderPass>(_init), *_pipelineManager);
-    _renderSystem.AddPass(std::make_unique<GridRenderPass>(_init), *_pipelineManager);
+    RenderPass* SCM_RP = _renderSystem.AddPass(std::make_unique<ShadowCSMRenderPass>(_init), *_pipelineManager);
+    RenderPass* Forward_RP = _renderSystem.AddPass(std::make_unique<ForwardRenderPass>(_init), *_pipelineManager);
+    RenderPass* SkyBox_RP = _renderSystem.AddPass(std::make_unique<SkyBoxRenderPass>(_init), *_pipelineManager);
+    RenderPass* Grid_RP = _renderSystem.AddPass(std::make_unique<GridRenderPass>(_init), *_pipelineManager);
+
+    /* МОЖНА ТЕПЕРЬ ОТКЛЮЧАТЬ ПРОХОДЫ! МУХЕХЕХЕХЕ
+    _renderSystem.SetPassEnabled(RenderPassType::Skybox, true);
+    _renderSystem.SetPassEnabled(RenderPassType::Grid, false);
+    _renderSystem.SetPassEnabled(RenderPassType::ShadowCSM, false);
+    */
+
+    _renderSystem.ToggleSkyBox();
+    SkyBoxUpload("../Data/Panoramic/Sky.hdr", _init, _textureManager, SkyBox_RP);
 }
 
 void VK_APPLICATION::VulkanApplication::init_commands(){
@@ -574,9 +597,10 @@ VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& 
     // 4. Каждый кадр крутим ИСХОДНЫЙ вектор на ОБЩИЙ угол
     lightDir = glm::rotateY(START_LIGHT_DIR, totalAngle);
     lightDir = glm::normalize(lightDir);
+    lightDir = START_LIGHT_DIR;
     float sunPower = 8.5f; // Интенсивность для PBR
 
-    sceneData.sunlightDirection = glm::vec4(lightDir, sunPower);
+    sceneData.sunlightDirection = glm::vec4( lightDir, sunPower);
     
     sceneData.sunlightColor = glm::vec4(1.0f, 0.98f, 0.92f, 1.0f);
 

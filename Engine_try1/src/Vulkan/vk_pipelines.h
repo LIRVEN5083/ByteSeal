@@ -87,19 +87,6 @@ public:
     void enable_blending_alphablend();
 };
 
-enum class RenderPassType : uint8_t {
-    Forward,        // Base render
-    ShadowCSM,      // SCM
-    Skybox,         // Sky
-    PostProcess     // Post-effects
-};
-
-enum class PipelineOpacity{
-    Opaque,
-    AlphaTested,
-    Transparent
-};
-
 struct PipelineKey {
     RenderPassType passType;
     PipelineOpacity opacity;

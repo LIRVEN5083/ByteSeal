@@ -120,10 +120,10 @@ void GridRenderPass::Execute(const RenderContext& ctx, const std::vector<RenderO
 
     VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(_init._msaaColorImage.imageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 
-    colorAttachment.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
-    colorAttachment.resolveImageView = _init._drawImage.imageView;
+    colorAttachment.resolveMode = VK_RESOLVE_MODE_NONE;
+    colorAttachment.resolveImageView = VK_NULL_HANDLE;
     colorAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
     VkRenderingAttachmentInfo depthAttachment = vkinit::depth_attachment_info(_init._msaaDepthImage.imageView, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
@@ -262,12 +262,16 @@ void ShadowCSMRenderPass::Execute(const RenderContext& ctx, const std::vector<Re
     vkCmdPipelineBarrier2(ctx.cmd, &depInfo);
 }
 
+
 void SkyBoxRenderPass::Init(PipelineManager& pipelineManager){
-    _skyboxPipeline = pipelineManager.GetPipelineByName("SkyBox");
+     _panoramicPipeline = pipelineManager.GetPipelineByName("SkyBox");
+    _procPipeline = pipelineManager.GetPipelineByName("SkyBox_proc");
 }
 
 void SkyBoxRenderPass::Execute(const RenderContext& ctx, const std::vector<RenderObject>& queue){
-    if (!_skyboxPipeline) return;
+    RealPipeline* activePipeline = (_currentType == SkyBoxType::Procedural) ? _procPipeline : _panoramicPipeline;
+
+    if (!activePipeline) return;
 
     VkClearValue depthClear;
     depthClear.depthStencil.depth = 1.0f;
@@ -302,17 +306,27 @@ void SkyBoxRenderPass::Execute(const RenderContext& ctx, const std::vector<Rende
     VkRect2D scissor = { {0, 0}, ctx.drawExtent };
     vkCmdSetScissor(ctx.cmd, 0, 1, &scissor);
 
-    vkCmdBindPipeline(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _skyboxPipeline->pipeline);
-    vkCmdBindDescriptorSets(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _skyboxPipeline->layout, 0, 1, &ctx.globalDescriptor, 0, nullptr);
+    vkCmdBindPipeline(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, activePipeline->pipeline);
+    vkCmdBindDescriptorSets(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, activePipeline->layout, 0, 2, &ctx.globalDescriptor, 0, nullptr);
 
     vkCmdDraw(ctx.cmd, 3, 1, 0, 0);
 
     vkCmdEndRendering(ctx.cmd);
 }
 
-void RenderSystem::AddPass(std::unique_ptr<RenderPass> pass, PipelineManager& pipelineManager){
+void SkyBoxRenderPass::SetPanoramicTexture(const GPUTexture& texture){
+    _panoramicTexture = texture;
+    _hasTexture = true;
+}
+
+RenderPass* RenderSystem::AddPass(std::unique_ptr<RenderPass> pass, PipelineManager& pipelineManager){
+    RenderPass* rawPassPtr = pass.get();
+
     pass->Init(pipelineManager);
+
     _renderPasses.push_back(std::move(pass));
+
+    return rawPassPtr;
 }
 
 void RenderSystem::Submit(RenderObject ro){
@@ -342,13 +356,69 @@ void RenderSystem::Draw(VkCommandBuffer cmd, VkExtent2D drawExtent, VkDescriptor
 
     // Последовательно выполняем все зарегистрированные пассы
     for (auto& pass : _renderPasses) {
+        // Если проход выключен то скип
+        if (!pass->IsEnabled()){continue;}
+
         pass->Execute(ctx, _mainDrawQueue);
     }
+
+    ExecuteMSAAResolve(cmd, drawExtent);
 }
 
 void RenderSystem::RefreshPasses(PipelineManager& pipelineManager){
     for (auto& pass : _renderPasses) {
         pass->Init(pipelineManager);
     }
-    std::cout << "[RenderSystem] All render passes successfully re-linked to new pipelines.\n";
+    std::cout << "[RenderSystem]: All render passes successfully re-linked to new pipelines.\n";
+}
+
+void RenderSystem::SetPassEnabled(RenderPassType type, bool enabled) {
+    for (auto& pass : _renderPasses) {
+        if (pass->GetType() == type) {
+            pass->SetEnabled(enabled);
+            break;
+        }
+    }
+}
+
+void RenderSystem::ExecuteMSAAResolve(VkCommandBuffer cmd, VkExtent2D drawExtent){
+    //vkutil::transition_image(cmd, _init._drawImage.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+    VkRenderingAttachmentInfo colorAttachment{};
+    colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR;
+    colorAttachment.imageView = _init._msaaColorImage.imageView;
+    colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+
+    colorAttachment.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
+    colorAttachment.resolveImageView = _init._drawImage.imageView;
+    colorAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+    VkRenderingInfo renderingInfo{};
+    renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO_KHR;
+    renderingInfo.renderArea = { {0, 0}, drawExtent };
+    renderingInfo.layerCount = 1;
+    renderingInfo.colorAttachmentCount = 1;
+    renderingInfo.pColorAttachments = &colorAttachment;
+    renderingInfo.pDepthAttachment = nullptr;
+
+    vkCmdBeginRendering(cmd, &renderingInfo);
+    vkCmdEndRendering(cmd);
+}
+
+void RenderSystem::ToggleSkyBox(){
+    for (auto& pass : _renderPasses) {
+        if (pass->GetType() == RenderPassType::Skybox) {
+            auto* skyboxPass = static_cast<SkyBoxRenderPass*>(pass.get());
+            fmt::print("[RenderSystem]: Skybox switched to Procedural (Hosek-Wilkie).\n");
+            if (skyboxPass->GetSkyboxType() == SkyBoxType::Panoramic) {
+                skyboxPass->SetSkyboxType(SkyBoxType::Procedural);
+            } else {
+                skyboxPass->SetSkyboxType(SkyBoxType::Panoramic);
+                fmt::print("[RenderSystem]: Skybox switched to Panoramic (HDR).\n");
+            }
+            break;
+        }
+    }
 }

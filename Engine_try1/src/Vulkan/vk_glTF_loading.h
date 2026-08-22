@@ -5,6 +5,8 @@
 #include <filesystem>
 #include <unordered_map>
 
+#include "vk_render.h"
+
 #ifdef None
 #undef None
 #endif
@@ -134,7 +136,7 @@ struct SamplerOptions{
 class TextureManager{
 public:
     const uint32_t MAX_BINDLESS_TEXTURES = 1000;
-    const uint32_t BINDING_COUNT = 2;
+    const uint32_t BINDING_COUNT = 3;
 
     void init(VK_INIT_ENGINE::_inited_engine& _init);
 
@@ -145,6 +147,7 @@ public:
         const SamplerOptions& params = {},
         ModelLifetime lifetime = ModelLifetime::Dynamic);
 
+    void FreeSkyboxTexutre(GPUTexture& skyboxTexture);
     void FreeTexture(GPUTexture& texture, uint32_t binding = 0);
     void DestroyAllocationData();
 
@@ -173,8 +176,9 @@ private:
     // Хэш ддя сэмплеров
     std::unordered_map<VkSamplerCreateInfo, VkSampler, vkutil::SamplerCreateInfoHash, vkutil::SamplerCreateInfoEqual> _samplerCache;
 
-    std::vector<uint32_t> _nextIndices{0, 0};
-    std::vector<std::vector<uint32_t>> _freeIndices{ {}, {} };
+    std::vector<uint32_t> _nextIndices{0, 0, 0};
+    std::vector<std::vector<uint32_t>> _freeIndices{ {}, {}, {} };
+    GPUTexture _activeSkyboxTexture{};
 };
 
 struct AABB {
@@ -253,6 +257,11 @@ namespace VK_APPLICATION{
 
 
 
+std::optional<GPUTexture> load_panoramic_hdr(VK_INIT_ENGINE::_inited_engine& _init, TextureManager& textureManager,
+                                             const float* pixelData, uint32_t width, uint32_t height);
+
+class RenderPass;
+void SkyBoxUpload(const std::string& filePath, VK_INIT_ENGINE::_inited_engine& _init, TextureManager& textureManager, RenderPass *renderPass);
 
 // Парсинг текстур и их аллокация
 std::optional<GPUTexture> load_image(VK_INIT_ENGINE::_inited_engine& _init, TextureManager& textureManager,
