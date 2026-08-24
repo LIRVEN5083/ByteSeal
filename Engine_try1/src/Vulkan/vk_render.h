@@ -1,7 +1,7 @@
 #pragma once
 struct RealPipeline;
 #include "vk_types.h"
-#include "vk_glTF_loading.h"
+
 
 struct RenderObject{
     VkBuffer indexBuffer;
@@ -75,6 +75,7 @@ class ForwardRenderPass : public RenderPass{
 public:
     ForwardRenderPass(VK_INIT_ENGINE::_inited_engine& init)
         : RenderPass(init, RenderPassType::Forward){}
+    ~ForwardRenderPass() override = default;
 
     void Init(PipelineManager& pipelineManager) override;
 
@@ -145,7 +146,7 @@ public:
 private:
     RealPipeline* _procPipeline{ nullptr };
     RealPipeline* _panoramicPipeline{ nullptr };
-    SkyBoxType _currentType{ SkyBoxType::Procedural };
+    SkyBoxType _currentType{ SkyBoxType::Panoramic };
 
     GPUTexture _panoramicTexture{};
     bool _hasTexture{ false };

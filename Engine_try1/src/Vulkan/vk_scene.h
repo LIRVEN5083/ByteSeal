@@ -153,7 +153,7 @@ public:
     VkImageView GetShadowTextureView() const;
     VkImage GetShadowImage() const;
 
-    void cleanUp();
+    void cleanup();
 
 private:
     SkyCoefficients ComputeHosekWilkieParams(float turbidity, const glm::vec3& albedo, float sunElevation);

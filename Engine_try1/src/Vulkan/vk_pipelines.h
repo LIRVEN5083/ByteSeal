@@ -119,6 +119,7 @@ struct PipelineCreateInfo {
     // Shaders
     std::string vertexShaderPath;
     std::string fragmentShaderPath;
+    std::string computeShaderPath;
 };
 
 
@@ -136,10 +137,12 @@ struct RealPipeline {
 
     std::string vertexShaderPath;
     std::string fragmentShaderPath;
+    std::string computeShaderPath;
 
     VkFormat colorFormat{ VK_FORMAT_UNDEFINED };
     VkFormat depthFormat{ VK_FORMAT_UNDEFINED };
     VkSampleCountFlagBits maxSamples{ VK_SAMPLE_COUNT_1_BIT };
+    bool isCompute = false;
 };
 
 class PipelineManager{
@@ -147,6 +150,10 @@ public:
     PipelineManager(VkDevice device) : _device(device){}
 
     void InitCommonLayout(VkDescriptorSetLayout globalSetLayout, VkDescriptorSetLayout bindlessSetLayout);
+
+    RealPipeline* CreateComputePipeline(const PipelineCreateInfo& info);
+
+    RealPipeline* CreatePipelineFromMemory(const PipelineCreateInfo& info, const std::vector<uint32_t>& compCode);
 
     RealPipeline* CreatePipeline(const PipelineCreateInfo& info, VkFormat colorFormat, VkFormat depthFormat, VkSampleCountFlagBits maxSamples);
 

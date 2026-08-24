@@ -312,7 +312,7 @@ public:
     // Метод очистки моделей
     void destroy_model(uint32_t id);
     void destroy_dynamic_models();
-    void destroy_all();
+    void cleanup();
 
     VkSampler GetDefaultSampler() const{ return _textureManager.GetDefaultSampler(); }
 

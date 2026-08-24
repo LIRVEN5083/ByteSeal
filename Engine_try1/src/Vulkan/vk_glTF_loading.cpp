@@ -1454,7 +1454,7 @@ void ModelManager::destroy_dynamic_models() {
 }
 
 
-void ModelManager::destroy_all(){
+void ModelManager::cleanup(){
     vkDeviceWaitIdle(_init._device);
     for (auto& model : _models) {
         // Чистим модель ТОЛЬКО если этот слот сейчас занят живым объектом

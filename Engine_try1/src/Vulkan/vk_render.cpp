@@ -1,5 +1,5 @@
 #include "vk_render.h"
-
+#include "vk_glTF_loading.h"
 
 void ForwardRenderPass::Init(PipelineManager& pipelineManager){
     _opaquePipeline      = pipelineManager.GetPipeline(RenderPassType::Forward, PipelineOpacity::Opaque);
@@ -269,8 +269,16 @@ void SkyBoxRenderPass::Init(PipelineManager& pipelineManager){
 }
 
 void SkyBoxRenderPass::Execute(const RenderContext& ctx, const std::vector<RenderObject>& queue){
-    RealPipeline* activePipeline = (_currentType == SkyBoxType::Procedural) ? _procPipeline : _panoramicPipeline;
+    RealPipeline* activePipeline = nullptr;
 
+    switch (_currentType) {
+    case SkyBoxType::Procedural:
+        activePipeline = _procPipeline;
+        break;
+    case SkyBoxType::Panoramic:
+        activePipeline = _panoramicPipeline;
+        break;
+    }
     if (!activePipeline) return;
 
     VkClearValue depthClear;
@@ -408,17 +416,30 @@ void RenderSystem::ExecuteMSAAResolve(VkCommandBuffer cmd, VkExtent2D drawExtent
 }
 
 void RenderSystem::ToggleSkyBox(){
+    // Дебаг-принт, чтобы понять, вызывается ли метод вообще
+    fmt::print("[Debug]: ToggleSkyBox called. Total passes: {}\n", _renderPasses.size());
+
     for (auto& pass : _renderPasses) {
         if (pass->GetType() == RenderPassType::Skybox) {
             auto* skyboxPass = static_cast<SkyBoxRenderPass*>(pass.get());
-            fmt::print("[RenderSystem]: Skybox switched to Procedural (Hosek-Wilkie).\n");
+
+            // Выведем тип ДО изменения
+            fmt::print("[Debug]: Found SkyBox pass. Current internal type before toggle: {}\n", (int)skyboxPass->GetSkyboxType());
+
             if (skyboxPass->GetSkyboxType() == SkyBoxType::Panoramic) {
                 skyboxPass->SetSkyboxType(SkyBoxType::Procedural);
+                fmt::print("[RenderSystem]: Skybox switched to Procedural (Hosek-Wilkie).\n");
             } else {
                 skyboxPass->SetSkyboxType(SkyBoxType::Panoramic);
                 fmt::print("[RenderSystem]: Skybox switched to Panoramic (HDR).\n");
             }
-            break;
+
+            // Выведем тип ПОСЛЕ изменения
+            fmt::print("[Debug]: Current internal type after toggle: {}\n", (int)skyboxPass->GetSkyboxType());
+            return; // Заменяем break на return для надежности
         }
     }
+    fmt::print("[Warning]: SkyBox render pass NOT found in _renderPasses!\n");
 }
+
+

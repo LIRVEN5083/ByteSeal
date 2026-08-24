@@ -173,7 +173,7 @@ void VK_GUI::GUI::draw_model_list_overlay(VK_INIT_ENGINE::_inited_engine& _init,
         ImGui::SameLine();
         if (ImGui::Button("Destroy AM", ImVec2(halfButtonWidth, 0.0f))) {
             _scene->DestroyAllEntites();
-            _modelManager.destroy_all();
+            _modelManager.cleanup();
         }
 
         if (ImGui::Button("Recompile shaders", ImVec2(300.0f, 0.0f))) {

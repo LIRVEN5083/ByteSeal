@@ -452,7 +452,7 @@ VkImage LightManager::GetShadowImage() const{
     return m_shadowArrayTexture.image.image;
 }
 
-void LightManager::cleanUp(){
+void LightManager::cleanup(){
     if (m_shadowArrayTexture.image.image != VK_NULL_HANDLE) {
         m_textureManager.FreeTexture(m_shadowArrayTexture, 1);
         m_shadowArrayTexture.globalIndex = 0;

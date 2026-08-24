@@ -54,6 +54,27 @@
         }                                                                      \
     } while (0)
 
+// Очередь удаления
+// Короче мы используем функцию для создание и пишем лямбду на удаление.
+// А когда вызываем flush то удаляем накопленую очередь функций (которые удаляют созданные обьекты)
+struct DeletionQueue
+{
+    std::deque<std::function<void()>> deletors;
+
+    void push_function(std::function<void()>&& function) {
+        deletors.push_back(function);
+    }
+
+    void flush() {
+        // reverse iterate the deletion queue to execute all the functions
+        for (auto it = deletors.rbegin(); it != deletors.rend(); it++) {
+            (*it)(); //call functors
+        }
+
+        deletors.clear();
+    }
+};
+
 struct AllocatedImage {
     VkImage image;
     VkImageView imageView;
@@ -110,8 +131,14 @@ namespace VK_INIT_ENGINE {
         VkPhysicalDeviceFeatures _deviceFeatures;
         VkDevice _device;
         VkSurfaceKHR _surface;
+
+
         VkQueue _graphicsQueue;
         uint32_t _graphicsQueueFamily;
+
+        VkQueue _computeQueue;
+        uint32_t _computeQueueFamily;
+
         VmaAllocator _allocator;
 
         // swapChain - Буфер кадра
@@ -152,7 +179,8 @@ enum class RenderPassType : uint8_t {
     Grid,
     ShadowCSM,      // SCM
     Skybox,         // Sky
-    PostProcess     // Post-effects
+    PostProcess,     // Post-effects
+    Compute
 };
 
 enum class PipelineOpacity{
