@@ -386,8 +386,79 @@ void PipelineManager::InitCommonLayout(VkDescriptorSetLayout globalSetLayout, Vk
     }
 }
 
+RealPipeline* PipelineManager::CreateComputePipeline(const PipelineCreateInfo& info){
+    if (info.computeShaderPath.empty()) {
+        fmt::print(stderr, "[PipelineManager ERROR] Compute shader path is empty for {}\n", info.name);
+        return nullptr;
+    }
+
+    std::vector<uint32_t> compCode = UTILS::CompileGLSLToSPIRV(info.computeShaderPath);
+    if (compCode.empty()) {
+        fmt::print(stderr, "[PipelineManager ERROR] Compute shader compilation failed for {}\n", info.name);
+        return nullptr;
+    }
+
+    return CreatePipelineFromMemory(info, compCode);
+}
+
+RealPipeline* PipelineManager::CreatePipelineFromMemory(const PipelineCreateInfo& info,
+    const std::vector<uint32_t>& compCode){
+    if (_pipelinesByName.find(info.name) != _pipelinesByName.end()) {
+        return &_pipelinesByName[info.name];
+    }
+
+    VkShaderModule compModule{ VK_NULL_HANDLE };
+    VkShaderModuleCreateInfo createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    createInfo.codeSize = compCode.size() * sizeof(uint32_t);
+    createInfo.pCode = compCode.data();
+
+    if (vkCreateShaderModule(_device, &createInfo, nullptr, &compModule) != VK_SUCCESS) {
+        fmt::print(stderr, "[PipelineManager ERROR] Failed to create VkShaderModule for compute {}\n", info.name);
+        return nullptr;
+    }
+
+    VkPipelineLayout activeLayout = _commonLayout;
+
+    VkComputePipelineCreateInfo computePipelineInfo{};
+    computePipelineInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+    computePipelineInfo.layout = activeLayout;
+
+    computePipelineInfo.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    computePipelineInfo.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+    computePipelineInfo.stage.module = compModule;
+    computePipelineInfo.stage.pName = "main"; // Точка входа в GLSL
+
+    VkPipeline newPipeline{ VK_NULL_HANDLE };
+    if (vkCreateComputePipelines(_device, VK_NULL_HANDLE, 1, &computePipelineInfo, nullptr, &newPipeline) != VK_SUCCESS) {
+        fmt::print(stderr, "[PipelineManager ERROR] vkCreateComputePipelines returned error for {}\n", info.name);
+        vkDestroyShaderModule(_device, compModule, nullptr);
+        return nullptr;
+    }
+
+    vkDestroyShaderModule(_device, compModule, nullptr);
+
+    // Генерируем ID конвейера
+    uint16_t newId = static_cast<uint16_t>(_pipelinesByName.size());
+
+    // Сохраняем в твою общую структуру RealPipeline
+    RealPipeline pipelineData{};
+    pipelineData.name              = info.name;
+    pipelineData.pipeline          = newPipeline;
+    pipelineData.layout            = activeLayout;
+    pipelineData.passType          = RenderPassType::Compute;
+    pipelineData.opacity           = PipelineOpacity::Opaque;
+    pipelineData.id                = newId;
+    pipelineData.isCompute         = true; //Вычеслюшкииии
+    pipelineData.computeShaderPath = info.computeShaderPath;
+
+    _pipelinesByName[info.name] = pipelineData;
+
+    return &_pipelinesByName[info.name];
+}
+
 RealPipeline* PipelineManager::CreatePipeline(const PipelineCreateInfo& info, VkFormat colorFormat,
-    VkFormat depthFormat, VkSampleCountFlagBits maxSamples){
+                                              VkFormat depthFormat, VkSampleCountFlagBits maxSamples){
 
     std::vector<uint32_t> vertCode = UTILS::CompileGLSLToSPIRV(info.vertexShaderPath);
     if (vertCode.empty()) {
@@ -567,6 +638,12 @@ bool PipelineManager::DestroyPipeline(const std::string& name){
         vkDestroyPipeline(_device, it->second.pipeline, nullptr);
     }
 
+    if (!it->second.isCompute) {
+        PipelineKey key{ it->second.passType, it->second.opacity };
+        _pipelinesByKey.erase(key);
+    }
+
+
     // Удаляем запись из хэш-карты менеджера
     _pipelinesByName.erase(it);
     return true;
@@ -589,8 +666,18 @@ bool PipelineManager:: ReloadAllPipelines(){
 
     std::unordered_map<std::string, std::vector<uint32_t>> newVertCodes;
     std::unordered_map<std::string, std::vector<uint32_t>> newFragCodes;
+    std::unordered_map<std::string, std::vector<uint32_t>> newCompCodes;
 
     for (const auto& [name, realPipeline] : _pipelinesByName) {
+        // Если конвеер вычсилительный то хуячим вот сюда
+        if (realPipeline.isCompute) {
+            auto compCode = UTILS::CompileGLSLToSPIRV(realPipeline.computeShaderPath);
+            if (compCode.empty()) {
+                std::cerr << "[PipelineManager] Hot-reload aborted due to Compute shader compiler errors in " << name << ".\n";
+                return false;
+            }
+            newCompCodes[name] = compCode;
+        }
         // Вершинный шейдер компилируем всегда
         auto vertCode = UTILS::CompileGLSLToSPIRV(realPipeline.vertexShaderPath);
         if (vertCode.empty()) {
@@ -619,6 +706,7 @@ bool PipelineManager:: ReloadAllPipelines(){
         PipelineOpacity opacity;
         std::string vertPath;
         std::string fragPath;
+        std::string compPath;
         VkFormat colorFormat;
         VkFormat depthFormat;
         VkSampleCountFlagBits maxSamples;
@@ -626,10 +714,12 @@ bool PipelineManager:: ReloadAllPipelines(){
         // Прикол такой что в бинарное дерево при перезагрузке конвееры загружаются случайно, а не в старом порядке
         // из-за этого случайные айди конвееров ломают отрисовку в CullingAndSubmit
         uint16_t oldID;
+        bool isCompute;
 
         // Бинарные шейдеры
         std::vector<uint32_t> vertCode;
         std::vector<uint32_t> fragCode;
+        std::vector<uint32_t> compCode;
     };
     std::vector<PipelineBackup> backupQueue;
 
@@ -640,12 +730,15 @@ bool PipelineManager:: ReloadAllPipelines(){
             realPipeline.opacity,
             realPipeline.vertexShaderPath,
             realPipeline.fragmentShaderPath,
+            realPipeline.computeShaderPath,
             realPipeline.colorFormat,
             realPipeline.depthFormat,
             realPipeline.maxSamples,
             realPipeline.id,
+            realPipeline.isCompute,
             newVertCodes[name],
-            newFragCodes[name]
+            newFragCodes[name],
+            newCompCodes[name]
         });
 
         // Сразу уничтожаем старый запеченный конвейер на GPU
@@ -661,7 +754,8 @@ bool PipelineManager:: ReloadAllPipelines(){
         return a.oldID < b.oldID;
     });
 
-    for (const auto& pipeline : backupQueue) {
+    for (const auto& pipeline : backupQueue)
+    {
         PipelineCreateInfo info{};
         info.name = pipeline.name;
         info.passType = pipeline.passType;
@@ -669,16 +763,27 @@ bool PipelineManager:: ReloadAllPipelines(){
         info.useMSAA = (pipeline.maxSamples > VK_SAMPLE_COUNT_1_BIT);
         info.vertexShaderPath = pipeline.vertPath;
         info.fragmentShaderPath = pipeline.fragPath;
+        info.computeShaderPath = pipeline.compPath;
 
-        RealPipeline* rebuilt = CreatePipelineFromMemory(
-            info,
-            pipeline.vertCode, // const std::vector<uint32_t>& vertCode
-            pipeline.fragCode, // const std::vector<uint32_t>& fragCode
-            pipeline.colorFormat,
-            pipeline.depthFormat,
-            pipeline.maxSamples);
-        if (rebuilt){
-            rebuilt->id = pipeline.oldID;
+        RealPipeline* rebuilt = nullptr;
+
+        if (pipeline.isCompute) {
+            // Сам запишет только в _pipelinesByName
+            rebuilt = CreatePipelineFromMemory(info, pipeline.compCode);
+        }
+        else {
+            // Сам внутри себя запишет и в _pipelinesByName, и в _pipelinesByKey
+            rebuilt = CreatePipelineFromMemory(
+                info,
+                pipeline.vertCode,
+                pipeline.fragCode,
+                pipeline.colorFormat,
+                pipeline.depthFormat,
+                pipeline.maxSamples);
+        }
+
+        if (rebuilt) {
+            rebuilt->id = pipeline.oldID; // Просто возвращаем старый ID на место
         }
         else {
             std::cerr << "[CRITICAL ENGINE ERROR]: Failed to recreate pipeline '" << pipeline.name << "' during crude rebuild!\n";

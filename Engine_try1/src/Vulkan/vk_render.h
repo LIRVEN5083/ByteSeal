@@ -1,7 +1,7 @@
 #pragma once
 struct RealPipeline;
 #include "vk_types.h"
-#include "vk_glTF_loading.h"
+
 
 struct RenderObject{
     VkBuffer indexBuffer;
@@ -145,7 +145,7 @@ public:
 private:
     RealPipeline* _procPipeline{ nullptr };
     RealPipeline* _panoramicPipeline{ nullptr };
-    SkyBoxType _currentType{ SkyBoxType::Procedural };
+    SkyBoxType _currentType{ SkyBoxType::Panoramic };
 
     GPUTexture _panoramicTexture{};
     bool _hasTexture{ false };

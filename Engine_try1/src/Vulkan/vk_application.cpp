@@ -524,6 +524,53 @@ void VK_APPLICATION::VulkanApplication::init_pipeline_manager(){
     if (skyboxPipeline) {
         fmt::print("[PipelineManager] Pipeline 'SkyBox' successfully loaded and built.\n");
     }
+                            // TODO: --ВЫЧЕСЛИТЕЛЬНЫЕ КОНВЕЕРЫ И ШЕЙДЕРЫ!--
+    //TODO: IBL
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Конвеер для ETC (На входе .hdr понарама)
+    PipelineCreateInfo iblEquirectInfo{};
+    iblEquirectInfo.name = "IBL_EquirectToCubemap";
+    iblEquirectInfo.passType = RenderPassType::Compute;
+    iblEquirectInfo.computeShaderPath = "../Shaders/IBL/Source/panorama.comp";
+
+    RealPipeline* iblEquirectPipeline = _pipelineManager->CreateComputePipeline(iblEquirectInfo);
+    if (iblEquirectPipeline) {
+        fmt::print("[PipelineManager] Compute Pipeline 'IBL_EquirectToCubemap' successfully loaded and built.\n");
+    }
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Конвеер для IC (Делает дифузную свертку)
+    PipelineCreateInfo iblIrradianceInfo{};
+    iblIrradianceInfo.name = "IBL_DiffuseIrradiance";
+    iblIrradianceInfo.passType = RenderPassType::Compute;
+    iblIrradianceInfo.computeShaderPath = "../Shaders/IBL/Source/diffuse.comp";
+
+    RealPipeline* iblIrradiancePipeline = _pipelineManager->CreateComputePipeline(iblIrradianceInfo);
+    if (iblIrradiancePipeline) {
+        fmt::print("[PipelineManager] Compute Pipeline 'IBL_DiffuseIrradiance' successfully loaded and built.\n");
+    }
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Конвеер для Specular (Генерирует мип уровни для зеркального отражения)
+    PipelineCreateInfo iblSpecularInfo{};
+    iblSpecularInfo.name = "IBL_SpecularPreFilter";
+    iblSpecularInfo.passType = RenderPassType::Compute;
+    iblSpecularInfo.computeShaderPath = "../Shaders/IBL/Source/specular.comp";
+
+    RealPipeline* iblSpecularPipeline = _pipelineManager->CreateComputePipeline(iblSpecularInfo);
+    if (iblSpecularPipeline) {
+        fmt::print("[PipelineManager] Compute Pipeline 'IBL_SpecularPreFilter' successfully loaded and built.\n");
+    }
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Конвеер для BRDF LUT (Для генерации таблицы углов при старте движка)
+    PipelineCreateInfo iblBrdfLUTInfo{};
+    iblBrdfLUTInfo.name = "IBL_BrdfLUT";
+    iblBrdfLUTInfo.passType = RenderPassType::Compute;
+    iblBrdfLUTInfo.computeShaderPath = "../Shaders/IBL/Source/BRDF.comp"; // Или схожее имя
+
+    RealPipeline* iblBrdfLUTPipeline = _pipelineManager->CreateComputePipeline(iblBrdfLUTInfo);
+    if (iblBrdfLUTPipeline) {
+        fmt::print("[PipelineManager] Compute Pipeline 'IBL_BrdfLUT' successfully loaded and built.\n");
+    }
+
 
     // Проходы рендера
     RenderPass* SCM_RP = _renderSystem.AddPass(std::make_unique<ShadowCSMRenderPass>(_init), *_pipelineManager);
@@ -537,8 +584,8 @@ void VK_APPLICATION::VulkanApplication::init_pipeline_manager(){
     _renderSystem.SetPassEnabled(RenderPassType::ShadowCSM, false);
     */
 
-    _renderSystem.ToggleSkyBox();
     SkyBoxUpload("../Data/Panoramic/Sky.hdr", _init, _textureManager, SkyBox_RP);
+    //_renderSystem.ToggleSkyBox();
 }
 
 void VK_APPLICATION::VulkanApplication::init_commands(){
@@ -587,14 +634,11 @@ VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& 
     const glm::vec3 START_LIGHT_DIR = glm::normalize(glm::vec3(0.15f, 0.2f, 0.95f));
     const float rotationSpeed = 0.5f;
 
-    // 2. Считаем, сколько СЕКУНД прошло с самого запуска программы
     auto now = std::chrono::high_resolution_clock::now();
     float totalTime = std::chrono::duration<float>(now - _delta.startTime).count();
 
-    // 3. Считаем общий угол поворота от начальной точки
     float totalAngle = rotationSpeed * totalTime;
 
-    // 4. Каждый кадр крутим ИСХОДНЫЙ вектор на ОБЩИЙ угол
     lightDir = glm::rotateY(START_LIGHT_DIR, totalAngle);
     lightDir = glm::normalize(lightDir);
     lightDir = START_LIGHT_DIR;

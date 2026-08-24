@@ -152,7 +152,8 @@ enum class RenderPassType : uint8_t {
     Grid,
     ShadowCSM,      // SCM
     Skybox,         // Sky
-    PostProcess     // Post-effects
+    PostProcess,     // Post-effects
+    Compute
 };
 
 enum class PipelineOpacity{
