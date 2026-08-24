@@ -13,10 +13,10 @@ void VK_APPLICATION::VulkanApplication::cleanup(){
         _frames[i]._deletionQueue.flush();
     }
 
-    _lightManager->cleanUp();
+    _lightManager->cleanup();
     _pipelineManager->cleanup();
     _activeScene->DestroyAllEntites();
-    _modelManager.destroy_all();
+    _modelManager.cleanup();
     _meshManager.DestroyAllocationData();
     _textureManager.DestroyAllocationData();
 
