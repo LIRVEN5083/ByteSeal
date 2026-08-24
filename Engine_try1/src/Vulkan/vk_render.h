@@ -75,6 +75,7 @@ class ForwardRenderPass : public RenderPass{
 public:
     ForwardRenderPass(VK_INIT_ENGINE::_inited_engine& init)
         : RenderPass(init, RenderPassType::Forward){}
+    ~ForwardRenderPass() override = default;
 
     void Init(PipelineManager& pipelineManager) override;
 

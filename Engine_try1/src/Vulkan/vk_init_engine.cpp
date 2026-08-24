@@ -349,8 +349,10 @@ VK_INIT_ENGINE::VulkanInitEngine::VulkanInitEngine(bool Validation_layers){
     this->ready_init._chosenGPU = physicalDevice.physical_device;
 
     this->ready_init._graphicsQueue = vkbDevice.get_queue(vkb::QueueType::graphics).value();
-
     this->ready_init._graphicsQueueFamily = vkbDevice.get_queue_index(vkb::QueueType::graphics).value();
+
+    this->ready_init._computeQueue = vkbDevice.get_queue(vkb::QueueType::compute).value();
+    this->ready_init._computeQueueFamily = vkbDevice.get_queue_index(vkb::QueueType::compute).value();
 
     vkGetPhysicalDeviceFeatures(ready_init._chosenGPU, &ready_init._deviceFeatures);
 

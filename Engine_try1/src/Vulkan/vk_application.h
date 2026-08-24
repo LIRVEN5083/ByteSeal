@@ -1,6 +1,7 @@
 #pragma once
 #include "vk_types.h"
 #include "vk_render.h"
+#include "vk_compute.h"
 #include "vk_scene.h"
 #include "vk_descriptors.h"
 #include "vk_scene.h"
@@ -63,6 +64,7 @@ namespace VK_APPLICATION {
         MeshManager _meshManager;
         ModelManager _modelManager{_init, _meshManager, _textureManager};
         RenderSystem _renderSystem{_init};
+        ComputeRenderSystem _computeSystem{_init};
         std::unique_ptr<Scene> _activeScene;
         std::unique_ptr<LightManager> _lightManager;
         VK_GUI::GUI _gui;
@@ -72,7 +74,7 @@ namespace VK_APPLICATION {
         void destroy_swapchain();
 
         void init_descriptors();
-        void init_pipeline_manager();
+        void init_render();
         void init_commands();
         void init_scene();
 

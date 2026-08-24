@@ -19,6 +19,7 @@ void VK_APPLICATION::VulkanApplication::cleanup(){
     _modelManager.cleanup();
     _meshManager.DestroyAllocationData();
     _textureManager.DestroyAllocationData();
+    _computeSystem.cleanup();
 
     for (int i = 0; i < FRAME_OVERLAP; i++) {
         vkinit::destroy_buffer(_frames[i].gpuSceneDataBuffer, _init._allocator);
@@ -51,7 +52,7 @@ void VK_APPLICATION::VulkanApplication::run(){
     init_descriptors();
     _maxSamples = vkinit::max_samples(_init);
     init_scene();
-    init_pipeline_manager();
+    init_render();
 
     SDL_Event e;
     bool bQuit = false;
@@ -173,6 +174,11 @@ void VK_APPLICATION::VulkanApplication::renderLoop(){
     vkutil::transition_image(cmd, _init._msaaDepthImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL); // Наша 4х глубина
     vkutil::transition_image(cmd, _init._drawImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL); // Наш 1х resolve-таргет
 
+    VkDescriptorSet bindlessSet = _textureManager.GetTextureSet();
+
+    // Начинаем паралельно делать вычисления
+    bool computeSubmitted = _computeSystem.Dispatch(bindlessSet);
+
     // ПОДГОТОВКА ОЧЕРЕДИ
     _renderSystem.ClearQueue();
 
@@ -182,10 +188,9 @@ void VK_APPLICATION::VulkanApplication::renderLoop(){
 
     // Отрисовка RenderObject
     _renderSystem.PrepareFrame();
-    VkDescriptorSet bindlessSet = _textureManager.GetTextureSet();
+    VkSemaphore waitCompute = _computeSystem.GetComputeSemaphore();
     _renderSystem.Draw(cmd, _drawExtent, globalDescriptor, bindlessSet, *_pipelineManager, *_lightManager);
-
-    // Захардкоженный интерефейс
+    // Рисуем интерфейс
     _gui.draw_imgui(_init, cmd, _drawExtent);
 
     vkutil::transition_image(cmd, _init._drawImage.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
@@ -204,15 +209,42 @@ void VK_APPLICATION::VulkanApplication::renderLoop(){
     // ОТПРАВКА НА GPU (SUBMIT)
     VkCommandBufferSubmitInfo cmdSubmitInfo = vkinit::command_buffer_submit_info(cmd);
 
-    // Синхронизируем семафоры: GPU ждет сигнала от Swapchain перед выгрузкой цвета
-    VkSemaphoreSubmitInfo waitInfo = vkinit::semaphore_submit_info(VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR, _init._swapchainSemaphores[frameId]);
-    // GPU сигналит в _renderSemaphores, когда полностью закончит блайтить пиксели
-    VkSemaphoreSubmitInfo signalInfo = vkinit::semaphore_submit_info(VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT_KHR, _init._renderSemaphores[swapchainImageIndex]);
+    // Массив семафоров
+    std::vector<VkSemaphoreSubmitInfo> waitInfos;
+    waitInfos.reserve(2);
 
-    VkSubmitInfo2 submit = vkinit::submit_info(&cmdSubmitInfo, &signalInfo, &waitInfo);
+    waitInfos.push_back(vkinit::semaphore_submit_info(
+        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR,
+        _init._swapchainSemaphores[frameId]
+    ));
 
-    // Отправляем буфер в очередь и передаем Fence из нашего ядра.
-    // Когда GPU закончит этот кадр, Fence автоматически откроется
+    // Если нихуя нету - то нихуя не ждём
+    if (computeSubmitted) {
+        VkSemaphore waitCompute = _computeSystem.GetComputeSemaphore();
+        if (waitCompute != VK_NULL_HANDLE) {
+            waitInfos.push_back(vkinit::semaphore_submit_info(
+                VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT_KHR,
+                waitCompute
+            ));
+        }
+    }
+    // Ждать пока ебанные вычислительные шейдеры не закончат выполнятся
+    VkSemaphoreSubmitInfo signalInfo = vkinit::semaphore_submit_info(
+        VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT_KHR,
+        _init._renderSemaphores[swapchainImageIndex]
+    );
+
+    // Просто наебнул короче 2 семафора в рендере под ДВА ассинхроных рендера
+    VkSubmitInfo2 submit{};
+    submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+    submit.pNext = nullptr;
+    submit.commandBufferInfoCount = 1;
+    submit.pCommandBufferInfos = &cmdSubmitInfo;
+    submit.signalSemaphoreInfoCount = 1;
+    submit.pSignalSemaphoreInfos = &signalInfo;
+    submit.waitSemaphoreInfoCount = static_cast<uint32_t>(waitInfos.size());
+    submit.pWaitSemaphoreInfos = waitInfos.data();
+
     VK_CHECK(vkQueueSubmit2(_init._graphicsQueue, 1, &submit, _init._renderFence[frameId]));
 
     // ВЫВОД НА ЭКРАН (PRESENT)
@@ -405,7 +437,7 @@ void VK_APPLICATION::VulkanApplication::init_descriptors(){
     }
 }
 
-void VK_APPLICATION::VulkanApplication::init_pipeline_manager(){
+void VK_APPLICATION::VulkanApplication::init_render(){
     _pipelineManager = std::make_unique<PipelineManager>(_init._device);
 
     VkDescriptorSetLayout textureLayout = _textureManager.GetTextureLayout();
@@ -415,6 +447,7 @@ void VK_APPLICATION::VulkanApplication::init_pipeline_manager(){
         std::abort();
     }
 
+    _computeSystem.init();
     _pipelineManager->InitCommonLayout(_gpuSceneDataDescriptorLayout, textureLayout);
     // Форматы для Dynamic Rendering берем из вашей MSAA картинки, как в старом коде
     VkFormat colorFormat = _init._msaaColorImage.imageFormat;

@@ -131,8 +131,14 @@ namespace VK_INIT_ENGINE {
         VkPhysicalDeviceFeatures _deviceFeatures;
         VkDevice _device;
         VkSurfaceKHR _surface;
+
+
         VkQueue _graphicsQueue;
         uint32_t _graphicsQueueFamily;
+
+        VkQueue _computeQueue;
+        uint32_t _computeQueueFamily;
+
         VmaAllocator _allocator;
 
         // swapChain - Буфер кадра
