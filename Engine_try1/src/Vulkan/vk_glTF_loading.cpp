@@ -208,6 +208,19 @@ GPUTexture TextureManager::AllocateTexture(
     return texture;
 }
 
+void TextureManager::FreeIBLtextures(){
+    for (int i = 0; i < _iblTextures.mipImageViews.size(); i++){
+        vkDestroyImageView(_device, _iblTextures.mipImageViews[i], nullptr);
+    }
+    // Уничтожение текстур IBL
+    if (_iblTextures.BRDF_LUT.image.image != VK_NULL_HANDLE) {
+        vkDeviceWaitIdle(_device);
+        FreeTexture(_iblTextures.BRDF_LUT, 3);
+        FreeTexture(_iblTextures.Specular, 3);
+        FreeTexture(_iblTextures.Diffuse, 3);
+    }
+}
+
 void TextureManager::FreeSkyboxTexutre(GPUTexture& skyboxTexture){
     if (skyboxTexture.image.image == VK_NULL_HANDLE) return;
 
@@ -242,13 +255,7 @@ void TextureManager::DestroyAllocationData(){
         vkDeviceWaitIdle(_device);
         FreeTexture(_activeSkyboxTexture, 2);
     }
-    // Уничтожение текстур IBL
-    if (_iblTextures.BRDF_LUT.image.image != VK_NULL_HANDLE) {
-        vkDeviceWaitIdle(_device);
-        FreeTexture(_iblTextures.BRDF_LUT, 3);
-        FreeTexture(_iblTextures.Specular, 3);
-        FreeTexture(_iblTextures.Diffuse, 3);
-    }
+    FreeIBLtextures();
     if (defaultTexture.imguiDescriptorSet != VK_NULL_HANDLE) {
         ImGui_ImplVulkan_RemoveTexture(defaultTexture.imguiDescriptorSet);
         defaultTexture.imguiDescriptorSet = VK_NULL_HANDLE;
@@ -428,6 +435,20 @@ void TextureManager::create_ibl_textures(VK_INIT_ENGINE::_inited_engine& _init) 
 
     _iblTextures.Specular = AllocateTexture(specInfo, specView, 3, {}, ModelLifetime::Static);
 
+    _iblTextures.mipImageViews.resize(specMipLevels);
+    for (uint32_t i = 0; i < specMipLevels; ++i) {
+        VkImageViewCreateInfo mipViewInfo{ VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
+        mipViewInfo.image = _iblTextures.Specular.image.image;
+        mipViewInfo.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
+        mipViewInfo.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+        mipViewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        mipViewInfo.subresourceRange.baseMipLevel = i; // Указываем конкретный мип
+        mipViewInfo.subresourceRange.levelCount = 1;   // NVidia требует строго 1 уровень для STORAGE!
+        mipViewInfo.subresourceRange.baseArrayLayer = 0;
+        mipViewInfo.subresourceRange.layerCount = 6;
+
+        vkCreateImageView(_device, &mipViewInfo, nullptr, &_iblTextures.mipImageViews[i]);
+    }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // СОЗДАНИЕ BRDF LUT
     VkImageCreateInfo brdfInfo{ VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
@@ -502,34 +523,39 @@ void TextureManager::create_ibl_textures(VK_INIT_ENGINE::_inited_engine& _init) 
     }, _init);
 
     // ОБНОВЛЕНИЕ ДЕСКРИПТОРОВ БИНДИНГА 3
-    std::vector<VkDescriptorImageInfo> imageInfos(3);
+    uint32_t totalDescriptors = 1 + specMipLevels + 1;
+    std::vector<VkDescriptorImageInfo> imageInfos(totalDescriptors);
 
-    // Для STORAGE_IMAGE поле sample обязаннно VK_NULL_HANDLE!
+    // 0: Diffuse Irradiance
     imageInfos[0].sampler = VK_NULL_HANDLE;
     imageInfos[0].imageView = _iblTextures.Diffuse.image.imageView;
     imageInfos[0].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
 
-    imageInfos[1].sampler = VK_NULL_HANDLE;
-    imageInfos[1].imageView = _iblTextures.Specular.image.imageView;
-    imageInfos[1].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+    // 1 .. 5: Specular
+    for (uint32_t i = 0; i < specMipLevels; ++i) {
+        imageInfos[1 + i].sampler = VK_NULL_HANDLE;
+        imageInfos[1 + i].imageView = _iblTextures.mipImageViews[i];
+        imageInfos[1 + i].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+    }
 
-    imageInfos[2].sampler = VK_NULL_HANDLE;
-    imageInfos[2].imageView = _iblTextures.BRDF_LUT.image.imageView;
-    imageInfos[2].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+    // 6: BRDF LUT
+    imageInfos[6].sampler = VK_NULL_HANDLE;
+    imageInfos[6].imageView = _iblTextures.BRDF_LUT.image.imageView;
+    imageInfos[6].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
 
     VkWriteDescriptorSet iblWrite{ VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
     iblWrite.dstSet = _textureSet;
     iblWrite.dstBinding = 3;
     iblWrite.dstArrayElement = 0;
     iblWrite.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-    iblWrite.descriptorCount = 3;
+    iblWrite.descriptorCount = totalDescriptors;
     iblWrite.pImageInfo = imageInfos.data();
 
     vkUpdateDescriptorSets(_device, 1, &iblWrite, 0, nullptr);
 
-    _nextIndices[3] = 3;
+    _nextIndices[3] = totalDescriptors;
 
-    std::cout << "TextureManager: Empty IBL Storage Textures generated under binding 3 (Indices 0, 1, 2)\n";
+    std::cout << "TextureManager: Bound " << totalDescriptors << " single-level storage views to binding 3.\n";
 }
 
 VkSampler TextureManager::CreateSampler(const SamplerOptions& params){

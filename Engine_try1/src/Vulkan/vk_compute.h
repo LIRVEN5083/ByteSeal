@@ -60,11 +60,9 @@ private:
     const IBL_TEXTURES* _ibl;
     GPUTexture _panorama;
 
-    void InsertImageBarrier(VkCommandBuffer cmd, VkImage image,
-                            VkAccessFlags srcAccess, VkAccessFlags dstAccess,
-                            VkImageLayout oldLayout, VkImageLayout newLayout,
-                            VkPipelineStageFlags srcStage, VkPipelineStageFlags dstStage,
-                            uint32_t mipCount, uint32_t layerCount);
+    void InsertImageBarrier(VkCommandBuffer cmd, VkImage image, VkAccessFlags srcAccess,
+    VkAccessFlags dstAccess, VkImageLayout oldLayout, VkImageLayout newLayout, VkPipelineStageFlags srcStage,
+    VkPipelineStageFlags dstStage, uint32_t baseMip, uint32_t mipCount, uint32_t layerCount);
 };
 
 

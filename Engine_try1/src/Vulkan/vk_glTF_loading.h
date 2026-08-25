@@ -135,7 +135,10 @@ struct SamplerOptions{
 
 struct IBL_TEXTURES {
     GPUTexture Diffuse;
+
     GPUTexture Specular;
+    std::vector<VkImageView> mipImageViews;
+
     GPUTexture BRDF_LUT;
 };
 
@@ -153,6 +156,7 @@ public:
         const SamplerOptions& params = {},
         ModelLifetime lifetime = ModelLifetime::Dynamic);
 
+    void FreeIBLtextures();
     void FreeSkyboxTexutre(GPUTexture& skyboxTexture);
     void FreeTexture(GPUTexture& texture, uint32_t binding = 0);
     void DestroyAllocationData();
