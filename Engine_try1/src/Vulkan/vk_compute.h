@@ -2,6 +2,8 @@
 #include "vk_types.h"
 
 class PipelineManager;
+struct RealPipeline;
+struct IBL_TEXTURES;
 
 struct ComputeContext {
     VkCommandBuffer cmd;
@@ -9,25 +11,62 @@ struct ComputeContext {
 };
 
 class ComputePass {
+protected:
+    VK_INIT_ENGINE::_inited_engine& _init;
+    ComputePassType _type;
+    bool _isEnabled;
 public:
-    ComputePass(VK_INIT_ENGINE::_inited_engine& init, const std::string& passName)
-        : _init(init), _name(passName), _isEnabled(true) {}
+    ComputePass(VK_INIT_ENGINE::_inited_engine& init, ComputePassType type)
+        : _init(init), _type(type), _isEnabled(true) {}
 
     virtual ~ComputePass() = default;
+
+    ComputePassType GetType() const { return _type; }
+
+    void SetEnabled(bool enabled) { _isEnabled = enabled; }
+    bool IsEnabled() const { return _isEnabled; }
+    void Toggle() { _isEnabled = !_isEnabled;}
 
     virtual void Init(PipelineManager& pipelineManager) = 0;
 
     virtual void Execute(const ComputeContext& ctx) = 0;
 
-    void SetEnabled(bool enabled) { _isEnabled = enabled; }
-    bool IsEnabled() const { return _isEnabled; }
-    const std::string& GetName() const { return _name; }
-
-protected:
-    VK_INIT_ENGINE::_inited_engine& _init;
-    std::string _name;
-    bool _isEnabled;
 };
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// ПРОХОД ДЛЯ ЕБУЧЕГО IBL
+class IBLProcessorComputePass : public ComputePass {
+public:
+    IBLProcessorComputePass(VK_INIT_ENGINE::_inited_engine& init,
+                            const IBL_TEXTURES* iblTextures,
+                            GPUTexture panoramaTexture)
+        : ComputePass(init, ComputePassType::IBL), // Один общий тип пасса
+          _ibl(iblTextures),
+          _panorama(panoramaTexture) {}
+
+    ~IBLProcessorComputePass() override = default;
+
+    void Init(PipelineManager& pipelineManager) override;
+
+    void Execute(const ComputeContext& ctx) override;
+
+private:
+    // Указатели на твои 4 «вычислюшки»
+    RealPipeline* _brdfPipeline{ nullptr };
+    RealPipeline* _panoramaPipeline{ nullptr };
+    RealPipeline* _diffusePipeline{ nullptr };
+    RealPipeline* _specularPipeline{ nullptr };
+
+    const IBL_TEXTURES* _ibl;
+    GPUTexture _panorama;
+
+    void InsertImageBarrier(VkCommandBuffer cmd, VkImage image,
+                            VkAccessFlags srcAccess, VkAccessFlags dstAccess,
+                            VkImageLayout oldLayout, VkImageLayout newLayout,
+                            VkPipelineStageFlags srcStage, VkPipelineStageFlags dstStage,
+                            uint32_t mipCount, uint32_t layerCount);
+};
+
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 class ComputeRenderSystem {
@@ -44,7 +83,7 @@ public:
 
     VkSemaphore GetComputeSemaphore() const { return _computeFinishedSemaphore; }
 
-    void SetPassEnabled(const std::string& name, bool enabled);
+    void SetPassEnabled(ComputePassType type, bool enabled);
 
 private:
     VK_INIT_ENGINE::_inited_engine& _init;

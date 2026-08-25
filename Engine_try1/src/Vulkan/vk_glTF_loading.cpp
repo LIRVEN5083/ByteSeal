@@ -9,46 +9,59 @@ void TextureManager::init(VK_INIT_ENGINE::_inited_engine& _init){
     _device = _init._device;
     _allocator = _init._allocator;
 
-    std::vector<VkDescriptorSetLayoutBinding> bindings(3);
+    std::vector<VkDescriptorSetLayoutBinding> bindings(BINDING_COUNT);
 
     bindings[0].binding = 0;
     bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     bindings[0].descriptorCount = MAX_BINDLESS_TEXTURES;
-    bindings[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    bindings[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
 
     bindings[1].binding = 1;
     bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     bindings[1].descriptorCount = MAX_BINDLESS_TEXTURES;
-    bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT;
+    bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
 
     bindings[2].binding = 2;
     bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     bindings[2].descriptorCount = MAX_BINDLESS_TEXTURES;
-    bindings[2].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT;
+    bindings[2].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
+
+    bindings[3].binding = 3;
+    bindings[3].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    bindings[3].descriptorCount = MAX_BINDLESS_TEXTURES;
+    bindings[3].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
 
     // Настраиваем флаги отдельно ДЛЯ КАЖДОГО биндинга
     VkDescriptorBindingFlags bindlessFlags = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
                                              VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
-    std::vector<VkDescriptorBindingFlags> flagsArray = { bindlessFlags, bindlessFlags, VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT };
+    std::vector<VkDescriptorBindingFlags> flagsArray = {
+        bindlessFlags,
+        bindlessFlags,
+        bindlessFlags,
+        bindlessFlags
+    };
 
     VkDescriptorSetLayoutBindingFlagsCreateInfo extInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO };
-    extInfo.bindingCount = static_cast<uint32_t>(flagsArray.size());
+    extInfo.bindingCount = static_cast<uint32_t>(bindings.size());
     extInfo.pBindingFlags = flagsArray.data();
 
     // Создаем Layout
     VkDescriptorSetLayoutCreateInfo layoutInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
     layoutInfo.pNext = &extInfo;
     layoutInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
-    layoutInfo.bindingCount = static_cast<uint32_t>(flagsArray.size());
+    layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
     layoutInfo.pBindings = bindings.data();
     vkCreateDescriptorSetLayout(_device, &layoutInfo, nullptr, &_textureLayout);
 
-    VkDescriptorPoolSize poolSize{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, MAX_BINDLESS_TEXTURES * BINDING_COUNT };
+    std::vector<VkDescriptorPoolSize> poolSizes = {
+        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, MAX_BINDLESS_TEXTURES * 3 },
+        { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, MAX_BINDLESS_TEXTURES }
+    };
     VkDescriptorPoolCreateInfo poolInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
     poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
     poolInfo.maxSets = 1;
-    poolInfo.poolSizeCount = 1;
-    poolInfo.pPoolSizes = &poolSize;
+    poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());;
+    poolInfo.pPoolSizes = poolSizes.data();
     vkCreateDescriptorPool(_device, &poolInfo, nullptr, &_texturePool);
 
     // Выделяем Descriptor Set
@@ -112,6 +125,7 @@ void TextureManager::init(VK_INIT_ENGINE::_inited_engine& _init){
     vkCreateSampler(_device, &samplerInfo, nullptr, &_defaultSampler);
 
     create_default_white_texture(_init);
+    create_ibl_textures(_init);
 }
 
 GPUTexture TextureManager::AllocateTexture(
@@ -168,15 +182,15 @@ GPUTexture TextureManager::AllocateTexture(
 
     VkDescriptorImageInfo descriptorImgInfo{};
     descriptorImgInfo.imageView = texture.image.imageView;
-    descriptorImgInfo.sampler = texture.sampler;
-    descriptorImgInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    descriptorImgInfo.sampler = (binding == 3) ? VK_NULL_HANDLE : texture.sampler;
+    descriptorImgInfo.imageLayout = (binding == 3) ?  VK_IMAGE_LAYOUT_GENERAL :  VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;;
 
     VkWriteDescriptorSet write{ VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
     write.dstSet = _textureSet;
     write.dstBinding = binding;
     write.dstArrayElement = texture.globalIndex;
     write.descriptorCount = 1;
-    write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    write.descriptorType = (binding == 3) ? VK_DESCRIPTOR_TYPE_STORAGE_IMAGE : VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     write.pImageInfo = &descriptorImgInfo;
 
     vkUpdateDescriptorSets(_device, 1, &write, 0, nullptr);
@@ -227,7 +241,13 @@ void TextureManager::DestroyAllocationData(){
     if (_activeSkyboxTexture.image.image != VK_NULL_HANDLE) {
         vkDeviceWaitIdle(_device);
         FreeTexture(_activeSkyboxTexture, 2);
-        _activeSkyboxTexture.image.image = VK_NULL_HANDLE;
+    }
+    // Уничтожение текстур IBL
+    if (_iblTextures.BRDF_LUT.image.image != VK_NULL_HANDLE) {
+        vkDeviceWaitIdle(_device);
+        FreeTexture(_iblTextures.BRDF_LUT, 3);
+        FreeTexture(_iblTextures.Specular, 3);
+        FreeTexture(_iblTextures.Diffuse, 3);
     }
     if (defaultTexture.imguiDescriptorSet != VK_NULL_HANDLE) {
         ImGui_ImplVulkan_RemoveTexture(defaultTexture.imguiDescriptorSet);
@@ -247,7 +267,6 @@ void TextureManager::DestroyAllocationData(){
     }
     if (defaultTexture.image.image != VK_NULL_HANDLE) {
         vmaDestroyImage(_allocator, defaultTexture.image.image, defaultTexture.image.allocation);
-        defaultTexture.image.image = VK_NULL_HANDLE;
     }
 
     if (_texturePool) vkDestroyDescriptorPool(_device, _texturePool, nullptr);
@@ -353,6 +372,164 @@ void TextureManager::create_default_white_texture(VK_INIT_ENGINE::_inited_engine
     vmaDestroyBuffer(_init._allocator, stagingBuffer.buffer, stagingBuffer.allocation);
 
     std::cout << "TextureManager: Default white texture generated under Bindless ID = 0\n";
+}
+
+void TextureManager::create_ibl_textures(VK_INIT_ENGINE::_inited_engine& _init) {
+    VkImageUsageFlags iblUsage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // СОЗДАНИЕ DIFFUSE IRRADIANCE (Кубмапа 32х32, 1 мип-уровень, 6 слоев)
+    VkImageCreateInfo diffInfo{ VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
+    diffInfo.imageType = VK_IMAGE_TYPE_2D;
+    diffInfo.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+    diffInfo.extent = { 32, 32, 1 };
+    diffInfo.mipLevels = 1;
+    diffInfo.arrayLayers = 6;
+    diffInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+    diffInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+    diffInfo.usage = iblUsage;
+    diffInfo.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+
+    VkImageViewCreateInfo diffView{ VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
+    diffView.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
+    diffView.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+    diffView.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    diffView.subresourceRange.baseMipLevel = 0;
+    diffView.subresourceRange.levelCount = 1;
+    diffView.subresourceRange.baseArrayLayer = 0;
+    diffView.subresourceRange.layerCount = 6;
+
+    _iblTextures.Diffuse = AllocateTexture(diffInfo, diffView, 3, {}, ModelLifetime::Static);
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // СОЗДАНИЕ SPECULAR PRE-FILTER (Кубмапа 512х512, 5 мип-уровней, 6 слоев)
+
+    uint32_t specMipLevels = 5;
+
+    VkImageCreateInfo specInfo{ VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
+    specInfo.imageType = VK_IMAGE_TYPE_2D;
+    specInfo.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+    specInfo.extent = { 512, 512, 1 };
+    specInfo.mipLevels = specMipLevels;
+    specInfo.arrayLayers = 6;
+    specInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+    specInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+    specInfo.usage = iblUsage;
+    specInfo.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+
+    VkImageViewCreateInfo specView{ VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
+    specView.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
+    specView.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+    specView.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    specView.subresourceRange.baseMipLevel = 0;
+    specView.subresourceRange.levelCount = specMipLevels;
+    specView.subresourceRange.baseArrayLayer = 0;
+    specView.subresourceRange.layerCount = 6;
+
+    _iblTextures.Specular = AllocateTexture(specInfo, specView, 3, {}, ModelLifetime::Static);
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // СОЗДАНИЕ BRDF LUT
+    VkImageCreateInfo brdfInfo{ VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
+    brdfInfo.imageType = VK_IMAGE_TYPE_2D;
+    brdfInfo.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+    brdfInfo.extent = { 512, 512, 1 };
+    brdfInfo.mipLevels = 1;
+    brdfInfo.arrayLayers = 1;
+    brdfInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+    brdfInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+    brdfInfo.usage = iblUsage;
+
+    VkImageViewCreateInfo brdfView{ VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
+    brdfView.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    brdfView.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+    brdfView.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    brdfView.subresourceRange.baseMipLevel = 0;
+    brdfView.subresourceRange.levelCount = 1;
+    brdfView.subresourceRange.baseArrayLayer = 0;
+    brdfView.subresourceRange.layerCount = 1;
+
+    _iblTextures.BRDF_LUT = AllocateTexture(brdfInfo, brdfView, 3, {}, ModelLifetime::Static);
+
+    vkinit::submit_immediate([&](VkCommandBuffer cmd) {
+
+        // Барьер для Diffuse
+        VkImageMemoryBarrier diffBarrier{ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
+        diffBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        diffBarrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+        diffBarrier.image = _iblTextures.Diffuse.image.image;
+        diffBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        diffBarrier.subresourceRange.baseMipLevel = 0;
+        diffBarrier.subresourceRange.levelCount = 1;
+        diffBarrier.subresourceRange.baseArrayLayer = 0;
+        diffBarrier.subresourceRange.layerCount = 6;
+        diffBarrier.srcAccessMask = 0;
+        diffBarrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
+
+        // Барьер для Specular
+        VkImageMemoryBarrier specBarrier{ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
+        specBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        specBarrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+        specBarrier.image = _iblTextures.Specular.image.image;
+        specBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        specBarrier.subresourceRange.baseMipLevel = 0;
+        specBarrier.subresourceRange.levelCount = specMipLevels;
+        specBarrier.subresourceRange.baseArrayLayer = 0;
+        specBarrier.subresourceRange.layerCount = 6;
+        specBarrier.srcAccessMask = 0;
+        specBarrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
+
+        // Барьер для BRDF LUT
+        VkImageMemoryBarrier brdfBarrier{ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
+        brdfBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        brdfBarrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+        brdfBarrier.image = _iblTextures.BRDF_LUT.image.image;
+        brdfBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        brdfBarrier.subresourceRange.baseMipLevel = 0;
+        brdfBarrier.subresourceRange.levelCount = 1;
+        brdfBarrier.subresourceRange.baseArrayLayer = 0;
+        brdfBarrier.subresourceRange.layerCount = 1;
+        brdfBarrier.srcAccessMask = 0;
+        brdfBarrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
+
+        // Отправляем барьеры списком на GPU
+        VkImageMemoryBarrier barriers[] = { diffBarrier, specBarrier, brdfBarrier };
+        vkCmdPipelineBarrier(cmd,
+            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+            0, 0, nullptr, 0, nullptr, 3, barriers);
+
+    }, _init);
+
+    // ОБНОВЛЕНИЕ ДЕСКРИПТОРОВ БИНДИНГА 3
+    std::vector<VkDescriptorImageInfo> imageInfos(3);
+
+    // Для STORAGE_IMAGE поле sample обязаннно VK_NULL_HANDLE!
+    imageInfos[0].sampler = VK_NULL_HANDLE;
+    imageInfos[0].imageView = _iblTextures.Diffuse.image.imageView;
+    imageInfos[0].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+
+    imageInfos[1].sampler = VK_NULL_HANDLE;
+    imageInfos[1].imageView = _iblTextures.Specular.image.imageView;
+    imageInfos[1].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+
+    imageInfos[2].sampler = VK_NULL_HANDLE;
+    imageInfos[2].imageView = _iblTextures.BRDF_LUT.image.imageView;
+    imageInfos[2].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+
+    VkWriteDescriptorSet iblWrite{ VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+    iblWrite.dstSet = _textureSet;
+    iblWrite.dstBinding = 3;
+    iblWrite.dstArrayElement = 0;
+    iblWrite.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    iblWrite.descriptorCount = 3;
+    iblWrite.pImageInfo = imageInfos.data();
+
+    vkUpdateDescriptorSets(_device, 1, &iblWrite, 0, nullptr);
+
+    _nextIndices[3] = 3;
+
+    std::cout << "TextureManager: Empty IBL Storage Textures generated under binding 3 (Indices 0, 1, 2)\n";
 }
 
 VkSampler TextureManager::CreateSampler(const SamplerOptions& params){

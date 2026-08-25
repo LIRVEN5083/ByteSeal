@@ -183,6 +183,10 @@ enum class RenderPassType : uint8_t {
     Compute
 };
 
+enum class ComputePassType : uint8_t{
+    IBL
+};
+
 enum class PipelineOpacity{
     Opaque,
     AlphaTested,

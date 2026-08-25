@@ -1,5 +1,92 @@
 #include "vk_compute.h"
 #include "vk_pipelines.h"
+#include "vk_glTF_loading.h"
+
+void IBLProcessorComputePass::Init(PipelineManager& pipelineManager){
+    _brdfPipeline     = pipelineManager.GetPipelineByName("IBL_BrdfLUT");
+    _panoramaPipeline = pipelineManager.GetPipelineByName("IBL_EquirectToCubemap");
+    _diffusePipeline  = pipelineManager.GetPipelineByName("IBL_DiffuseIrradiance");
+    _specularPipeline = pipelineManager.GetPipelineByName("IBL_SpecularPreFilter");
+}
+
+void IBLProcessorComputePass::Execute(const ComputeContext& ctx){
+    VkCommandBuffer cmd = ctx.cmd;
+    fmt::print("[IBL Processor] Starting full asynchronous PBR-IBL generation...\n");
+
+    if (_brdfPipeline) {
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _brdfPipeline->pipeline);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _brdfPipeline->layout, 1, 1, &ctx.bindlessSet, 0, nullptr);
+
+        vkCmdDispatch(cmd, 32, 32, 1);
+
+
+        InsertImageBarrier(cmd, _ibl->BRDF_LUT.image.image,
+            VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+            VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL, // STORAGE всегда остается в GENERAL
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 1, 1);
+    }
+
+    if (_panoramaPipeline) {
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _panoramaPipeline->pipeline);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _panoramaPipeline->layout, 1, 1, &ctx.bindlessSet, 0, nullptr);
+
+        vkCmdDispatch(cmd, 32, 32, 6);
+
+        InsertImageBarrier(cmd, _ibl->Specular.image.image,
+            VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+            VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 1, 6); // Только для Mip 0, 6 слоев
+    }
+
+    if (_diffusePipeline) {
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _diffusePipeline->pipeline);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _diffusePipeline->layout, 1, 1, &ctx.bindlessSet, 0, nullptr);
+
+        vkCmdDispatch(cmd, 2, 2, 6);
+
+        InsertImageBarrier(cmd, _ibl->Diffuse.image.image,
+            VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+            VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 1, 6);
+    }
+
+    if (_specularPipeline) {
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _specularPipeline->pipeline);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _specularPipeline->layout, 1, 1, &ctx.bindlessSet, 0, nullptr);
+
+        uint32_t size = 256;
+        for (uint32_t mip = 1; mip < 5; ++mip) {
+            uint32_t groups = std::max(1u, size / 16);
+            vkCmdDispatch(cmd, groups, groups, 6);
+            size /= 2;
+        }
+
+        InsertImageBarrier(cmd, _ibl->Specular.image.image,
+            VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+            VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 5, 6); // Все 5 мипов, 6 слоев
+    }
+
+    SetEnabled(false);
+    fmt::print("[IBL Processor] All 4 pipelines finished successfully. Pass disabled self.\n");
+}
+
+void IBLProcessorComputePass::InsertImageBarrier(VkCommandBuffer cmd, VkImage image, VkAccessFlags srcAccess,
+    VkAccessFlags dstAccess, VkImageLayout oldLayout, VkImageLayout newLayout, VkPipelineStageFlags srcStage,
+    VkPipelineStageFlags dstStage, uint32_t mipCount, uint32_t layerCount){
+    VkImageMemoryBarrier barrier{};
+    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barrier.srcAccessMask = srcAccess;
+    barrier.dstAccessMask = dstAccess;
+    barrier.oldLayout = oldLayout;
+    barrier.newLayout = newLayout;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image = image;
+    barrier.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, mipCount, 0, layerCount };
+
+    vkCmdPipelineBarrier(cmd, srcStage, dstStage, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+}
 
 void ComputeRenderSystem::init(){
     vkGetDeviceQueue(_init._device, _init._computeQueueFamily, 0, &_computeQueue);
@@ -96,9 +183,9 @@ bool ComputeRenderSystem::Dispatch(VkDescriptorSet bindlessTextureSet){
     return true;
 }
 
-void ComputeRenderSystem::SetPassEnabled(const std::string& name, bool enabled){
+void ComputeRenderSystem::SetPassEnabled(ComputePassType type, bool enabled){
     for (auto& pass : _computePasses) {
-        if (pass->GetName() == name) {
+        if (pass->GetType() == type) {
             pass->SetEnabled(enabled);
             return;
         }
