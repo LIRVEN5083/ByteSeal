@@ -30,6 +30,8 @@ layout(set = 1, binding = 0) uniform sampler2D globalTextures[];
 // Для каскадов
 layout(set = 1, binding = 1) uniform sampler2DArray globalTextureArray;
 
+layout(set = 1, binding = 3, rgba16f) uniform readonly image2DArray iblStorageMaps[];
+
 struct Vertex {
 	vec3 position; float uv_x;
 	vec3 normal;   float uv_y;
@@ -100,6 +102,32 @@ vec3 fresnelSchlick(float cosTheta, vec3 F0) {
 	return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 
+ivec3 TexCoordsToCubeCoords(vec3 r, int size) {
+    vec3 absR = abs(r);
+    int face = 0;
+    vec2 uv = vec2(0.0);
+
+    if (absR.x >= absR.y && absR.x >= absR.z) {
+        face = r.x > 0.0 ? 0 : 1;
+        uv = r.x > 0.0 ? vec2(-r.y, -r.z) : vec2(r.y, -r.z);
+    } else if (absR.y >= absR.x && absR.y >= absR.z) {
+        face = r.y > 0.0 ? 2 : 3;
+        uv = r.y > 0.0 ? vec2(r.x, -r.z) : vec2(-r.x, -r.z);
+    } else {
+        face = r.z > 0.0 ? 4 : 5;
+        uv = r.z > 0.0 ? vec2(r.x, -r.y) : vec2(r.x, r.y);
+    }
+
+    // ФИКС ОШИБКИ: Сначала переводимuv в диапазон координат, 
+    // затем явно округляем через floor() и только потом кастим в ivec2
+    vec2 scaledUV = (uv + 1.0) * 0.5 * float(size);
+    ivec2 pixelCoord = ivec2(floor(scaledUV));
+    
+    pixelCoord = clamp(pixelCoord, ivec2(0), ivec2(size - 1));
+
+    return ivec3(pixelCoord, face);
+}
+
 void main()
 {
 	// Получение Альбедо
@@ -164,6 +192,13 @@ void main()
 
 	vec3 F0 = vec3(0.04);
 	F0 = mix(F0, albedo, metallic);
+
+	vec3 R = reflect(-V, N);
+	ivec3 cubeTexel = TexCoordsToCubeCoords(R, 512); // cubeTexel.xy = пиксели, cubeTexel.z = номер грани (0-5)
+	
+	// Читаем из Specular (индекс 1 в массиве дескрипторов). 
+	// Передаем координаты пикселя (cubeTexel.xy) и номер грани куба как слой (cubeTexel.z)
+	vec3 reflectionColor = imageLoad(iblStorageMaps[1], ivec3(cubeTexel.xy, cubeTexel.z)).rgb;
 
 	// Расчет Cook-Torrance BRDF (Прямой свет)
 	float NDF = DistributionGGX(N, H, roughness);
@@ -259,7 +294,15 @@ void main()
 	vec3 finalDirectLight = directLight * mix(0.3, 1.0, ao) * shadowTerm;
 
 	// Эмбиент остается жить в тени, создавая мягкую красивую полутень
-	vec3 ambient = scene.ambientColor.rgb * albedo * ao;
+	vec3 kS_ambient = F; // Используем уже посчитанный Френель F
+	vec3 kD_ambient = vec3(1.0) - kS_ambient;
+	kD_ambient *= 1.0 - metallic;
+
+	// Зеркальное отражение работает для металлов, обычный амбиент — для диэлектриков
+	vec3 ambientSpecular = reflectionColor * F;
+	vec3 ambientDiffuse  = scene.ambientColor.rgb * albedo;
+	
+	vec3 ambient = (kD_ambient * ambientDiffuse + ambientSpecular) * ao;
 
 	// Финальный цвет (Свет + Тени)
 	vec3 color = ambient + finalDirectLight;

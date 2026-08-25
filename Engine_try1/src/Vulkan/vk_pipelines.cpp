@@ -677,6 +677,7 @@ bool PipelineManager:: ReloadAllPipelines(){
                 return false;
             }
             newCompCodes[name] = compCode;
+            continue;
         }
         // Вершинный шейдер компилируем всегда
         auto vertCode = UTILS::CompileGLSLToSPIRV(realPipeline.vertexShaderPath);
