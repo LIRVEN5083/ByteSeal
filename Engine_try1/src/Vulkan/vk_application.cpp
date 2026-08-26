@@ -611,13 +611,21 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     RenderPass* SkyBox_RP = _renderSystem.AddPass(std::make_unique<SkyBoxRenderPass>(_init), *_pipelineManager);
     RenderPass* Grid_RP = _renderSystem.AddPass(std::make_unique<GridRenderPass>(_init), *_pipelineManager);
 
+    const IBL_TEXTURES* iblResources = _textureManager.GetIBLTextures();
+    auto* skyboxPass = dynamic_cast<SkyBoxRenderPass*>(SkyBox_RP);
+    GPUTexture hdrPanorama = skyboxPass->GetPanoramicTexture();
+    _computeSystem.AddPass(
+    std::make_unique<IBLProcessorComputePass>(_init, iblResources, hdrPanorama),
+    *_pipelineManager
+);
+
     /* МОЖНА ТЕПЕРЬ ОТКЛЮЧАТЬ ПРОХОДЫ! МУХЕХЕХЕХЕ
     _renderSystem.SetPassEnabled(RenderPassType::Skybox, true);
     _renderSystem.SetPassEnabled(RenderPassType::Grid, false);
     _renderSystem.SetPassEnabled(RenderPassType::ShadowCSM, false);
     */
 
-    SkyBoxUpload("../Data/Panoramic/Sky.hdr", _init, _textureManager, SkyBox_RP);
+    SkyBoxUpload("../Data/Panoramic/Filed.hdr", _init, _textureManager, SkyBox_RP);
     //_renderSystem.ToggleSkyBox();
 }
 

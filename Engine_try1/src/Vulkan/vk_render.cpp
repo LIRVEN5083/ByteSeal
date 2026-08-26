@@ -64,7 +64,8 @@ void ForwardRenderPass::Execute(const RenderContext& ctx, const std::vector<Rend
         push_constants.baseColorFactor = object.baseColorFactor;
         push_constants.materialFactors = object.materialFactors;
 
-        vkCmdPushConstants(ctx.cmd, object.pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(GPUDrawPushConstants), &push_constants);
+        vkCmdPushConstants(ctx.cmd, object.pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT,
+            0, sizeof(GPUDrawPushConstants), &push_constants);
 
         if (object.indexBuffer != VK_NULL_HANDLE) {
             vkCmdDrawIndexed(ctx.cmd, object.indexCount, 1, object.firstIndex, 0, 0);
@@ -102,7 +103,8 @@ void ForwardRenderPass::DrawFilteredObjects(const RenderContext& ctx, const std:
         push_constants.baseColorFactor = object.baseColorFactor;
         push_constants.materialFactors = object.materialFactors;
 
-        vkCmdPushConstants(ctx.cmd, ctx.pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(GPUDrawPushConstants), &push_constants);
+        vkCmdPushConstants(ctx.cmd, ctx.pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT,
+            0, sizeof(GPUDrawPushConstants), &push_constants);
         if (object.indexBuffer != VK_NULL_HANDLE) {
             vkCmdDrawIndexed(ctx.cmd, object.indexCount, 1, object.firstIndex, 0, 0);
         } else {
@@ -151,7 +153,8 @@ void GridRenderPass::Execute(const RenderContext& ctx, const std::vector<RenderO
     push_constants.colorTextureID = 0;
     push_constants.metallicRoughnessTextureID = 0;
 
-    vkCmdPushConstants(ctx.cmd, _gridPipeline->layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(GPUDrawPushConstants), &push_constants);
+    vkCmdPushConstants(ctx.cmd, _gridPipeline->layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT,
+        0, sizeof(GPUDrawPushConstants), &push_constants);
 
     // Рисуем процедурную сетку без индексов
     vkCmdDraw(ctx.cmd, 6, 1, 0, 0);

@@ -133,10 +133,19 @@ struct SamplerOptions{
     bool compareEnable = false;
 };
 
+struct IBL_TEXTURES {
+    GPUTexture Diffuse;
+
+    GPUTexture Specular;
+    std::vector<VkImageView> mipImageViews;
+
+    GPUTexture BRDF_LUT;
+};
+
 class TextureManager{
 public:
     const uint32_t MAX_BINDLESS_TEXTURES = 1000;
-    const uint32_t BINDING_COUNT = 3;
+    const uint32_t BINDING_COUNT = 4;
 
     void init(VK_INIT_ENGINE::_inited_engine& _init);
 
@@ -147,15 +156,18 @@ public:
         const SamplerOptions& params = {},
         ModelLifetime lifetime = ModelLifetime::Dynamic);
 
+    void FreeIBLtextures();
     void FreeSkyboxTexutre(GPUTexture& skyboxTexture);
     void FreeTexture(GPUTexture& texture, uint32_t binding = 0);
     void DestroyAllocationData();
 
     void create_default_white_texture(VK_INIT_ENGINE::_inited_engine& _init);
+    void create_ibl_textures(VK_INIT_ENGINE::_inited_engine& _init);
 
     VkDescriptorSet GetTextureSet() const { return _textureSet; }
     VkDescriptorSetLayout GetTextureLayout() const { return _textureLayout; }
     VkSampler GetDefaultSampler() const {return _defaultSampler;}
+    const IBL_TEXTURES* GetIBLTextures() const { return &_iblTextures; }
 private:
     VkSampler CreateSampler(const SamplerOptions& params);
 
@@ -176,9 +188,11 @@ private:
     // Хэш ддя сэмплеров
     std::unordered_map<VkSamplerCreateInfo, VkSampler, vkutil::SamplerCreateInfoHash, vkutil::SamplerCreateInfoEqual> _samplerCache;
 
-    std::vector<uint32_t> _nextIndices{0, 0, 0};
-    std::vector<std::vector<uint32_t>> _freeIndices{ {}, {}, {} };
+    std::vector<uint32_t> _nextIndices{0, 0, 0, 0};
+    std::vector<std::vector<uint32_t>> _freeIndices{ {}, {}, {}, {} };
+
     GPUTexture _activeSkyboxTexture{};
+    IBL_TEXTURES _iblTextures{};
 };
 
 struct AABB {

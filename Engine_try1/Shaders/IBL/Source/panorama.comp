@@ -1,8 +1,48 @@
 #version 460
-
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
-void main() {
-    uvec3 globalID = gl_GlobalInvocationID;
+layout(set = 1, binding = 2) uniform sampler2D skyPanoramaTex;
+layout(set = 1, binding = 3, rgba16f) uniform writeonly imageCube iblStorageMaps[];
 
+const float PI = 3.14159265359;
+
+vec3 GetCubeDirection(vec2 uv, uint face) {
+    vec3 dir = vec3(0.0);
+    
+    switch(face) {
+        case 0: dir = vec3( 1.0,  uv.y, -uv.x); break; // +X
+        case 1: dir = vec3(-1.0,  uv.y,  uv.x); break; // -X
+        case 2: dir = vec3( uv.x,  1.0, -uv.y); break; // +Y
+        case 3: dir = vec3( uv.x, -1.0,  uv.y); break; // -Y
+        case 4: dir = vec3( uv.x,  uv.y,  1.0); break; // +Z
+        case 5: dir = vec3(-uv.x,  uv.y, -1.0); break; // -Z
+    }
+    
+    return normalize(dir);
+}
+
+
+
+vec2 SampleSphericalMap(vec3 v) {
+    vec2 uv = vec2(atan(v.z, v.x), asin(v.y));
+    uv *= vec2(0.15915494, 0.31830988);
+    uv += 0.5;
+    return uv;
+}
+
+void main() {
+    ivec3 cubeCoord = ivec3(gl_GlobalInvocationID);
+    
+    ivec2 size = imageSize(iblStorageMaps[1]); 
+
+    if (cubeCoord.x >= size.x || cubeCoord.y >= size.y) return;
+
+    vec2 uv = (vec2(cubeCoord.xy) + 0.5) / vec2(size) * 2.0 - 1.0;
+    
+    vec3 dir = GetCubeDirection(uv, cubeCoord.z);
+    vec2 texUV = SampleSphericalMap(dir);
+    
+    vec4 color = textureLod(skyPanoramaTex, texUV, 0.0);
+
+    imageStore(iblStorageMaps[1], cubeCoord, color);
 }
