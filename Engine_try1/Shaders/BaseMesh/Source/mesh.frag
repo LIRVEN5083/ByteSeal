@@ -30,6 +30,8 @@ layout(set = 1, binding = 0) uniform sampler2D globalTextures[];
 // Для каскадов
 layout(set = 1, binding = 1) uniform sampler2DArray globalTextureArray;
 
+layout(set = 1, binding = 3, rgba16f) uniform readonly imageCube iblStorageMaps[];
+
 struct Vertex {
 	vec3 position; float uv_x;
 	vec3 normal;   float uv_y;
@@ -100,6 +102,46 @@ vec3 fresnelSchlick(float cosTheta, vec3 F0) {
 	return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 
+// Усовершенствованный Френель
+vec3 fresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness) {
+    return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
+// Функция преобразования 3D-вектора луча (отражения или нормали) в 2D-пиксель + Face ID кубмапы.
+// Она зеркально копирует логику GetCubeDirection из наших compute-шейдеров, 
+// чтобы выборка из имидж-эррея imageCube[id] сошлась пиксель-в-пиксель.
+/////////////////////////////////////////////////////////////////////////////////////////////////
+// TODO: IBL
+ivec3 GetIBLFaceCoords(vec3 r, ivec2 size) {
+    vec3 absR = abs(r);
+    uint face = 0;
+    vec2 uv = vec2(0.0);
+
+    if (absR.x >= absR.y && absR.x >= absR.z) {
+        if (r.x > 0.0) { face = 0; uv = vec2(-r.z,  r.y); } // +X
+        else           { face = 1; uv = vec2( r.z,  r.y); } // -X
+    } else if (absR.y >= absR.x && absR.y >= absR.z) {
+        if (r.y > 0.0) { face = 2; uv = vec2( r.x,  r.z); } // +Y
+        else           { face = 3; uv = vec2( r.x, -r.z); } // -Y
+    } else {
+        if (r.z > 0.0) { face = 4; uv = vec2( r.x,  r.y); } // +Z
+        else           { face = 5; uv = vec2(-r.x,  r.y); } // -Z
+    }
+
+    uv = (uv / absR.z) * 0.5 + 0.5;
+    if (face == 0) uv = vec2(( r.z / absR.x + 1.0) * 0.5, (r.y / absR.x + 1.0) * 0.5);
+    if (face == 1) uv = vec2((-r.z / absR.x + 1.0) * 0.5, (r.y / absR.x + 1.0) * 0.5);
+    if (face == 2) uv = vec2(( r.x / absR.y + 1.0) * 0.5, (-r.z / absR.y + 1.0) * 0.5);
+    if (face == 3) uv = vec2(( r.x / absR.y + 1.0) * 0.5, (r.z / absR.y + 1.0) * 0.5);
+    if (face == 4) uv = vec2(( r.x / absR.z + 1.0) * 0.5, (r.y / absR.z + 1.0) * 0.5);
+    if (face == 5) uv = vec2((-r.x / absR.z + 1.0) * 0.5, (r.y / absR.z + 1.0) * 0.5);
+
+    ivec2 pixelCoord = ivec2(uv * vec2(size));
+    pixelCoord = clamp(pixelCoord, ivec2(0), size - ivec2(1));
+
+    return ivec3(pixelCoord, face);
+}
+
 void main()
 {
 	// Получение Альбедо
@@ -146,8 +188,15 @@ void main()
 	vec3 localNormal = texture(globalTextures[normTexID], inUV).rgb;
 	localNormal = localNormal * 2.0 - 1.0;
 	
-	// N - мировая нормаль с учетом Normal Map
-	vec3 N = normalize(inNormal);
+	vec3 N;
+	if (PushConstants.normalTextureID == 0) {
+		N = normalize(inNormal);
+	} else {
+		uint normTexID = nonuniformEXT(PushConstants.normalTextureID);
+		vec3 localNormal = texture(globalTextures[normTexID], inUV).rgb;
+		localNormal = normalize(localNormal * 2.0 - 1.0);
+		N = normalize(TBN * localNormal); 
+	}
 
 	// ---------------------------
 
