@@ -4,7 +4,6 @@
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 layout(set = 1, binding = 2) uniform sampler2D skyPanoramaTex;
-
 layout(set = 1, binding = 3, rgba16f) uniform writeonly imageCube iblStorageMaps[];
 
 layout(push_constant) uniform PushConstants {
@@ -23,20 +22,21 @@ const float PI = 3.14159265359;
 
 vec3 GetCubeDirection(vec2 uv, uint face) {
     vec3 dir = vec3(0.0);
-    if(face == 0) dir = vec3( 1.0, -uv.y, -uv.x); // +X
-    if(face == 1) dir = vec3(-1.0, -uv.y,  uv.x); // -X
-    if(face == 2) dir = vec3( uv.x,  1.0, -uv.y); // +Y
-    if(face == 3) dir = vec3(-uv.x, -1.0, -uv.y); // -Y
-    if(face == 4) dir = vec3( uv.x, -uv.y,  1.0); // +Z
-    if(face == 5) dir = vec3( uv.x,  uv.y, -1.0); // -Z
+    switch(face) {
+        case 0: dir = vec3( 1.0,  uv.y, -uv.x); break; // +X
+        case 1: dir = vec3(-1.0,  uv.y,  uv.x); break; // -X
+        case 2: dir = vec3( uv.x,  1.0, -uv.y); break; // +Y
+        case 3: dir = vec3( uv.x, -1.0,  uv.y); break; // -Y
+        case 4: dir = vec3( uv.x,  uv.y,  1.0); break; // +Z
+        case 5: dir = vec3(-uv.x,  uv.y, -1.0); break; // -Z
+    }
     return normalize(dir);
 }
 
 vec2 SampleSphericalMap(vec3 v) {
-    vec2 uv = vec2(atan(v.y, v.x), asin(v.z));
-    uv *= vec2(0.15915494, 0.31830988); // 1.0 / 2PI, 1.0 / PI
+    vec2 uv = vec2(atan(v.z, v.x), asin(v.y));
+    uv *= vec2(0.15915494, 0.31830988);
     uv += 0.5;
-    uv.y = 1.0 - uv.y;
     return uv;
 }
 
@@ -55,9 +55,13 @@ void main() {
     vec3 right = normalize(cross(up, normal));
     up = cross(normal, right);
 
-    float sampleDelta = 0.025; // Шаг интегрирования Римана
+    float sampleDelta = 0.025; 
     float nrSamples = 0.0; 
     
+    float maxPanoramaMip = float(textureQueryLevels(skyPanoramaTex) - 1);
+    if(maxPanoramaMip < 1.0) maxPanoramaMip = 4.0;
+    float fixedLod = maxPanoramaMip * 0.6; 
+
     for(float phi = 0.0; phi < 2.0 * PI; phi += sampleDelta) {
         for(float theta = 0.0; theta < 0.5 * PI; theta += sampleDelta) {
             vec3 tangentSample = vec3(sin(theta) * cos(phi), sin(theta) * sin(phi), cos(theta));
@@ -65,12 +69,28 @@ void main() {
             vec3 sampleDir = tangentSample.x * right + tangentSample.y * up + tangentSample.z * normal;
 
             vec2 texUV = SampleSphericalMap(sampleDir);
-            irradiance += texture(skyPanoramaTex, texUV).rgb * cos(theta) * sin(theta);
-            nrSamples++;
+            
+            vec3 sampledColor = textureLod(skyPanoramaTex, texUV, fixedLod).rgb;
+            
+            if(!any(isnan(sampledColor)) && !any(isinf(sampledColor))) {
+                float maxIntensity = 10.0;
+                float currentIntensity = max(sampledColor.r, max(sampledColor.g, sampledColor.b));
+                if (currentIntensity > maxIntensity) {
+                    sampledColor *= (maxIntensity / currentIntensity);
+                }
+
+                // Интегрируем по косинусу угла (Закон Ламберта)
+                irradiance += sampledColor * cos(theta) * sin(theta);
+                nrSamples++;
+            }
         }
     }
 
-    vec3 finalColor = PI * irradiance * (1.0 / nrSamples);
-    
+    vec3 finalColor = PI * irradiance * (1.0 / max(nrSamples, 1.0));
+
+    if(any(isnan(finalColor)) || any(isinf(finalColor))) {
+        finalColor = vec3(0.0);
+    }
+
     imageStore(iblStorageMaps[colorTextureID], cubeCoord, vec4(finalColor, 1.0));
 }
