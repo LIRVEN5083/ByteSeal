@@ -64,24 +64,33 @@ void IBLProcessorComputePass::Execute(const ComputeContext& ctx){
     }
 
     if (_specularPipeline) {
+        // ВАЖНО: Перед чтением Mip 0 префильтром, убедимся, что видеокарта дотащила туда все пиксели
+        InsertImageBarrier(cmd, _ibl->Specular.image.image,
+            VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+            VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            0, 1, 6); // baseMip = 0, count = 1 (только нулевой мип)
+
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _specularPipeline->pipeline);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _specularPipeline->layout, 1, 1, &ctx.bindlessSet, 0, nullptr);
 
-        uint32_t size = 256;
+        uint32_t size = 256; // Для Mip 1 размер действительно 256x256
 
         for (uint32_t mip = 1; mip < 5; ++mip) {
             uint32_t groups = std::max(1u, size / 16);
 
-            push.colorTextureID = 1 + mip;
+            // Твоя логика пуш-констант
+            push.colorTextureID = 1 + mip; // Запись пойдет в дескрипторы 2, 3, 4, 5
             float roughness = static_cast<float>(mip) / 4.0f;
             push.materialFactors = glm::vec4(roughness, 0.0f, 0.0f, 0.0f);
 
-            vkCmdPushConstants(cmd, _specularPipeline->layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT,
+            vkCmdPushConstants(cmd, _specularPipeline->layout,
+                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT,
                 0, sizeof(GPUDrawPushConstants), &push);
 
             vkCmdDispatch(cmd, groups, groups, 6);
 
-            // Исправлено: baseMip=mip, mipCount=1, layerCount=6
+            // Барьер для текущего мипа (запись завершена)
             InsertImageBarrier(cmd, _ibl->Specular.image.image,
                 VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
                 VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
