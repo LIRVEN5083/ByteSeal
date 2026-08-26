@@ -113,34 +113,43 @@ vec3 fresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness) {
 /////////////////////////////////////////////////////////////////////////////////////////////////
 // TODO: IBL
 ivec3 GetIBLFaceCoords(vec3 r, ivec2 size) {
-    vec3 absR = abs(r);
+    vec3 rotatedR = -vec3(r.y, r.z, r.x); 
+
+    vec3 absR = abs(rotatedR);
     uint face = 0;
     vec2 uv = vec2(0.0);
 
+    // Дальше идёт наша рабочая бесшовная математика
     if (absR.x >= absR.y && absR.x >= absR.z) {
-        if (r.x > 0.0) { face = 0; uv = vec2(-r.z,  r.y); } // +X
-        else           { face = 1; uv = vec2( r.z,  r.y); } // -X
+        if (rotatedR.x > 0.0) { face = 0; uv = vec2(-rotatedR.z / absR.x,  rotatedR.y / absR.x); } // +X
+        else                  { face = 1; uv = vec2( rotatedR.z / absR.x,  rotatedR.y / absR.x); } // -X
     } else if (absR.y >= absR.x && absR.y >= absR.z) {
-        if (r.y > 0.0) { face = 2; uv = vec2( r.x,  r.z); } // +Y
-        else           { face = 3; uv = vec2( r.x, -r.z); } // -Y
+        if (rotatedR.y > 0.0) { face = 2; uv = vec2( rotatedR.x / absR.y, -rotatedR.z / absR.y); } // +Y
+        else                  { face = 3; uv = vec2( rotatedR.x / absR.y,  rotatedR.z / absR.y); } // -Y
     } else {
-        if (r.z > 0.0) { face = 4; uv = vec2( r.x,  r.y); } // +Z
-        else           { face = 5; uv = vec2(-r.x,  r.y); } // -Z
+        if (rotatedR.z > 0.0) { face = 4; uv = vec2( rotatedR.x / absR.z,  rotatedR.y / absR.z); } // +Z
+        else                  { face = 5; uv = vec2(-rotatedR.x / absR.z,  rotatedR.y / absR.z); } // -Z
     }
 
-    uv = (uv / absR.z) * 0.5 + 0.5;
-    if (face == 0) uv = vec2(( r.z / absR.x + 1.0) * 0.5, (r.y / absR.x + 1.0) * 0.5);
-    if (face == 1) uv = vec2((-r.z / absR.x + 1.0) * 0.5, (r.y / absR.x + 1.0) * 0.5);
-    if (face == 2) uv = vec2(( r.x / absR.y + 1.0) * 0.5, (-r.z / absR.y + 1.0) * 0.5);
-    if (face == 3) uv = vec2(( r.x / absR.y + 1.0) * 0.5, (r.z / absR.y + 1.0) * 0.5);
-    if (face == 4) uv = vec2(( r.x / absR.z + 1.0) * 0.5, (r.y / absR.z + 1.0) * 0.5);
-    if (face == 5) uv = vec2((-r.x / absR.z + 1.0) * 0.5, (r.y / absR.z + 1.0) * 0.5);
+    uv = uv * 0.5 + 0.5;
 
     ivec2 pixelCoord = ivec2(uv * vec2(size));
     pixelCoord = clamp(pixelCoord, ivec2(0), size - ivec2(1));
 
     return ivec3(pixelCoord, face);
 }
+
+vec3 ACESFilm(vec3 x) {
+    float a = 2.51f;
+    float b = 0.03f;
+    float c = 2.43f;
+    float d = 0.59f;
+    float e = 0.14f;
+    return clamp((x*(a*x+b))/(x*(c*x+d)+e), 0.0, 1.0);
+}
+
+
+
 
 void main()
 {
@@ -227,7 +236,7 @@ void main()
 	vec3 kD = vec3(1.0) - kS;
 	kD *= 1.0 - metallic;
 
-	vec3 radiance = scene.sunlightColor.rgb * scene.sunlightDirection.w;
+	vec3 radiance = scene.sunlightColor.rgb * scene.sunlightDirection.w * 5.0;
 	vec3 directLight = (kD * albedo / PI + specular) * radiance * NdotL;
 
 	// --КАСКАДКИ НАХУЙ НАКОНЕЦ-ТО!--
@@ -307,14 +316,61 @@ void main()
 	// Тень плавно гасит и диффузную, и спекулярную (бликовую) составляющую солнца
 	vec3 finalDirectLight = directLight * mix(0.3, 1.0, ao) * shadowTerm;
 
-	// Эмбиент остается жить в тени, создавая мягкую красивую полутень
-	vec3 ambient = scene.ambientColor.rgb * albedo * ao;
+	// --Image fucking based LIGHTING!--
 
+	// Френель для IBL с учетом шероховатости поверхности
+	vec3 F_IBL = fresnelSchlickRoughness(NdotV, F0, roughness);
+	vec3 kS_IBL = F_IBL;
+	vec3 kD_IBL = vec3(1.0) - kS_IBL;
+	kD_IBL *= 1.0 - metallic;
+
+	ivec2 irrSize = imageSize(iblStorageMaps[0]);
+	ivec3 irrCoords = GetIBLFaceCoords(N, irrSize);
+	vec3 irradiance = imageLoad(iblStorageMaps[0], irrCoords).rgb;
+	vec3 iblDiffuse = irradiance * albedo;
+
+	vec3 R = reflect(-V, N); 
+
+	float rawMip = roughness * 4.0; // Значение от 0.0 до 4.0
+	uint currentMipIdx = uint(floor(rawMip));
+	uint nextMipIdx    = uint(ceil(rawMip));
+	float mipInterpolation = fract(rawMip); 
+
+	uint specBindlessIdx0 = 1 + currentMipIdx;
+	uint specBindlessIdx1 = 1 + nextMipIdx;
+
+	ivec2 specSize0 = imageSize(iblStorageMaps[specBindlessIdx0]);
+	ivec3 specCoords0 = GetIBLFaceCoords(R, specSize0);
+	vec3 prefilteredColor0 = imageLoad(iblStorageMaps[specBindlessIdx0], specCoords0).rgb;
+
+	ivec2 specSize1 = imageSize(iblStorageMaps[specBindlessIdx1]);
+	ivec3 specCoords1 = GetIBLFaceCoords(R, specSize1);
+	vec3 prefilteredColor1 = imageLoad(iblStorageMaps[specBindlessIdx1], specCoords1).rgb;
+
+	vec3 prefilteredColor = mix(prefilteredColor0, prefilteredColor1, mipInterpolation);
+	
+
+	ivec2 lutSize = imageSize(iblStorageMaps[6]);
+
+	ivec2 lutPixelCoords = ivec2(NdotV * float(lutSize.x), (1.0 - roughness) * float(lutSize.y));
+	lutPixelCoords = clamp(lutPixelCoords, ivec2(0), lutSize - ivec2(1));
+
+	vec2 brdfSample = imageLoad(iblStorageMaps[6], ivec3(lutPixelCoords, 0)).rg;
+
+	vec3 iblSpecular = prefilteredColor * (F_IBL * brdfSample.x + brdfSample.y);
+
+
+	vec3 finalIBLDiffuse = iblDiffuse * (1.0 - metallic); 
+	vec3 iblAmbient = (kD_IBL * iblDiffuse + iblSpecular) * ao;
+
+	//-----------------------------------------------------------------------------
 	// Финальный цвет (Свет + Тени)
-	vec3 color = ambient + finalDirectLight;
+	vec3 color = iblAmbient + finalDirectLight;
 
-	// Тональное отображение (Reinhard Tone Mapping) и Гамма-коррекция
-	color = color / (color + vec3(1.0));
+	// Шобы цвета подфиксить
+	float exposure = 0.85; 
+	color *= exposure;
+	color = ACESFilm(color);
 	color = pow(color, vec3(1.0 / 2.2));
 
 	// --GLASS--
