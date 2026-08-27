@@ -1,5 +1,6 @@
 #include "vk_render.h"
 #include "vk_glTF_loading.h"
+#include "vk_compute.h"
 
 void ForwardRenderPass::Init(PipelineManager& pipelineManager){
     _opaquePipeline      = pipelineManager.GetPipeline(RenderPassType::Forward, PipelineOpacity::Opaque);
@@ -318,7 +319,13 @@ void SkyBoxRenderPass::Execute(const RenderContext& ctx, const std::vector<Rende
     vkCmdSetScissor(ctx.cmd, 0, 1, &scissor);
 
     vkCmdBindPipeline(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, activePipeline->pipeline);
-    vkCmdBindDescriptorSets(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, activePipeline->layout, 0, 2, &ctx.globalDescriptor, 0, nullptr);
+
+    VkDescriptorSet boundSets[2] = {
+        ctx.globalDescriptor,
+        ctx.bindlessTextureSet
+    };
+    vkCmdBindDescriptorSets(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, activePipeline->layout,
+                            0, 2, boundSets, 0, nullptr);
 
     vkCmdDraw(ctx.cmd, 3, 1, 0, 0);
 
@@ -416,6 +423,30 @@ void RenderSystem::ExecuteMSAAResolve(VkCommandBuffer cmd, VkExtent2D drawExtent
 
     vkCmdBeginRendering(cmd, &renderingInfo);
     vkCmdEndRendering(cmd);
+}
+
+void RenderSystem::UpdateSkyBoxTexture(GPUTexture& newTex, TextureManager& textureManager, ComputeRenderSystem& computeSystem){
+    vkDeviceWaitIdle(_init._device);
+
+    for (auto& pass : _renderPasses) {
+        if (pass->GetType() == RenderPassType::Skybox) {
+            auto* skyboxPass = dynamic_cast<SkyBoxRenderPass*>(pass.get());
+
+            if (skyboxPass) {
+                skyboxPass->SetPanoramicTexture(newTex);
+                skyboxPass->SetSkyboxType(SkyBoxType::Panoramic);
+
+                //textureManager.UpdateIBLDescriptorSets();
+
+                computeSystem.RefreshIBL(newTex);
+
+                //vkDeviceWaitIdle(_init._device);
+
+                fmt::print("[RenderSystem] Skybox and IBL system successfully notified about new texture.\n");
+                return;
+            }
+        }
+    }
 }
 
 void RenderSystem::ToggleSkyBox(){

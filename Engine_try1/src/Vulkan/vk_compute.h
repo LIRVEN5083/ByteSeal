@@ -50,6 +50,12 @@ public:
 
     void Execute(const ComputeContext& ctx) override;
 
+    void TriggerRecalculation(GPUTexture newPanorama) {
+        _panorama = newPanorama;
+        _needsRecalculation = true;
+        SetEnabled(true);
+    }
+
 private:
     // Указатели на твои 4 «вычислюшки»
     RealPipeline* _brdfPipeline{ nullptr };
@@ -63,6 +69,8 @@ private:
     void InsertImageBarrier(VkCommandBuffer cmd, VkImage image, VkAccessFlags srcAccess,
     VkAccessFlags dstAccess, VkImageLayout oldLayout, VkImageLayout newLayout, VkPipelineStageFlags srcStage,
     VkPipelineStageFlags dstStage, uint32_t baseMip, uint32_t mipCount, uint32_t layerCount);
+
+    bool _needsRecalculation = true;
 };
 
 
@@ -83,6 +91,7 @@ public:
 
     void SetPassEnabled(ComputePassType type, bool enabled);
 
+    void RefreshIBL(GPUTexture newPanorama);
 private:
     VK_INIT_ENGINE::_inited_engine& _init;
     VkQueue _computeQueue = VK_NULL_HANDLE;

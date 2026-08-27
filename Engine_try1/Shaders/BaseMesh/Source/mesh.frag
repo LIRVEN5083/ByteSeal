@@ -165,25 +165,29 @@ void main()
 	// Переводим альбедо из sRGB в Linear Space
 	vec3 albedo = pow(finalAlbedo.rgb, vec3(2.2));
 
-	// Получение параметров материала
 	float roughnessFactor = PushConstants.materialFactors.x;
 	float metallicFactor  = PushConstants.materialFactors.y;
 
 	float roughness;
 	float metallic;
 
-	// Заглушка если отсутсвуют карты метала-шероховатости
+	// Проверяем: если ID равен 0 (или 0xFFFFFFFF, смотря что у тебя заглушка), текстуры нет
 	if (PushConstants.metallicRoughnessTextureID == 0) {
-		roughness = 0.5; 
-		metallic  = 0.0;  
+		// Текстуры нет — используем чистые факторы из PushConstants как финальные значения
+		roughness = roughnessFactor; 
+		metallic  = metallicFactor;  
 	} else {
+		// Текстура есть — безопасно получаем динамический индекс внутри ветки else
 		uint mrTexID = nonuniformEXT(PushConstants.metallicRoughnessTextureID);
 		vec4 mrSample = texture(globalTextures[mrTexID], inUV);
+		
+		// Умножаем каналы текстуры на факторы (как требует стандарт glTF)
 		roughness = mrSample.g * roughnessFactor;
 		metallic  = mrSample.b * metallicFactor;
 	}
 
-	roughness = max(roughness, 0.05);
+// Защита от артефактов (слишком зеркальные поверхности могут ломать PBR блики)
+roughness = max(roughness, 0.05f);
 
 	// --ИНТЕГРАЦИЯ КАРТ НОРМАЛЕЙ--
 	vec3 normal_vertex = normalize(inNormal);
@@ -361,7 +365,10 @@ void main()
 
 
 	vec3 finalIBLDiffuse = iblDiffuse * (1.0 - metallic); 
-	vec3 iblAmbient = (kD_IBL * iblDiffuse + iblSpecular) * ao;
+	vec3 flatAmbient = scene.ambientColor.rgb * albedo * (1.0 - metallic);
+	vec3 totalDiffuseAmbient = kD_IBL * (iblDiffuse + flatAmbient);
+
+	vec3 iblAmbient = (totalDiffuseAmbient + iblSpecular) * ao;
 
 	//-----------------------------------------------------------------------------
 	// Финальный цвет (Свет + Тени)
