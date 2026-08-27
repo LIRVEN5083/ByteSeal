@@ -1,6 +1,7 @@
 #include "vk_imgui.h"
 
 #include "vk_render.h"
+#include "vk_compute.h"
 
 void VK_GUI::apply_theme(){
     ImGuiStyle& style = ImGui::GetStyle();
@@ -94,7 +95,7 @@ void VK_GUI::apply_theme(){
 }
 
 void VK_GUI::GUI::draw_model_list_overlay(VK_INIT_ENGINE::_inited_engine& _init, ModelManager& _modelManager,
-    std::unique_ptr<Scene>& _scene, const GPUSceneData& sceneData, PipelineManager& pipelineManager, RenderSystem& _renderSystem){
+    std::unique_ptr<Scene>& _scene, GPUSceneData& sceneData, PipelineManager& pipelineManager, RenderSystem& _renderSystem){
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// Drag and drop
     static bool shouldSpawnDroppedEntity = false;
@@ -396,7 +397,7 @@ void VK_GUI::GUI::draw_fps_overlay(VK_INIT_ENGINE::_inited_engine& _init, CONTRO
 }
 
 void VK_GUI::GUI::draw_context_menu_trs(VK_INIT_ENGINE::_inited_engine& _init, std::unique_ptr<Scene>& _scene,
-    const GPUSceneData& sceneData, CONTROLLER::Camera _camera){
+    GPUSceneData& sceneData, CONTROLLER::Camera _camera){
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) &&
     !ImGui::GetIO().WantCaptureMouse &&
     !ImGuizmo::IsOver() && !_camera.isCameraActive)  {
@@ -556,7 +557,7 @@ void VK_GUI::GUI::draw_context_menu_trs(VK_INIT_ENGINE::_inited_engine& _init, s
 }
 
 void VK_GUI::GUI::draw_gizmo(VK_INIT_ENGINE::_inited_engine& _init, std::unique_ptr<Scene>& _scene,
-    const GPUSceneData& sceneData, ModelManager& _modelManager, CONTROLLER::Camera _camera){
+    GPUSceneData& sceneData, ModelManager& _modelManager, CONTROLLER::Camera _camera){
 
 
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
@@ -768,7 +769,7 @@ void VK_GUI::GUI::draw_gizmo(VK_INIT_ENGINE::_inited_engine& _init, std::unique_
     }
 }
 
-void VK_GUI::GUI::draw_view_navigation_widget(const GPUSceneData& sceneData, CONTROLLER::Camera& _camera){
+void VK_GUI::GUI::draw_view_navigation_widget(GPUSceneData& sceneData, CONTROLLER::Camera& _camera){
     ImGuiIO& io = ImGui::GetIO();
     ImDrawList* drawList = ImGui::GetForegroundDrawList(); // Draw on top of everything
 
@@ -936,7 +937,8 @@ void VK_GUI::GUI::draw_imgui(VK_INIT_ENGINE::_inited_engine& _init, VkCommandBuf
 }
 
 void VK_GUI::GUI::update_imgui(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER::Delta& _delta, CONTROLLER::Camera _camera, ModelManager& _modelManager,
-    std::unique_ptr<Scene>& _scene, const GPUSceneData& sceneData, PipelineManager& pipelineManager, RenderSystem& _renderSystem){
+        std::unique_ptr<Scene>& _scene, GPUSceneData& sceneData, PipelineManager& pipelineManager, RenderSystem& _renderSystem, TextureManager& _textureManager,
+        ComputeRenderSystem& _computeSystem){
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplSDL3_NewFrame();
     ImGui::NewFrame();
@@ -956,7 +958,7 @@ void VK_GUI::GUI::update_imgui(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER
 
     draw_view_navigation_widget(sceneData, _camera);
 
-    draw_skybox_window(_renderSystem);
+    draw_skybox_window(_renderSystem, sceneData, _init, _textureManager, _computeSystem);
 
     draw_settings();
 
@@ -976,13 +978,14 @@ void VK_GUI::GUI::draw_settings(){
     ImGui::End();
 }
 
-void VK_GUI::GUI::draw_skybox_window(RenderSystem& _renderSystem){
+void VK_GUI::GUI::draw_skybox_window(RenderSystem& _renderSystem, GPUSceneData& sceneData, VK_INIT_ENGINE::_inited_engine& _init,
+    TextureManager& _textureManager, ComputeRenderSystem& _computeSystem){
     if (!showSkyBoxWindow) {
         return;
     }
 
     float windowWidth = 350.0f;
-    float windowHeight = (skyboxType == 0) ? 205.0f : 245.0f;
+    float windowHeight = (skyboxType == 0) ? 250.0f : 290.0f;
 
     ImGui::SetNextWindowSize(ImVec2(windowWidth, windowHeight), ImGuiCond_Always);
 
@@ -997,7 +1000,10 @@ void VK_GUI::GUI::draw_skybox_window(RenderSystem& _renderSystem){
             ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[ImGuiCol_Header]);
         }
         if (ImGui::Button("Procedural", ImVec2(buttonWidth, 0))) {
-            skyboxType = 0;
+            if (skyboxType != 0) {
+                skyboxType = 0;
+                _renderSystem.ToggleSkyBox(); // Сообщаем рендеру, что режим изменился
+            }
         }
         if (isProceduralActive) {
             ImGui::PopStyleColor();
@@ -1011,7 +1017,10 @@ void VK_GUI::GUI::draw_skybox_window(RenderSystem& _renderSystem){
             ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[ImGuiCol_Header]);
         }
         if (ImGui::Button("Panorama", ImVec2(buttonWidth, 0))) {
-            skyboxType = 1;
+            if (skyboxType != 1) {
+                skyboxType = 1;
+                _renderSystem.ToggleSkyBox();
+            }
         }
         if (isPanoramaActive) {
             ImGui::PopStyleColor();
@@ -1023,19 +1032,40 @@ void VK_GUI::GUI::draw_skybox_window(RenderSystem& _renderSystem){
 
         ImGui::Text("Time");
         ImGui::SetNextItemWidth(-FLT_MIN);
-        ImGui::SliderFloat("##TimeSlider", &skyboxTime, 0.0f, 24.0f, "%.1f h");
+        if (ImGui::SliderFloat("##TimeSlider", &skyboxTime, 0.0f, 24.0f, "%.1f h")) {
+            glm::vec3 newLightDir = getLightDirByHour(skyboxTime);
+
+            sceneData.sunlightDirection = glm::vec4(newLightDir, sceneData.sunlightDirection.w);
+
+            if (skyboxType == 1) {
+
+                _computeSystem.RefreshIBL(_textureManager.GetActiveSkyboxTexture());
+            }
+        }
 
         ImGui::Spacing();
 
         ImGui::Text("Sun Power");
         ImGui::SetNextItemWidth(-FLT_MIN);
-        ImGui::SliderFloat("##SunPowerSlider", &skyboxSunPower, 0.0f, 10.0f, "%.1f");
+        if (ImGui::SliderFloat("##SunPowerSlider", &skyboxSunPower, 0.0f, 10.0f, "%.1f")){
+            sceneData.sunlightDirection.w = skyboxSunPower;
+        }
 
         ImGui::Spacing();
 
         ImGui::Text("Light Color");
         ImGui::SetNextItemWidth(-FLT_MIN);
-        ImGui::ColorEdit3("##LightColorEdit", skyboxLightColor);
+        if (ImGui::ColorEdit3("##LightColorEdit", skyboxLightColor)) {
+            sceneData.sunlightColor = glm::vec4(skyboxLightColor[0], skyboxLightColor[1], skyboxLightColor[2], 1.0f);
+        }
+
+        ImGui::Spacing();
+
+        ImGui::Text("Ambient Color");
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        if (ImGui::ColorEdit3("##AmbientColorEdit", skyboxAmbientColor)) {
+            sceneData.ambientColor = glm::vec4(skyboxAmbientColor[0], skyboxAmbientColor[1], skyboxAmbientColor[2], 1.0f);
+        }
 
         if (skyboxType == 1) {
             ImGui::Spacing();
@@ -1043,7 +1073,16 @@ void VK_GUI::GUI::draw_skybox_window(RenderSystem& _renderSystem){
             ImGui::Spacing();
 
             if (ImGui::Button("Load Panorama", ImVec2(-FLT_MIN, 0))) {
-                // Логика загрузки файла
+                std::string path = UTILS::Open_HDR_Dialog();
+
+                if (!path.empty()) {
+                    vkDeviceWaitIdle(_init._device);
+                    auto loadedTextureOpt = SkyBoxUpload(path, _init, _textureManager);
+
+                    if (loadedTextureOpt.has_value()){
+                        _renderSystem.UpdateSkyBoxTexture(loadedTextureOpt.value(), _textureManager, _computeSystem);
+                    }
+                }
             }
         }
     }

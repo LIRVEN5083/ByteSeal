@@ -122,7 +122,8 @@ void VK_APPLICATION::VulkanApplication::run(){
             resize_swapchain();
         }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        _gui.update_imgui(_init, _delta, _camera, _modelManager, _activeScene,  sceneData, *_pipelineManager, _renderSystem);
+        _gui.update_imgui(_init, _delta, _camera, _modelManager, _activeScene,  sceneData,
+            *_pipelineManager, _renderSystem, _textureManager,  _computeSystem);
         CONTROLLER::update_time(_movement, _delta);
         renderLoop();
         CONTROLLER::made_move(_movement, _camera, _delta);
@@ -135,7 +136,12 @@ void VK_APPLICATION::VulkanApplication::renderLoop(){
     FrameData& currentFrame = _frames[frameId];
 
     // Ждём когда GPU прекратит рендерить прошлую картинку в течении 1 сек.
-    VK_CHECK(vkWaitForFences(_init._device, 1, &_init._renderFence[frameId], true, 1000000000));
+    VkResult fenceRes = vkWaitForFences(_init._device, 1, &_init._renderFence[frameId], true, 1000000000);
+    if (fenceRes == VK_TIMEOUT) {
+        fmt::print("[Engine Warning] Render fence timeout on frame {}. Skipping frame drawing...\n", _frameNumber);
+        return;
+    }
+    VK_CHECK(fenceRes);
     VK_CHECK(vkResetFences(_init._device, 1, &_init._renderFence[frameId]));
 
     currentFrame._deletionQueue.flush();
@@ -223,7 +229,7 @@ void VK_APPLICATION::VulkanApplication::renderLoop(){
         VkSemaphore waitCompute = _computeSystem.GetComputeSemaphore();
         if (waitCompute != VK_NULL_HANDLE) {
             waitInfos.push_back(vkinit::semaphore_submit_info(
-                VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT_KHR,
+                VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT_KHR,
                 waitCompute
             ));
         }
@@ -647,6 +653,9 @@ void VK_APPLICATION::VulkanApplication::init_scene(){
     CSMConfig csmConfig{};
     _lightManager = std::make_unique<LightManager>(_init._device, _textureManager, csmConfig);
     _lightManager->init();
+    sceneData.sunlightDirection = glm::vec4(getLightDirByHour(12.0f), 3.0f);
+    sceneData.sunlightColor = glm::vec4(1.0f, 0.98f, 0.92f, 1.0f);
+    sceneData.ambientColor = glm::vec4(0.3f, 0.42f, 0.58f, 1.0f);
 }
 
 VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& currentFrame){
@@ -670,6 +679,8 @@ VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& 
     glm::vec3 target = eye + _camera.front;
     sceneData.view = glm::lookAt(eye, target, up);
 
+
+    /*
     glm::vec3 lightDir;
     const glm::vec3 START_LIGHT_DIR = glm::normalize(glm::vec3(0.15f, 0.2f, 0.95f));
     const float rotationSpeed = 0.5f;
@@ -685,10 +696,12 @@ VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& 
     float sunPower = 8.5f; // Интенсивность для PBR
 
     sceneData.sunlightDirection = glm::vec4( lightDir, sunPower);
-    
+
+
     sceneData.sunlightColor = glm::vec4(1.0f, 0.98f, 0.92f, 1.0f);
 
     sceneData.ambientColor = glm::vec4(0.3f, 0.42f, 0.58f, 1.0f);
+    */
 
     float aspect = (float)_init._windowExtent.width / (float)_init._windowExtent.height;
     float fov = glm::radians(70.0f);
@@ -702,7 +715,7 @@ VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& 
     sceneData.viewproj = sceneData.proj * sceneData.view;
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // КАСКАДЫ ТЕНЕЙ
-    _lightManager->UpdateCascades(sceneData.view, fov, aspect, cNear, cFar, lightDir);
+    _lightManager->UpdateCascades(sceneData.view, fov, aspect, cNear, cFar, sceneData.sunlightDirection);
 
     // Переносим матрицы каскадов в sceneData
     const glm::mat4* matrices = _lightManager->GetCascadeMatrices();
@@ -716,7 +729,7 @@ VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& 
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // SkyBox
-    SkyCoefficients sky = _lightManager->ComputeSkyModel(lightDir, 3.0f, glm::vec3(0.2f));
+    SkyCoefficients sky = _lightManager->ComputeSkyModel(sceneData.sunlightDirection, 3.0f, glm::vec3(0.2f));
     sceneData.skyA = sky.skyA;
     sceneData.skyB = sky.skyB;
     sceneData.skyC = sky.skyC;

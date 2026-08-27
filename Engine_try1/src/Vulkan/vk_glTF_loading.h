@@ -156,6 +156,8 @@ public:
         const SamplerOptions& params = {},
         ModelLifetime lifetime = ModelLifetime::Dynamic);
 
+    void UpdateIBLDescriptorSets();
+
     void FreeIBLtextures();
     void FreeSkyboxTexutre(GPUTexture& skyboxTexture);
     void FreeTexture(GPUTexture& texture, uint32_t binding = 0);
@@ -168,6 +170,7 @@ public:
     VkDescriptorSetLayout GetTextureLayout() const { return _textureLayout; }
     VkSampler GetDefaultSampler() const {return _defaultSampler;}
     const IBL_TEXTURES* GetIBLTextures() const { return &_iblTextures; }
+    GPUTexture& GetActiveSkyboxTexture(){return  _activeSkyboxTexture;}
 private:
     VkSampler CreateSampler(const SamplerOptions& params);
 
@@ -275,7 +278,7 @@ std::optional<GPUTexture> load_panoramic_hdr(VK_INIT_ENGINE::_inited_engine& _in
                                              const float* pixelData, uint32_t width, uint32_t height);
 
 class RenderPass;
-void SkyBoxUpload(const std::string& filePath, VK_INIT_ENGINE::_inited_engine& _init, TextureManager& textureManager, RenderPass *renderPass);
+std::optional<GPUTexture> SkyBoxUpload(const std::string& filePath, VK_INIT_ENGINE::_inited_engine& _init, TextureManager& textureManager);
 
 // Парсинг текстур и их аллокация
 std::optional<GPUTexture> load_image(VK_INIT_ENGINE::_inited_engine& _init, TextureManager& textureManager,

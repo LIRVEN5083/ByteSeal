@@ -5,6 +5,7 @@
 #include "vk_scene.h"
 #include "vk_descriptors.h"
 #include "vk_scene.h"
+#include "../Utils/Light.h"
 
 // Пул и буфер на каждый кадр
 struct FrameData {

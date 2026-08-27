@@ -216,6 +216,10 @@ bool ComputeRenderSystem::Dispatch(VkDescriptorSet bindlessTextureSet){
 
     vkQueueSubmit(_computeQueue, 1, &submitInfo, _computeFence);
 
+    if (_computeQueue != VK_NULL_HANDLE) {
+        vkQueueWaitIdle(_computeQueue);
+    }
+
     return true;
 }
 
@@ -226,4 +230,17 @@ void ComputeRenderSystem::SetPassEnabled(ComputePassType type, bool enabled){
             return;
         }
     }
+}
+
+void ComputeRenderSystem::RefreshIBL(GPUTexture newPanorama){
+    for (auto& pass : _computePasses) {
+        if (pass->GetType() == ComputePassType::IBL) {
+            auto* iblPass = dynamic_cast<IBLProcessorComputePass*>(pass.get());
+            if (iblPass) {
+                iblPass->TriggerRecalculation(newPanorama);
+                return;
+            }
+        }
+    }
+    fmt::print("[ComputeSystem Error] IBLProcessorComputePass not found for recalculation!\n");
 }

@@ -4,12 +4,15 @@
 #include "vk_glTF_loading.h"
 #include "vk_scene.h"
 #include "../Utils/File_loader.h"
+#include "../Utils/Light.h"
 
 class ModelManager;
 class Scene;
 class PipelineManager;
 struct GPUSceneData;
 class RenderSystem;
+class TextureManager;
+class ComputeRenderSystem;
 
 namespace VK_GUI{
     // TODO: Тема навайбкожена
@@ -20,17 +23,19 @@ namespace VK_GUI{
     public:
         void draw_imgui(VK_INIT_ENGINE::_inited_engine& _init, VkCommandBuffer cmd, VkExtent2D _drawExtent);
         void update_imgui(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER::Delta& _delta, CONTROLLER::Camera _camera, ModelManager& _modelManager,
-            std::unique_ptr<Scene>& _scene, const GPUSceneData& sceneData, PipelineManager& pipelineManager, RenderSystem& _renderSystem);
+            std::unique_ptr<Scene>& _scene, GPUSceneData& sceneData, PipelineManager& pipelineManager, RenderSystem& _renderSystem, TextureManager& _textureManager,
+            ComputeRenderSystem& _computeSystem);
     private:
         void draw_settings();
-        void draw_skybox_window(RenderSystem& _renderSystem);
+        void draw_skybox_window(RenderSystem& _renderSystem, GPUSceneData& sceneData, VK_INIT_ENGINE::_inited_engine& _init,
+            TextureManager& _textureManager, ComputeRenderSystem& _computeSystem);
         void draw_model_properties_window(VK_INIT_ENGINE::_inited_engine& _init, ModelManager& modelManager);
         void draw_model_list_overlay(VK_INIT_ENGINE::_inited_engine& _init, ModelManager& _modelManager,
-            std::unique_ptr<Scene>& _scene, const GPUSceneData& sceneData, PipelineManager& pipelineManager, RenderSystem& _renderSystem);
+            std::unique_ptr<Scene>& _scene, GPUSceneData& sceneData, PipelineManager& pipelineManager, RenderSystem& _renderSystem);
         void draw_fps_overlay(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER::Delta _delta);
-        void draw_context_menu_trs(VK_INIT_ENGINE::_inited_engine& _init, std::unique_ptr<Scene>& _scene, const GPUSceneData& sceneData, CONTROLLER::Camera _camera);
-        void draw_gizmo(VK_INIT_ENGINE::_inited_engine& _init, std::unique_ptr<Scene>& _scene, const GPUSceneData& sceneData, ModelManager& _modelManager, CONTROLLER::Camera _camera);
-        void draw_view_navigation_widget(const GPUSceneData& sceneData, CONTROLLER::Camera& _camera);
+        void draw_context_menu_trs(VK_INIT_ENGINE::_inited_engine& _init, std::unique_ptr<Scene>& _scene, GPUSceneData& sceneData, CONTROLLER::Camera _camera);
+        void draw_gizmo(VK_INIT_ENGINE::_inited_engine& _init, std::unique_ptr<Scene>& _scene, GPUSceneData& sceneData, ModelManager& _modelManager, CONTROLLER::Camera _camera);
+        void draw_view_navigation_widget(GPUSceneData& sceneData, CONTROLLER::Camera& _camera);
         void gizmo_mode();
         void draw_main_menu_bar(CONTROLLER::Delta& _delta);
 
@@ -53,13 +58,13 @@ namespace VK_GUI{
 
         // TODO:: Для SkyBox
         static inline bool showSkyBoxWindow = false;
-        // 0 - Panorama, 1 - Procedural
         static inline int skyboxType = 0;
 
         // Параметры скайбокса
         static inline float skyboxTime = 12.0f;
         static inline float skyboxSunPower = 1.0f;
         static inline float skyboxLightColor[3] = { 1.0f, 1.0f, 1.0f };
+        static inline float skyboxAmbientColor[3] = { 1.0f, 1.0f, 1.0f };
 
         // TODO:: Для Settings
         static inline bool showSettings = false;

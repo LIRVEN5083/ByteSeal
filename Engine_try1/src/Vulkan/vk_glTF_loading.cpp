@@ -205,7 +205,41 @@ GPUTexture TextureManager::AllocateTexture(
         _activeSkyboxTexture = texture;
     }
 
+    fmt::print("Allocate texture!\n");
     return texture;
+}
+
+void TextureManager::UpdateIBLDescriptorSets(){
+    uint32_t totalDescriptors = 7;
+    uint32_t targetBinding = 3;
+
+    std::vector<VkDescriptorImageInfo> imageInfos(totalDescriptors);
+
+    imageInfos[0].sampler = VK_NULL_HANDLE;
+    imageInfos[0].imageView = _iblTextures.Diffuse.image.imageView;
+    imageInfos[0].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+
+    for (uint32_t i = 0; i < 5; ++i) {
+        imageInfos[1 + i].sampler = VK_NULL_HANDLE;
+        imageInfos[1 + i].imageView = _iblTextures.mipImageViews[i];
+        imageInfos[1 + i].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+    }
+
+    imageInfos[6].sampler = VK_NULL_HANDLE;
+    imageInfos[6].imageView = _iblTextures.BRDF_LUT.image.imageView;
+    imageInfos[6].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+
+    VkWriteDescriptorSet iblWrite{ VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+    iblWrite.dstSet = _textureSet;
+    iblWrite.dstBinding = targetBinding;
+    iblWrite.dstArrayElement = 0;
+    iblWrite.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    iblWrite.descriptorCount = totalDescriptors;
+    iblWrite.pImageInfo = imageInfos.data();
+
+    vkUpdateDescriptorSets(_device, 1, &iblWrite, 0, nullptr);
+
+    _nextIndices[targetBinding] = totalDescriptors;
 }
 
 void TextureManager::FreeIBLtextures(){
@@ -228,7 +262,7 @@ void TextureManager::FreeSkyboxTexutre(GPUTexture& skyboxTexture){
 
     FreeTexture(skyboxTexture, 2);
 
-    fmt::print("[TextureManager] Skybox panorama successfully freed.\n");
+    fmt::print("[TextureManager] Skybox panorama successfully free.\n");
 }
 
 void TextureManager::FreeTexture(GPUTexture& texture, uint32_t binding){
@@ -748,31 +782,30 @@ std::optional<GPUTexture> load_panoramic_hdr(VK_INIT_ENGINE::_inited_engine& _in
     return outTexture;
 }
 
-void SkyBoxUpload(const std::string& filePath, VK_INIT_ENGINE::_inited_engine& _init, TextureManager& textureManager, RenderPass *renderPass){
+std::optional<GPUTexture> SkyBoxUpload(const std::string& filePath, VK_INIT_ENGINE::_inited_engine& _init, TextureManager& textureManager) {
     int width, height, channels;
     float* pixelData = stbi_loadf(filePath.c_str(), &width, &height, &channels, 3);
 
-    if (pixelData) {
-        fmt::print("[Engine] Loading HDR Panorama: {} ({}x{})\n", filePath, width, height);
-        auto panoramicTex = load_panoramic_hdr(_init, textureManager, pixelData, width, height);
-        stbi_image_free(pixelData);
-
-        if (panoramicTex.has_value()) {
-            // "Магия" полиморфизма: пытаемся безопасно превратить RenderPass* в SkyBoxRenderPass*
-            if (auto* skyboxPass = dynamic_cast<SkyBoxRenderPass*>(renderPass)) {
-                if (skyboxPass->HasTexture()) {
-                    GPUTexture oldTex = skyboxPass->GetPanoramicTexture();
-                    textureManager.FreeSkyboxTexutre(oldTex); // Вычистили старые 256 МБ на GPU
-                }
-                skyboxPass->SetPanoramicTexture(panoramicTex.value());
-                skyboxPass->SetSkyboxType(SkyBoxType::Panoramic);
-            } else {
-                fmt::print("[Engine Error] Passed RenderPass is not a SkyBoxRenderPass!\n");
-            }
-        }
-    } else {
+    if (!pixelData) {
         fmt::print("[Engine Error] Failed to load HDR file: {}\n", filePath);
+        return std::nullopt;
     }
+
+    vkDeviceWaitIdle(_init._device);
+
+    GPUTexture& oldSkybox = textureManager.GetActiveSkyboxTexture();
+    if (oldSkybox.image.image != VK_NULL_HANDLE) {
+        textureManager.FreeSkyboxTexutre(oldSkybox);
+    }
+
+    vkDeviceWaitIdle(_init._device);
+
+    fmt::print("[Engine] Loading HDR Panorama: {} ({}x{})\n", filePath, width, height);
+
+    auto panoramicTex = load_panoramic_hdr(_init, textureManager, pixelData, width, height);
+    stbi_image_free(pixelData);
+
+    return panoramicTex;
 }
 
 void MeshManager::init(VK_INIT_ENGINE::_inited_engine& _init){

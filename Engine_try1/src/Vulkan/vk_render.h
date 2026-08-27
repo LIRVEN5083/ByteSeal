@@ -1,7 +1,10 @@
 #pragma once
+#include "vk_glTF_loading.h"
 struct RealPipeline;
 #include "vk_types.h"
 
+class ComputeRenderSystem;
+class TextureManager;
 
 struct RenderObject{
     VkBuffer indexBuffer;
@@ -173,6 +176,8 @@ public:
     void SetPassEnabled(RenderPassType type, bool enabled);
 
     void ExecuteMSAAResolve(VkCommandBuffer cmd, VkExtent2D drawExtent);
+
+    void UpdateSkyBoxTexture(GPUTexture& newTex, TextureManager& textureManager, ComputeRenderSystem& computeSystem);
 
     void ToggleSkyBox();
 
