@@ -172,16 +172,12 @@ void main()
 	float roughness;
 	float metallic;
 
-	// Заглушка если отсутсвуют карты метала-шероховатости
-	if (PushConstants.metallicRoughnessTextureID == 0) {
-		roughness = 0.5; 
-		metallic  = 0.0;  
-	} else {
-		uint mrTexID = nonuniformEXT(PushConstants.metallicRoughnessTextureID);
-		vec4 mrSample = texture(globalTextures[mrTexID], inUV);
-		roughness = mrSample.g * roughnessFactor;
-		metallic  = mrSample.b * metallicFactor;
-	}
+	
+	uint mrTexID = nonuniformEXT(PushConstants.metallicRoughnessTextureID);
+	vec4 mrSample = texture(globalTextures[mrTexID], inUV);
+	roughness = mrSample.g * roughnessFactor;
+	metallic  = mrSample.b * metallicFactor;
+	
 
 	roughness = max(roughness, 0.05);
 

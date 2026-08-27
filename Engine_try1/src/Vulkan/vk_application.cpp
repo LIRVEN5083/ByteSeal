@@ -625,7 +625,6 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     _renderSystem.SetPassEnabled(RenderPassType::ShadowCSM, false);
     */
 
-    SkyBoxUpload("../Data/Panoramic/Filed.hdr", _init, _textureManager, SkyBox_RP);
     //_renderSystem.ToggleSkyBox();
 }
 

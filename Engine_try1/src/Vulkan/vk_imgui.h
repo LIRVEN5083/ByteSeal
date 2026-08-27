@@ -22,6 +22,8 @@ namespace VK_GUI{
         void update_imgui(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER::Delta& _delta, CONTROLLER::Camera _camera, ModelManager& _modelManager,
             std::unique_ptr<Scene>& _scene, const GPUSceneData& sceneData, PipelineManager& pipelineManager, RenderSystem& _renderSystem);
     private:
+        void draw_settings();
+        void draw_skybox_window(RenderSystem& _renderSystem);
         void draw_model_properties_window(VK_INIT_ENGINE::_inited_engine& _init, ModelManager& modelManager);
         void draw_model_list_overlay(VK_INIT_ENGINE::_inited_engine& _init, ModelManager& _modelManager,
             std::unique_ptr<Scene>& _scene, const GPUSceneData& sceneData, PipelineManager& pipelineManager, RenderSystem& _renderSystem);
@@ -48,5 +50,18 @@ namespace VK_GUI{
         static inline bool showTrsWindow = false;
         static inline ImGuizmo::OPERATION currentGizmoOperation = ImGuizmo::TRANSLATE;
         static inline ImGuizmo::MODE currentGizmoMode = ImGuizmo::WORLD;
+
+        // TODO:: Для SkyBox
+        static inline bool showSkyBoxWindow = false;
+        // 0 - Panorama, 1 - Procedural
+        static inline int skyboxType = 0;
+
+        // Параметры скайбокса
+        static inline float skyboxTime = 12.0f;
+        static inline float skyboxSunPower = 1.0f;
+        static inline float skyboxLightColor[3] = { 1.0f, 1.0f, 1.0f };
+
+        // TODO:: Для Settings
+        static inline bool showSettings = false;
     };
 }

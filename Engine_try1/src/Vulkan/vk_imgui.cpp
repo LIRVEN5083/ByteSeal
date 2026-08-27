@@ -891,14 +891,14 @@ void VK_GUI::GUI::draw_main_menu_bar(CONTROLLER::Delta& _delta){
             ImGui::EndMenu();
         }
 
-        if (ImGui::BeginMenu("Setting")) {
-            static bool vsync = true;
-            if (ImGui::Checkbox("VSync", &vsync)) {}
-            ImGui::EndMenu();
+        if (ImGui::MenuItem("Setting")) {
+            showSettings = true;
         }
 
         if (ImGui::BeginMenu("Tools")) {
-            if (ImGui::MenuItem("SkyBox")) {}
+            if (ImGui::MenuItem("SkyBox")){
+                showSkyBoxWindow = true;
+            }
             ImGui::EndMenu();
         }
 
@@ -956,7 +956,98 @@ void VK_GUI::GUI::update_imgui(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER
 
     draw_view_navigation_widget(sceneData, _camera);
 
+    draw_skybox_window(_renderSystem);
+
+    draw_settings();
+
     ImGui::Render();
+}
+
+void VK_GUI::GUI::draw_settings(){
+    if (!showSettings) {
+        return;
+    }
+
+    ImGui::SetNextWindowSize(ImVec2(300, 200), ImGuiCond_FirstUseEver);
+
+    if (ImGui::Begin("Settings", &showSettings)) {
+
+    }
+    ImGui::End();
+}
+
+void VK_GUI::GUI::draw_skybox_window(RenderSystem& _renderSystem){
+    if (!showSkyBoxWindow) {
+        return;
+    }
+
+    float windowWidth = 350.0f;
+    float windowHeight = (skyboxType == 0) ? 205.0f : 245.0f;
+
+    ImGui::SetNextWindowSize(ImVec2(windowWidth, windowHeight), ImGuiCond_Always);
+
+    if (ImGui::Begin("Skybox Settings", &showSkyBoxWindow, ImGuiWindowFlags_NoResize)) {
+
+        float itemSpacing = ImGui::GetStyle().ItemSpacing.x;
+        float buttonWidth = (ImGui::GetContentRegionAvail().x - itemSpacing) * 0.5f;
+
+        // Procedural
+        bool isProceduralActive = (skyboxType == 0);
+        if (isProceduralActive) {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[ImGuiCol_Header]);
+        }
+        if (ImGui::Button("Procedural", ImVec2(buttonWidth, 0))) {
+            skyboxType = 0;
+        }
+        if (isProceduralActive) {
+            ImGui::PopStyleColor();
+        }
+
+        ImGui::SameLine();
+
+        // Panorama
+        bool isPanoramaActive = (skyboxType == 1);
+        if (isPanoramaActive) {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[ImGuiCol_Header]);
+        }
+        if (ImGui::Button("Panorama", ImVec2(buttonWidth, 0))) {
+            skyboxType = 1;
+        }
+        if (isPanoramaActive) {
+            ImGui::PopStyleColor();
+        }
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        ImGui::Text("Time");
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        ImGui::SliderFloat("##TimeSlider", &skyboxTime, 0.0f, 24.0f, "%.1f h");
+
+        ImGui::Spacing();
+
+        ImGui::Text("Sun Power");
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        ImGui::SliderFloat("##SunPowerSlider", &skyboxSunPower, 0.0f, 10.0f, "%.1f");
+
+        ImGui::Spacing();
+
+        ImGui::Text("Light Color");
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        ImGui::ColorEdit3("##LightColorEdit", skyboxLightColor);
+
+        if (skyboxType == 1) {
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            if (ImGui::Button("Load Panorama", ImVec2(-FLT_MIN, 0))) {
+                // Логика загрузки файла
+            }
+        }
+    }
+    ImGui::End();
 }
 
 void VK_GUI::GUI::draw_model_properties_window(VK_INIT_ENGINE::_inited_engine& _init, ModelManager& modelManager){
