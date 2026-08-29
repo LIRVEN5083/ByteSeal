@@ -897,7 +897,7 @@ void VK_GUI::GUI::draw_inspector_window(VK_INIT_ENGINE::_inited_engine& _init, s
 
         if (ImGui::BeginTable("InspectorLayout", 2, ImGuiTableFlags_NoBordersInBody)) {
 
-            ImGui::TableSetupColumn("Buttons", ImGuiTableColumnFlags_WidthFixed, 34.0f);
+            ImGui::TableSetupColumn("Buttons", ImGuiTableColumnFlags_WidthFixed, 30.0f);
             ImGui::TableSetupColumn("Content", ImGuiTableColumnFlags_WidthStretch);
 
             ImGui::TableNextColumn();
@@ -1006,20 +1006,21 @@ void VK_GUI::GUI::draw_inspector_window(VK_INIT_ENGINE::_inited_engine& _init, s
                         }
 
                         const float labelWidth = 85.0f;
+                        const float sliderWidth = -8.0f;
 
                         // POSITION
                         ImGui::Text("Location X"); ImGui::SameLine(labelWidth);
-                        ImGui::PushItemWidth(-1.0f); // Растягиваем слайдер до упора вправо
+                        ImGui::PushItemWidth(sliderWidth); // Растягиваем слайдер до упора вправо
                         ImGui::DragFloat("##LocX", &position.x, 0.05f, 0.0f, 0.0f, "%.3f m");
                         ImGui::PopItemWidth();
 
                         ImGui::Text("         Y"); ImGui::SameLine(labelWidth);
-                        ImGui::PushItemWidth(-1.0f);
+                        ImGui::PushItemWidth(sliderWidth);
                         ImGui::DragFloat("##LocY", &position.y, 0.05f, 0.0f, 0.0f, "%.3f m");
                         ImGui::PopItemWidth();
 
                         ImGui::Text("         Z"); ImGui::SameLine(labelWidth);
-                        ImGui::PushItemWidth(-1.0f);
+                        ImGui::PushItemWidth(sliderWidth);
                         ImGui::DragFloat("##LocZ", &position.z, 0.05f, 0.0f, 0.0f, "%.3f m");
                         ImGui::PopItemWidth();
 
@@ -1031,17 +1032,17 @@ void VK_GUI::GUI::draw_inspector_window(VK_INIT_ENGINE::_inited_engine& _init, s
                         bool isRotationChanged = false;
 
                         ImGui::Text("Rotation X"); ImGui::SameLine(labelWidth);
-                        ImGui::PushItemWidth(-1.0f);
+                        ImGui::PushItemWidth(sliderWidth);
                         if (ImGui::DragFloat("##RotX", &cachedUIAngles.x, 0.5f, -360.0f, 360.0f, "%.1f°")) isRotationChanged = true;
                         ImGui::PopItemWidth();
 
                         ImGui::Text("         Y"); ImGui::SameLine(labelWidth);
-                        ImGui::PushItemWidth(-1.0f);
+                        ImGui::PushItemWidth(sliderWidth);
                         if (ImGui::DragFloat("##RotY", &cachedUIAngles.y, 0.5f, -360.0f, 360.0f, "%.1f°")) isRotationChanged = true;
                         ImGui::PopItemWidth();
 
                         ImGui::Text("         Z"); ImGui::SameLine(labelWidth);
-                        ImGui::PushItemWidth(-1.0f);
+                        ImGui::PushItemWidth(sliderWidth);
                         if (ImGui::DragFloat("##RotZ", &cachedUIAngles.z, 0.5f, -360.0f, 360.0f, "%.1f°")) isRotationChanged = true;
                         ImGui::PopItemWidth();
 
@@ -1055,17 +1056,17 @@ void VK_GUI::GUI::draw_inspector_window(VK_INIT_ENGINE::_inited_engine& _init, s
 
                         // SCALE
                         ImGui::Text("Scale    X"); ImGui::SameLine(labelWidth);
-                        ImGui::PushItemWidth(-1.0f);
+                        ImGui::PushItemWidth(sliderWidth);
                         ImGui::DragFloat("##ScaleX", &scale.x, 0.01f, 0.001f, 1000.0f, "%.3f");
                         ImGui::PopItemWidth();
 
                         ImGui::Text("         Y"); ImGui::SameLine(labelWidth);
-                        ImGui::PushItemWidth(-1.0f);
+                        ImGui::PushItemWidth(sliderWidth);
                         ImGui::DragFloat("##ScaleY", &scale.y, 0.01f, 0.001f, 1000.0f, "%.3f");
                         ImGui::PopItemWidth();
 
                         ImGui::Text("         Z"); ImGui::SameLine(labelWidth);
-                        ImGui::PushItemWidth(-1.0f);
+                        ImGui::PushItemWidth(sliderWidth);
                         ImGui::DragFloat("##ScaleZ", &scale.z, 0.01f, 0.001f, 1000.0f, "%.3f");
                         ImGui::PopItemWidth();
 
@@ -1075,7 +1076,7 @@ void VK_GUI::GUI::draw_inspector_window(VK_INIT_ENGINE::_inited_engine& _init, s
 
                         // UNIFORM SCALE
                         ImGui::Text("Uniform"); ImGui::SameLine(labelWidth);
-                        ImGui::PushItemWidth(-1.0f);
+                        ImGui::PushItemWidth(sliderWidth);
                         float uniformScale = scale.x;
                         if (ImGui::DragFloat("##UniformScale", &uniformScale, 0.01f, 0.001f, 1000.0f, "Multiplier: %.3f")) {
                             scale.x = uniformScale;
