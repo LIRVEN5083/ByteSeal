@@ -15,21 +15,25 @@ void IBLProcessorComputePass::Execute(const ComputeContext& ctx){
 
     GPUDrawPushConstants push {};
 
-    if (_brdfPipeline) {
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _brdfPipeline->pipeline);
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _brdfPipeline->layout, 1, 1, &ctx.bindlessSet, 0, nullptr);
+    if (!_BRDF_LUT_IS_INITED){
+        if (_brdfPipeline) {
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _brdfPipeline->pipeline);
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _brdfPipeline->layout, 1, 1, &ctx.bindlessSet, 0, nullptr);
 
-        push.colorTextureID = 6; // Наш BRDF LUT хранится под индексом 6
-        vkCmdPushConstants(cmd, _brdfPipeline->layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT,
-            0, sizeof(GPUDrawPushConstants), &push);
+            push.colorTextureID = 6; // Наш BRDF LUT хранится под индексом 6
+            vkCmdPushConstants(cmd, _brdfPipeline->layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT,
+                0, sizeof(GPUDrawPushConstants), &push);
 
-        vkCmdDispatch(cmd, 32, 32, 1); // 512x512 при local_size = 16x16
+            vkCmdDispatch(cmd, 32, 32, 1); // 512x512 при local_size = 16x16
 
-        InsertImageBarrier(cmd, _ibl->BRDF_LUT.image.image,
-            VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
-            VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
-            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, 1);
+            InsertImageBarrier(cmd, _ibl->BRDF_LUT.image.image,
+                VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
+                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, 1);
+        }
+        _BRDF_LUT_IS_INITED = true;
     }
+
 
     if (_panoramaPipeline) {
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _panoramaPipeline->pipeline);

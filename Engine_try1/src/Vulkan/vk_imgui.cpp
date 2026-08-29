@@ -1183,11 +1183,11 @@ void VK_GUI::GUI::draw_skybox_window(RenderSystem& _renderSystem, GPUSceneData& 
         ImGui::SetNextItemWidth(-FLT_MIN);
         if (ImGui::SliderFloat("##TimeSlider", &skyboxTime, 0.0f, 24.0f, "%.1f h")) {
             glm::vec3 newLightDir = getLightDirByHour(skyboxTime);
-
             sceneData.sunlightDirection = glm::vec4(newLightDir, sceneData.sunlightDirection.w);
+        }
 
+        if (ImGui::IsItemDeactivatedAfterEdit()) {
             if (skyboxType == 1) {
-
                 _computeSystem.RefreshIBL(_textureManager.GetActiveSkyboxTexture());
             }
         }
