@@ -63,6 +63,8 @@ private:
     RealPipeline* _diffusePipeline{ nullptr };
     RealPipeline* _specularPipeline{ nullptr };
 
+    static inline bool _BRDF_LUT_IS_INITED = false;
+
     const IBL_TEXTURES* _ibl;
     GPUTexture _panorama;
 

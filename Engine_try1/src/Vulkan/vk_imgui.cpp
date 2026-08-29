@@ -91,11 +91,15 @@ void VK_GUI::apply_theme(){
     colors[ImGuiCol_NavHighlight]           = ImVec4(0.21f, 0.47f, 0.76f, 1.00f);
 
     // DND borders
-    colors[ImGuiCol_DragDropTarget]         = ImVec4(1.0f, 0.0f, 0.3f, 1.00f);
+    colors[ImGuiCol_DragDropTarget] = ImGui::GetStyle().Colors[ImGuiCol_HeaderActive];
+    colors[ImGuiCol_DragDropTarget].w = 0.60f;
 }
 
 void VK_GUI::GUI::draw_model_list_overlay(VK_INIT_ENGINE::_inited_engine& _init, ModelManager& _modelManager,
     std::unique_ptr<Scene>& _scene, GPUSceneData& sceneData, PipelineManager& pipelineManager, RenderSystem& _renderSystem){
+
+    windowWidth = 320.0f;                           // Фиксированная ширина для обоих окон
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// Drag and drop
     static bool shouldSpawnDroppedEntity = false;
@@ -119,7 +123,8 @@ void VK_GUI::GUI::draw_model_list_overlay(VK_INIT_ENGINE::_inited_engine& _init,
     }
 
     ImGui::SetNextWindowPos(ImViewport->WorkPos);
-    ImGui::SetNextWindowSize(ImViewport->WorkSize);
+    ImVec2 customDropZoneSize = ImVec2(ImViewport->WorkSize.x - windowWidth, ImViewport->WorkSize.y);
+    ImGui::SetNextWindowSize(customDropZoneSize);
 
     ImGui::Begin("BackgroundDropZone", nullptr, bgFlags);
 
@@ -142,19 +147,23 @@ void VK_GUI::GUI::draw_model_list_overlay(VK_INIT_ENGINE::_inited_engine& _init,
 /// Window manager logic
 
     ImGuiViewport* viewport = ImGui::GetMainViewport();
-    float screenWidth = viewport->WorkSize.x;
-
+    float screenWidth  = viewport->WorkSize.x;
+    float screenHeight = viewport->WorkSize.y;
     float menuBarHeight = ImGui::GetFrameHeight();
 
-    float windowWidth = 320.0f;
+    float availableHeight = screenHeight - menuBarHeight; // Доступная высота справа
+    halfHeight = availableHeight / 2.0f;
 
     ImVec2 finalPos = ImVec2(screenWidth - windowWidth, menuBarHeight);
 
-    ImGui::SetNextWindowPos(finalPos, ImGuiCond_Always);
-    ImGui::SetNextWindowSize(ImVec2(windowWidth, 0.0f), ImGuiCond_Always);
+    ImVec2 modelManagerPos = ImVec2(screenWidth - windowWidth, menuBarHeight);
+    ImGui::SetNextWindowPos(modelManagerPos, ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(windowWidth, halfHeight), ImGuiCond_Always);
     ImGui::SetNextWindowBgAlpha(1.0f);
 
     ImGuiWindowFlags flags = ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoCollapse;
+
+    inspectorPos = ImVec2(screenWidth - windowWidth, menuBarHeight + halfHeight);
 
     bool triggerFileDialog = false;
     static int contextMenuModelId = -1;
@@ -394,166 +403,6 @@ void VK_GUI::GUI::draw_fps_overlay(VK_INIT_ENGINE::_inited_engine& _init, CONTRO
     ImGui::End();
 
     ImGui::PopStyleVar(); // Возвращаем отступы назад
-}
-
-void VK_GUI::GUI::draw_context_menu_trs(VK_INIT_ENGINE::_inited_engine& _init, std::unique_ptr<Scene>& _scene,
-    GPUSceneData& sceneData, CONTROLLER::Camera _camera){
-    if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) &&
-    !ImGui::GetIO().WantCaptureMouse &&
-    !ImGuizmo::IsOver() && !_camera.isCameraActive)  {
-
-        ImVec2 mousePos = ImGui::GetMousePos();
-
-        float screenWidth  = static_cast<float>(_init._windowExtent.width);
-        float screenHeight = static_cast<float>(_init._windowExtent.height);
-
-        // Строим луч и пускаем в сцену
-        Ray ray = Ray::FromScreen(mousePos.x, mousePos.y, screenWidth, screenHeight, sceneData);
-
-        RaycastHit hit = _scene->Raycast(ray);
-
-        if (hit.hit && hit.entity != nullptr) {
-            selectedEntityId = static_cast<int>(hit.entity->id);
-            mouseClickPos = mousePos; // Запоминаем координаты курсора
-            showContextMenu = true;
-
-            ImGui::OpenPopup("ModelContextMenu");
-        } else {
-            selectedEntityId = -1;
-            showContextMenu = false;
-        }
-    }
-
-    static bool showTrsWindow = false;
-
-    ImGui::SetNextWindowPos(mouseClickPos, ImGuiCond_Appearing);
-
-    if (ImGui::BeginPopup("ModelContextMenu")) {
-        GameEntity* entity = _scene->GetEntity(static_cast<uint32_t>(selectedEntityId));
-
-        if (entity) {
-            ImGui::TextDisabled("Entity ID: %d", selectedEntityId);
-            ImGui::Separator();
-
-            if (ImGui::MenuItem("TRS")) {
-                showTrsWindow = true;
-                showContextMenu = false;
-                ImGui::CloseCurrentPopup();
-            }
-
-            if (ImGui::MenuItem("Delete")) {
-                _scene->DestroyEntity(selectedEntityId);
-                selectedEntityId = -1;
-                ImGui::CloseCurrentPopup();
-            }
-        }
-        ImGui::EndPopup();
-    }
-
-    if (showTrsWindow) {
-        ImGui::SetNextWindowSize(ImVec2(350, 400), ImGuiCond_FirstUseEver);
-
-        if (ImGui::Begin("TRS Properties", &showTrsWindow)) {
-            GameEntity* entity = _scene->GetEntity(static_cast<uint32_t>(selectedEntityId));
-
-            if (entity) {
-                ImGui::Text("Editing Entity ID: %d", selectedEntityId);
-                ImGui::Separator();
-
-                auto& position = entity->position;
-                auto& rotation = entity->rotation;
-                auto& scale    = entity->scale;
-                
-                float itemWidth = ImGui::GetContentRegionAvail().x * 0.6f;
-
-                // Position
-                if (ImGui::TreeNodeEx("Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
-
-                    ImGui::PushItemWidth(itemWidth);
-
-                    // Location X, Y, Z
-                    ImGui::Text("Location X"); ImGui::SameLine(120);
-                    ImGui::DragFloat("##LocX", &position.x, 0.05f, 0.0f, 0.0f, "%.3f m");
-
-                    ImGui::Text("         Y"); ImGui::SameLine(120);
-                    ImGui::DragFloat("##LocY", &position.y, 0.05f, 0.0f, 0.0f, "%.3f m");
-
-                    ImGui::Text("         Z"); ImGui::SameLine(120);
-                    ImGui::DragFloat("##LocZ", &position.z, 0.05f, 0.0f, 0.0f, "%.3f m");
-
-                    ImGui::Spacing();
-
-                    // Rotation X, Y, Z (Euler angles)
-                    static glm::vec3 cachedUIAngles(0.0f);
-                    static uint32_t lastEntityId = -1;
-
-                    // Схемка такая в интерфейсе юзаем углы эйлера а когда они начнут клинить бахаем квантерионы
-                    if (selectedEntityId != lastEntityId || (!ImGui::IsItemActive() && !ImGui::IsAnyItemActive())) {
-                        cachedUIAngles = glm::degrees(glm::eulerAngles(rotation));
-                        lastEntityId = selectedEntityId;
-                    }
-
-                    bool isRotationChanged = false;
-
-                    ImGui::Text("Rotation X"); ImGui::SameLine(120);
-                    if (ImGui::DragFloat("##RotX", &cachedUIAngles.x, 0.5f, -360.0f, 360.0f, "%.1f°")) {
-                        isRotationChanged = true;
-                    }
-
-                    ImGui::Text("         Y"); ImGui::SameLine(120);
-                    if (ImGui::DragFloat("##RotY", &cachedUIAngles.y, 0.5f, -360.0f, 360.0f, "%.1f°")) {
-                        isRotationChanged = true;
-                    }
-
-                    ImGui::Text("         Z"); ImGui::SameLine(120);
-                    if (ImGui::DragFloat("##RotZ", &cachedUIAngles.z, 0.5f, -360.0f, 360.0f, "%.1f°")) {
-                        isRotationChanged = true;
-                    }
-
-                    if (isRotationChanged) {
-                        rotation = glm::quat(glm::radians(cachedUIAngles));
-                    }
-
-                    ImGui::Spacing();
-
-                    // Scale X, Y, Z
-                    // Для масштаба ставим минимальный лимит 0.001f, чтобы объект не схлопнулся
-                    ImGui::Text("Scale    X"); ImGui::SameLine(120);
-                    ImGui::DragFloat("##ScaleX", &scale.x, 0.01f, 0.001f, 1000.0f, "%.3f");
-
-                    ImGui::Text("         Y"); ImGui::SameLine(120);
-                    ImGui::DragFloat("##ScaleY", &scale.y, 0.01f, 0.001f, 1000.0f, "%.3f");
-
-                    ImGui::Text("         Z"); ImGui::SameLine(120);
-                    ImGui::DragFloat("##ScaleZ", &scale.z, 0.01f, 0.001f, 1000.0f, "%.3f");
-
-                    ImGui::PopItemWidth();
-                    ImGui::TreePop();
-                }
-
-                // General scale
-                ImGui::Spacing();
-                ImGui::Separator();
-                ImGui::Spacing();
-
-                ImGui::Text("Uniform Scale");
-                ImGui::SameLine(120);
-                ImGui::PushItemWidth(itemWidth);
-
-                float uniformScale = scale.x;
-                if (ImGui::DragFloat("##UniformScale", &uniformScale, 0.01f, 0.001f, 1000.0f, "Multiplier: %.3f")) {
-                    scale.x = uniformScale;
-                    scale.y = uniformScale;
-                    scale.z = uniformScale;
-                }
-                ImGui::PopItemWidth();
-
-            } else {
-                ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "Error: Entity not found!");
-            }
-        }
-        ImGui::End();
-    }
 }
 
 void VK_GUI::GUI::draw_gizmo(VK_INIT_ENGINE::_inited_engine& _init, std::unique_ptr<Scene>& _scene,
@@ -882,6 +731,69 @@ void VK_GUI::GUI::gizmo_mode(){
     }
 }
 
+void VK_GUI::GUI::draw_click(VK_INIT_ENGINE::_inited_engine& _init, std::unique_ptr<Scene>& _scene, GPUSceneData& sceneData, CONTROLLER::Camera _camera) {
+
+    // Проверяем, что мышка не над UI, гизма не активна и камера не в режиме полета
+    if (!ImGui::GetIO().WantCaptureMouse && !ImGuizmo::IsOver() && !_camera.isCameraActive) {
+
+        // --- ВАРИАНТ 1: ЛЕВЫЙ КЛИК (Простое выделение объекта для Инспектора) ---
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+            ImVec2 mousePos = ImGui::GetMousePos();
+            float screenWidth  = static_cast<float>(_init._windowExtent.width);
+            float screenHeight = static_cast<float>(_init._windowExtent.height);
+
+            Ray ray = Ray::FromScreen(mousePos.x, mousePos.y, screenWidth, screenHeight, sceneData);
+            RaycastHit hit = _scene->Raycast(ray);
+
+            if (hit.hit && hit.entity != nullptr) {
+                selectedEntityId = static_cast<int>(hit.entity->id);
+            } else {
+                // Если кликнули в пустоту левой кнопкой — снимаем выделение
+                selectedEntityId = -1;
+            }
+        }
+
+        // --- ВАРИАНТ 2: ПРАВЫЙ КЛИК (Выделение + Вызов контекстного меню) ---
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+            ImVec2 mousePos = ImGui::GetMousePos();
+            float screenWidth  = static_cast<float>(_init._windowExtent.width);
+            float screenHeight = static_cast<float>(_init._windowExtent.height);
+
+            Ray ray = Ray::FromScreen(mousePos.x, mousePos.y, screenWidth, screenHeight, sceneData);
+            RaycastHit hit = _scene->Raycast(ray);
+
+            if (hit.hit && hit.entity != nullptr) {
+                selectedEntityId = static_cast<int>(hit.entity->id);
+                mouseClickPos = mousePos; // Запоминаем, где открыть меню
+
+                ImGui::OpenPopup("ModelContextMenu");
+            }
+            // При правом клике в пустоту выделение не снимаем, чтобы не сбивать инспектор случайно
+        }
+    }
+
+    // --- ОТРИСОВКА КОНТЕКСТНОГО МЕНЮ ---
+    // Устанавливаем позицию всплывающего окна там, где был правый клик
+    ImGui::SetNextWindowPos(mouseClickPos, ImGuiCond_Appearing);
+
+    if (ImGui::BeginPopup("ModelContextMenu")) {
+        GameEntity* entity = _scene->GetEntity(static_cast<uint32_t>(selectedEntityId));
+
+        if (entity) {
+            ImGui::TextDisabled("Entity ID: %d", selectedEntityId);
+            ImGui::Separator();
+
+            if (ImGui::MenuItem("Delete")) {
+                _scene->DestroyEntity(selectedEntityId);
+                selectedEntityId = -1; // Сбрасываем выделение, так как объект удален
+                ImGui::CloseCurrentPopup();
+            }
+        }
+        ImGui::EndPopup();
+    }
+}
+
+
 void VK_GUI::GUI::draw_main_menu_bar(CONTROLLER::Delta& _delta){
     if (ImGui::BeginMainMenuBar()) {
         if (ImGui::BeginMenu("File")) {
@@ -952,8 +864,6 @@ void VK_GUI::GUI::update_imgui(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER
 
     draw_model_properties_window(_init, _modelManager);
 
-    draw_context_menu_trs(_init, _scene, sceneData, _camera);
-
     draw_gizmo(_init, _scene, sceneData, _modelManager, _camera);
 
     draw_view_navigation_widget(sceneData, _camera);
@@ -962,7 +872,246 @@ void VK_GUI::GUI::update_imgui(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER
 
     draw_settings();
 
+    draw_inspector_window(_init, _scene, sceneData, _camera);
+
+    draw_click(_init, _scene, sceneData, _camera);
+
     ImGui::Render();
+}
+
+void VK_GUI::GUI::draw_inspector_window(VK_INIT_ENGINE::_inited_engine& _init, std::unique_ptr<Scene>& _scene, GPUSceneData& sceneData, CONTROLLER::Camera _camera){
+    static int activeInspectorTab = 0;
+
+    static glm::vec3 cachedUIAngles(0.0f);
+    static int lastEntityId = -1;
+
+    ImGui::SetNextWindowPos(inspectorPos, ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(windowWidth, halfHeight + 30.0f), ImGuiCond_Always);
+    ImGui::SetNextWindowBgAlpha(1.0f);
+
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(1.0f, 1.0f));
+
+    if (ImGui::Begin("Inspector", nullptr)) {
+
+        ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(4.0f, 2.0f));
+
+        if (ImGui::BeginTable("InspectorLayout", 2, ImGuiTableFlags_NoBordersInBody)) {
+
+            ImGui::TableSetupColumn("Buttons", ImGuiTableColumnFlags_WidthFixed, 34.0f);
+            ImGui::TableSetupColumn("Content", ImGuiTableColumnFlags_WidthStretch);
+
+            ImGui::TableNextColumn();
+
+            ImVec2 winPos = ImGui::GetWindowPos();
+            float winHeight = ImGui::GetWindowHeight();
+
+            ImVec2 panelMin = ImVec2(winPos.x, winPos.y);
+            ImVec2 panelMax = ImVec2(winPos.x + 28.0f, winPos.y + winHeight + 0.5f);
+
+            ImGui::GetWindowDrawList()->AddRectFilled(
+                panelMin, panelMax,
+                ImGui::ColorConvertFloat4ToU32(ImVec4(0.09f, 0.09f, 0.09f, 1.0f))
+            );
+
+            //ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 4.0f);
+
+            ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 6.0f));
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f); // Легкое скругление углов кнопок
+            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0.0f, 0.0f));
+
+            // Полоска за кнопками
+            ImGui::PushStyleColor(ImGuiCol_TableBorderLight, ImVec4(0.22f, 0.22f, 0.22f, 1.0f));
+
+            ImVec4 darkBtnColor   = ImVec4(0.1f, 0.1f, 0.1f, 1.f); // Аккуратный серый цвет
+            ImVec4 darkBtnHovered = ImVec4(0.26f, 0.26f, 0.26f, 1.0f); // Подсветка при ховере
+            ImVec4 darkBtnActive  = ImVec4(0.14f, 0.14f, 0.14f, 1.0f);
+
+            ImVec4 textMuted = ImVec4(0.65f, 0.65f, 0.65f, 1.0f); // Приглушенный текст для неактивных
+            ImVec4 textWhite = ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
+
+            // TODO: TRS Menu
+            bool isTab0Active = (activeInspectorTab == 0);
+            if (isTab0Active) {
+                ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[ImGuiCol_HeaderActive]); // Твой синий
+                ImGui::PushStyleColor(ImGuiCol_Text, textWhite);
+            } else {
+                ImGui::PushStyleColor(ImGuiCol_Button, darkBtnColor);
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, darkBtnHovered);
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, darkBtnActive);
+                ImGui::PushStyleColor(ImGuiCol_Text, textMuted);
+            }
+            if (ImGui::Button("T", ImVec2(26, 26))) { activeInspectorTab = 0; }
+            ImGui::PopStyleColor(isTab0Active ? 2 : 4);
+
+            bool isTab1Active = (activeInspectorTab == 1);
+            if (isTab1Active) {
+                ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[ImGuiCol_HeaderActive]);
+                ImGui::PushStyleColor(ImGuiCol_Text, textWhite);
+            } else {
+                ImGui::PushStyleColor(ImGuiCol_Button, darkBtnColor);
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, darkBtnHovered);
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, darkBtnActive);
+                ImGui::PushStyleColor(ImGuiCol_Text, textMuted);
+            }
+            if (ImGui::Button("R", ImVec2(26, 26))) { activeInspectorTab = 1; }
+            ImGui::PopStyleColor(isTab1Active ? 2 : 4);
+
+            bool isTab2Active = (activeInspectorTab == 2);
+            if (isTab2Active) {
+                ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[ImGuiCol_HeaderActive]);
+                ImGui::PushStyleColor(ImGuiCol_Text, textWhite);
+            } else {
+                ImGui::PushStyleColor(ImGuiCol_Button, darkBtnColor);
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, darkBtnHovered);
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, darkBtnActive);
+                ImGui::PushStyleColor(ImGuiCol_Text, textMuted);
+            }
+            if (ImGui::Button("V", ImVec2(26, 26))) { activeInspectorTab = 2; }
+            ImGui::PopStyleColor(isTab2Active ? 2 : 4);
+
+            ImGui::PopStyleColor();
+            ImGui::PopStyleVar(3);
+
+            ImGui::TableNextColumn();
+            //ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 6.0f);
+            ImGui::PushItemWidth(-FLT_MIN);
+
+            GameEntity* entity = _scene->GetEntity(static_cast<uint32_t>(selectedEntityId));
+            if (entity == nullptr) {
+                ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "Select an entity to inspect...");
+
+                ImGui::PopItemWidth();
+                ImGui::EndTable();
+                ImGui::PopStyleVar();
+                ImGui::End();
+                ImGui::PopStyleVar();
+                return;
+            }
+            auto& position = entity->position;
+            auto& rotation = entity->rotation;
+            auto& scale    = entity->scale;
+
+
+            switch (activeInspectorTab) {
+                case 0:
+                    if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
+                        ImGui::Spacing();
+                        ImGui::Text("Editing Entity ID: %d", selectedEntityId);
+                        ImGui::Separator();
+                        ImGui::Spacing();
+
+                        if (selectedEntityId != lastEntityId || (!ImGui::IsItemActive() && !ImGui::IsAnyItemActive())) {
+                            cachedUIAngles = glm::degrees(glm::eulerAngles(rotation));
+                            lastEntityId = selectedEntityId;
+                        }
+
+                        const float labelWidth = 85.0f;
+
+                        // POSITION
+                        ImGui::Text("Location X"); ImGui::SameLine(labelWidth);
+                        ImGui::PushItemWidth(-1.0f); // Растягиваем слайдер до упора вправо
+                        ImGui::DragFloat("##LocX", &position.x, 0.05f, 0.0f, 0.0f, "%.3f m");
+                        ImGui::PopItemWidth();
+
+                        ImGui::Text("         Y"); ImGui::SameLine(labelWidth);
+                        ImGui::PushItemWidth(-1.0f);
+                        ImGui::DragFloat("##LocY", &position.y, 0.05f, 0.0f, 0.0f, "%.3f m");
+                        ImGui::PopItemWidth();
+
+                        ImGui::Text("         Z"); ImGui::SameLine(labelWidth);
+                        ImGui::PushItemWidth(-1.0f);
+                        ImGui::DragFloat("##LocZ", &position.z, 0.05f, 0.0f, 0.0f, "%.3f m");
+                        ImGui::PopItemWidth();
+
+                        ImGui::Spacing();
+                        ImGui::Separator();
+                        ImGui::Spacing();
+
+                        // ROTATION
+                        bool isRotationChanged = false;
+
+                        ImGui::Text("Rotation X"); ImGui::SameLine(labelWidth);
+                        ImGui::PushItemWidth(-1.0f);
+                        if (ImGui::DragFloat("##RotX", &cachedUIAngles.x, 0.5f, -360.0f, 360.0f, "%.1f°")) isRotationChanged = true;
+                        ImGui::PopItemWidth();
+
+                        ImGui::Text("         Y"); ImGui::SameLine(labelWidth);
+                        ImGui::PushItemWidth(-1.0f);
+                        if (ImGui::DragFloat("##RotY", &cachedUIAngles.y, 0.5f, -360.0f, 360.0f, "%.1f°")) isRotationChanged = true;
+                        ImGui::PopItemWidth();
+
+                        ImGui::Text("         Z"); ImGui::SameLine(labelWidth);
+                        ImGui::PushItemWidth(-1.0f);
+                        if (ImGui::DragFloat("##RotZ", &cachedUIAngles.z, 0.5f, -360.0f, 360.0f, "%.1f°")) isRotationChanged = true;
+                        ImGui::PopItemWidth();
+
+                        if (isRotationChanged) {
+                            rotation = glm::quat(glm::radians(cachedUIAngles));
+                        }
+
+                        ImGui::Spacing();
+                        ImGui::Separator();
+                        ImGui::Spacing();
+
+                        // SCALE
+                        ImGui::Text("Scale    X"); ImGui::SameLine(labelWidth);
+                        ImGui::PushItemWidth(-1.0f);
+                        ImGui::DragFloat("##ScaleX", &scale.x, 0.01f, 0.001f, 1000.0f, "%.3f");
+                        ImGui::PopItemWidth();
+
+                        ImGui::Text("         Y"); ImGui::SameLine(labelWidth);
+                        ImGui::PushItemWidth(-1.0f);
+                        ImGui::DragFloat("##ScaleY", &scale.y, 0.01f, 0.001f, 1000.0f, "%.3f");
+                        ImGui::PopItemWidth();
+
+                        ImGui::Text("         Z"); ImGui::SameLine(labelWidth);
+                        ImGui::PushItemWidth(-1.0f);
+                        ImGui::DragFloat("##ScaleZ", &scale.z, 0.01f, 0.001f, 1000.0f, "%.3f");
+                        ImGui::PopItemWidth();
+
+                        ImGui::Spacing();
+                        ImGui::Separator();
+                        ImGui::Spacing();
+
+                        // UNIFORM SCALE
+                        ImGui::Text("Uniform"); ImGui::SameLine(labelWidth);
+                        ImGui::PushItemWidth(-1.0f);
+                        float uniformScale = scale.x;
+                        if (ImGui::DragFloat("##UniformScale", &uniformScale, 0.01f, 0.001f, 1000.0f, "Multiplier: %.3f")) {
+                            scale.x = uniformScale;
+                            scale.y = uniformScale;
+                            scale.z = uniformScale;
+                        }
+                        ImGui::PopItemWidth();
+                    }
+
+                    ImGui::Spacing();
+
+                    if (ImGui::CollapsingHeader("Delta Transform")) {
+                        ImGui::Text("Soon...");
+                    }
+                    break;
+
+                case 1:
+                    if (ImGui::CollapsingHeader("Relations", ImGuiTreeNodeFlags_DefaultOpen)) {
+                        ImGui::Text("Soon...");
+                    }
+                    break;
+
+                case 2:
+                    if (ImGui::CollapsingHeader("Visibility", ImGuiTreeNodeFlags_DefaultOpen)) {
+                        ImGui::Text("Soon...");
+                    }
+                    break;
+            }
+
+            ImGui::PopItemWidth();
+            ImGui::EndTable();
+        }
+        ImGui::PopStyleVar();
+    }
+    ImGui::PopStyleVar();
+    ImGui::End();
 }
 
 void VK_GUI::GUI::draw_settings(){
@@ -1034,11 +1183,11 @@ void VK_GUI::GUI::draw_skybox_window(RenderSystem& _renderSystem, GPUSceneData& 
         ImGui::SetNextItemWidth(-FLT_MIN);
         if (ImGui::SliderFloat("##TimeSlider", &skyboxTime, 0.0f, 24.0f, "%.1f h")) {
             glm::vec3 newLightDir = getLightDirByHour(skyboxTime);
-
             sceneData.sunlightDirection = glm::vec4(newLightDir, sceneData.sunlightDirection.w);
+        }
 
+        if (ImGui::IsItemDeactivatedAfterEdit()) {
             if (skyboxType == 1) {
-
                 _computeSystem.RefreshIBL(_textureManager.GetActiveSkyboxTexture());
             }
         }

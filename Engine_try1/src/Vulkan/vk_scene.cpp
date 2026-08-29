@@ -370,9 +370,14 @@ void LightManager::UpdateCascades(const glm::mat4& viewMatrix, float fovY, float
             center += glm::vec3(v);
         }
         center /= 8.0f;
+        glm::vec3 normLightDir = glm::normalize(lightDir);
+        glm::vec3 upVector = glm::vec3(0.0f, 0.0f, 1.0f);
+        if (glm::abs(glm::dot(normLightDir, upVector)) > 0.999f) {
+            upVector = glm::vec3(0.0f, 1.0f, 0.0f);
+        }
 
         glm::vec3 lightPos = center + glm::normalize(lightDir);
-        glm::mat4 lightView = glm::lookAt(lightPos, center, glm::vec3(0.0f, 0.0f, 1.0f));
+        glm::mat4 lightView = glm::lookAt(lightPos, center, upVector);
 
         float minX = std::numeric_limits<float>::max(); float maxX = std::numeric_limits<float>::lowest();
         float minY = std::numeric_limits<float>::max(); float maxY = std::numeric_limits<float>::lowest();

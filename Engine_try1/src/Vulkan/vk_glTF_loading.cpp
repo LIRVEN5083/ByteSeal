@@ -205,7 +205,6 @@ GPUTexture TextureManager::AllocateTexture(
         _activeSkyboxTexture = texture;
     }
 
-    fmt::print("Allocate texture!\n");
     return texture;
 }
 
