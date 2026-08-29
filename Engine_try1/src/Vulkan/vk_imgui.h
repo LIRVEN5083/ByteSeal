@@ -26,6 +26,7 @@ namespace VK_GUI{
             std::unique_ptr<Scene>& _scene, GPUSceneData& sceneData, PipelineManager& pipelineManager, RenderSystem& _renderSystem, TextureManager& _textureManager,
             ComputeRenderSystem& _computeSystem);
     private:
+        void draw_inspector_window(VK_INIT_ENGINE::_inited_engine& _init, std::unique_ptr<Scene>& _scene, GPUSceneData& sceneData, CONTROLLER::Camera _camera);
         void draw_settings();
         void draw_skybox_window(RenderSystem& _renderSystem, GPUSceneData& sceneData, VK_INIT_ENGINE::_inited_engine& _init,
             TextureManager& _textureManager, ComputeRenderSystem& _computeSystem);
@@ -33,10 +34,10 @@ namespace VK_GUI{
         void draw_model_list_overlay(VK_INIT_ENGINE::_inited_engine& _init, ModelManager& _modelManager,
             std::unique_ptr<Scene>& _scene, GPUSceneData& sceneData, PipelineManager& pipelineManager, RenderSystem& _renderSystem);
         void draw_fps_overlay(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER::Delta _delta);
-        void draw_context_menu_trs(VK_INIT_ENGINE::_inited_engine& _init, std::unique_ptr<Scene>& _scene, GPUSceneData& sceneData, CONTROLLER::Camera _camera);
         void draw_gizmo(VK_INIT_ENGINE::_inited_engine& _init, std::unique_ptr<Scene>& _scene, GPUSceneData& sceneData, ModelManager& _modelManager, CONTROLLER::Camera _camera);
         void draw_view_navigation_widget(GPUSceneData& sceneData, CONTROLLER::Camera& _camera);
         void gizmo_mode();
+        void draw_click(VK_INIT_ENGINE::_inited_engine& _init, std::unique_ptr<Scene>& _scene, GPUSceneData& sceneData, CONTROLLER::Camera _camera);
         void draw_main_menu_bar(CONTROLLER::Delta& _delta);
 
         // TODO:: Для model manager и инспектора
@@ -47,9 +48,13 @@ namespace VK_GUI{
 
         // TODO:: Для Ray Casting
         static inline int selectedEntityId = -1;
-        static inline bool showContextMenu = false;
         // Координаты мыши
         static inline ImVec2 mouseClickPos;
+
+        // TODO:: Для инспектора
+        static inline ImVec2 inspectorPos = ImVec2(0,0);
+        static inline float windowWidth;
+        static inline float halfHeight;
 
         // TODO:: Для gizmo
         static inline bool showTrsWindow = false;
@@ -60,7 +65,7 @@ namespace VK_GUI{
         static inline bool showSkyBoxWindow = false;
         static inline int skyboxType = 0;
 
-        // Параметры скайбокса
+        //  TODO:: Параметры скайбокса
         static inline float skyboxTime = 12.0f;
         static inline float skyboxSunPower = 1.0f;
         static inline float skyboxLightColor[3] = { 1.0f, 1.0f, 1.0f };
