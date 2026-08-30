@@ -466,8 +466,8 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     baseMeshInfo.passType = RenderPassType::Forward;
     baseMeshInfo.opacity = PipelineOpacity::Opaque;
     baseMeshInfo.useMSAA = true; // Так как в старом коде было _maxSamples
-    baseMeshInfo.vertexShaderPath = "../Shaders/BaseMesh/Source/mesh.vert";
-    baseMeshInfo.fragmentShaderPath = "../Shaders/BaseMesh/Source/mesh.frag";
+    baseMeshInfo.vertexShaderPath = "../Shaders/BaseMesh/mesh.vert";
+    baseMeshInfo.fragmentShaderPath = "../Shaders/BaseMesh/mesh.frag";
 
     RealPipeline* basePipeline = _pipelineManager->CreatePipeline(baseMeshInfo, colorFormat, depthFormat, _maxSamples);
     if (basePipeline) {
@@ -481,8 +481,8 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     transparentMeshInfo.passType = RenderPassType::Forward;
     transparentMeshInfo.opacity = PipelineOpacity::Transparent;
     transparentMeshInfo.useMSAA = true;
-    transparentMeshInfo.vertexShaderPath = "../Shaders/BaseMesh/Source/mesh.vert";
-    transparentMeshInfo.fragmentShaderPath = "../Shaders/BaseMesh/Source/mesh.frag";
+    transparentMeshInfo.vertexShaderPath = "../Shaders/BaseMesh/mesh.vert";
+    transparentMeshInfo.fragmentShaderPath = "../Shaders/BaseMesh/mesh.frag";
 
     RealPipeline* transPipeline = _pipelineManager->CreatePipeline(transparentMeshInfo, colorFormat, depthFormat, _maxSamples);
     if (transPipeline) {
@@ -495,8 +495,8 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     alphaTestedMeshInfo.passType = RenderPassType::Forward;
     alphaTestedMeshInfo.opacity = PipelineOpacity::AlphaTested;
     alphaTestedMeshInfo.useMSAA = true;
-    alphaTestedMeshInfo.vertexShaderPath = "../Shaders/BaseMesh/Source/mesh.vert";
-    alphaTestedMeshInfo.fragmentShaderPath = "../Shaders/BaseMesh/Source/mesh.frag";
+    alphaTestedMeshInfo.vertexShaderPath = "../Shaders/BaseMesh/mesh.vert";
+    alphaTestedMeshInfo.fragmentShaderPath = "../Shaders/BaseMesh/mesh.frag";
 
     RealPipeline* alphaPipeline = _pipelineManager->CreatePipeline(alphaTestedMeshInfo, colorFormat, depthFormat, _maxSamples);
     if (alphaPipeline) {
@@ -509,8 +509,8 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     gridInfo.passType = RenderPassType::Forward;
     gridInfo.opacity = PipelineOpacity::Transparent; // Включает AlphaBlend, отключает запись в глубину
     gridInfo.useMSAA = true; // Использовал set_multisampling_alpha(_maxSamples)
-    gridInfo.vertexShaderPath = "../Shaders/InfGrid/Source/grid.vert";
-    gridInfo.fragmentShaderPath = "../Shaders/InfGrid/Source/grid.frag";
+    gridInfo.vertexShaderPath = "../Shaders/InfGrid/grid.vert";
+    gridInfo.fragmentShaderPath = "../Shaders/InfGrid/grid.frag";
 
     RealPipeline* gridPipeline = _pipelineManager->CreatePipeline(gridInfo, colorFormat, depthFormat, _maxSamples);
     if (gridPipeline) {
@@ -524,7 +524,7 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     shadowInfo.passType = RenderPassType::ShadowCSM;
     shadowInfo.opacity = PipelineOpacity::Opaque;
     shadowInfo.useMSAA = false;
-    shadowInfo.vertexShaderPath = "../Shaders/SCM/Source/shadow.vert";
+    shadowInfo.vertexShaderPath = "../Shaders/SCM/shadow.vert";
     shadowInfo.fragmentShaderPath = "";
 
     VkFormat shadowDepthFormat = VK_FORMAT_D32_SFLOAT;
@@ -541,8 +541,8 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     skyboxProcInfo.passType = RenderPassType::Skybox;
     skyboxProcInfo.opacity = PipelineOpacity::Opaque;
     skyboxProcInfo.useMSAA = true;
-    skyboxProcInfo.vertexShaderPath = "../Shaders/SkyBox_proc/Source/SkyBox.vert";
-    skyboxProcInfo.fragmentShaderPath = "../Shaders/SkyBox_proc/Source/SkyBox.frag";
+    skyboxProcInfo.vertexShaderPath = "../Shaders/SkyBox_proc/SkyBox.vert";
+    skyboxProcInfo.fragmentShaderPath = "../Shaders/SkyBox_proc/SkyBox.frag";
 
     RealPipeline* skybox_procPipeline = _pipelineManager->CreatePipeline(skyboxProcInfo, colorFormat, depthFormat, _maxSamples);
     if (skybox_procPipeline) {
@@ -556,8 +556,8 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     skyboxInfo.passType = RenderPassType::Skybox;
     skyboxInfo.opacity = PipelineOpacity::Opaque;
     skyboxInfo.useMSAA = true;
-    skyboxInfo.vertexShaderPath = "../Shaders/SkyBox/Source/SkyBox.vert";
-    skyboxInfo.fragmentShaderPath = "../Shaders/SkyBox/Source/SkyBox.frag";
+    skyboxInfo.vertexShaderPath = "../Shaders/SkyBox/SkyBox.vert";
+    skyboxInfo.fragmentShaderPath = "../Shaders/SkyBox/SkyBox.frag";
 
     RealPipeline* skyboxPipeline = _pipelineManager->CreatePipeline(skyboxInfo, colorFormat, depthFormat, _maxSamples);
     if (skyboxPipeline) {
@@ -570,7 +570,7 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     PipelineCreateInfo iblEquirectInfo{};
     iblEquirectInfo.name = "IBL_EquirectToCubemap";
     iblEquirectInfo.passType = RenderPassType::Compute;
-    iblEquirectInfo.computeShaderPath = "../Shaders/IBL/Source/panorama.comp";
+    iblEquirectInfo.computeShaderPath = "../Shaders/IBL/panorama.comp";
 
     RealPipeline* iblEquirectPipeline = _pipelineManager->CreateComputePipeline(iblEquirectInfo);
     if (iblEquirectPipeline) {
@@ -581,7 +581,7 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     PipelineCreateInfo iblIrradianceInfo{};
     iblIrradianceInfo.name = "IBL_DiffuseIrradiance";
     iblIrradianceInfo.passType = RenderPassType::Compute;
-    iblIrradianceInfo.computeShaderPath = "../Shaders/IBL/Source/diffuse.comp";
+    iblIrradianceInfo.computeShaderPath = "../Shaders/IBL/diffuse.comp";
 
     RealPipeline* iblIrradiancePipeline = _pipelineManager->CreateComputePipeline(iblIrradianceInfo);
     if (iblIrradiancePipeline) {
@@ -592,7 +592,7 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     PipelineCreateInfo iblSpecularInfo{};
     iblSpecularInfo.name = "IBL_SpecularPreFilter";
     iblSpecularInfo.passType = RenderPassType::Compute;
-    iblSpecularInfo.computeShaderPath = "../Shaders/IBL/Source/specular.comp";
+    iblSpecularInfo.computeShaderPath = "../Shaders/IBL/specular.comp";
 
     RealPipeline* iblSpecularPipeline = _pipelineManager->CreateComputePipeline(iblSpecularInfo);
     if (iblSpecularPipeline) {
@@ -603,7 +603,7 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     PipelineCreateInfo iblBrdfLUTInfo{};
     iblBrdfLUTInfo.name = "IBL_BrdfLUT";
     iblBrdfLUTInfo.passType = RenderPassType::Compute;
-    iblBrdfLUTInfo.computeShaderPath = "../Shaders/IBL/Source/BRDF.comp"; // Или схожее имя
+    iblBrdfLUTInfo.computeShaderPath = "../Shaders/IBL/BRDF.comp"; // Или схожее имя
 
     RealPipeline* iblBrdfLUTPipeline = _pipelineManager->CreateComputePipeline(iblBrdfLUTInfo);
     if (iblBrdfLUTPipeline) {
