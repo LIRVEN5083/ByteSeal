@@ -46,6 +46,11 @@ struct GameEntity {
 
     glm::vec3 uiEulerRotation{ 0.0f };
 
+    bool bOverrideMaterial{ false };
+    float metallic{ 0.0f };
+    float roughness{ 0.0f };
+    float opacity{ 1.0f };
+
     // Связь с ресурсом
     uint32_t modelAssetId{ 0 };
     bool bIsVisible{ true };

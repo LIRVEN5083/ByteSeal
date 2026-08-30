@@ -872,18 +872,22 @@ void VK_GUI::GUI::update_imgui(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER
 
     draw_settings();
 
-    draw_inspector_window(_init, _scene, sceneData, _camera);
+    draw_inspector_window(_init, _scene, sceneData, _camera, _modelManager);
 
     draw_click(_init, _scene, sceneData, _camera);
 
     ImGui::Render();
 }
 
-void VK_GUI::GUI::draw_inspector_window(VK_INIT_ENGINE::_inited_engine& _init, std::unique_ptr<Scene>& _scene, GPUSceneData& sceneData, CONTROLLER::Camera _camera){
+void VK_GUI::GUI::draw_inspector_window(VK_INIT_ENGINE::_inited_engine& _init, std::unique_ptr<Scene>& _scene,
+    GPUSceneData& sceneData, CONTROLLER::Camera _camera, ModelManager& modelManager){
     static int activeInspectorTab = 0;
 
     static glm::vec3 cachedUIAngles(0.0f);
     static int lastEntityId = -1;
+    const float sliderWidth = -8.0f;
+
+    ImGuiWindowFlags flags = ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoCollapse;
 
     ImGui::SetNextWindowPos(inspectorPos, ImGuiCond_Always);
     ImGui::SetNextWindowSize(ImVec2(windowWidth, halfHeight + 30.0f), ImGuiCond_Always);
@@ -891,7 +895,7 @@ void VK_GUI::GUI::draw_inspector_window(VK_INIT_ENGINE::_inited_engine& _init, s
 
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(1.0f, 1.0f));
 
-    if (ImGui::Begin("Inspector", nullptr)) {
+    if (ImGui::Begin("Inspector", nullptr, flags)) {
 
         ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(4.0f, 2.0f));
 
@@ -969,6 +973,19 @@ void VK_GUI::GUI::draw_inspector_window(VK_INIT_ENGINE::_inited_engine& _init, s
             if (ImGui::Button("V", ImVec2(26, 26))) { activeInspectorTab = 2; }
             ImGui::PopStyleColor(isTab2Active ? 2 : 4);
 
+            bool isTab3Active = (activeInspectorTab == 3);
+            if (isTab3Active) {
+                ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[ImGuiCol_HeaderActive]);
+                ImGui::PushStyleColor(ImGuiCol_Text, textWhite);
+            } else {
+                ImGui::PushStyleColor(ImGuiCol_Button, darkBtnColor);
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, darkBtnHovered);
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, darkBtnActive);
+                ImGui::PushStyleColor(ImGuiCol_Text, textMuted);
+            }
+            if (ImGui::Button("M", ImVec2(26, 26))) { activeInspectorTab = 3; }
+            ImGui::PopStyleColor(isTab3Active ? 2 : 4);
+
             ImGui::PopStyleColor();
             ImGui::PopStyleVar(3);
 
@@ -990,7 +1007,8 @@ void VK_GUI::GUI::draw_inspector_window(VK_INIT_ENGINE::_inited_engine& _init, s
             auto& position = entity->position;
             auto& rotation = entity->rotation;
             auto& scale    = entity->scale;
-
+            auto& metallicValue = entity->metallic;
+            auto& roughnessValue= entity->roughness;
 
             switch (activeInspectorTab) {
                 case 0:
@@ -1006,7 +1024,6 @@ void VK_GUI::GUI::draw_inspector_window(VK_INIT_ENGINE::_inited_engine& _init, s
                         }
 
                         const float labelWidth = 85.0f;
-                        const float sliderWidth = -8.0f;
 
                         // POSITION
                         ImGui::Text("Location X"); ImGui::SameLine(labelWidth);
@@ -1102,6 +1119,92 @@ void VK_GUI::GUI::draw_inspector_window(VK_INIT_ENGINE::_inited_engine& _init, s
                 case 2:
                     if (ImGui::CollapsingHeader("Visibility", ImGuiTreeNodeFlags_DefaultOpen)) {
                         ImGui::Text("Soon...");
+                    }
+                    break;
+                case 3:
+                    if (ImGui::CollapsingHeader("Materials", ImGuiTreeNodeFlags_DefaultOpen)) {
+                        float displayMetallic = entity->bOverrideMaterial ? entity->metallic : 0.0f;
+                        float displayRoughness = entity->bOverrideMaterial ? entity->roughness : 1.0f;
+                        float displayOpacity = entity->bOverrideMaterial ? entity->opacity : 1.0f;
+
+                        if (!entity->bOverrideMaterial && modelManager.has_model(entity->modelAssetId)) {
+                            Model& model = modelManager.GetModel(entity->modelAssetId);
+                            if (!model.meshNodes.empty() && !model.meshNodes[0]->mesh->surfaces.empty()) {
+                                auto firstMat = model.meshNodes[0]->mesh->surfaces[0].material;
+                                if (firstMat) {
+                                    displayMetallic = firstMat->metallicFactor;
+                                    displayRoughness = firstMat->roughnessFactor;
+                                    displayOpacity = firstMat->baseColorFactor.a;
+                                }
+                            }
+                        }
+
+                        if (ImGui::BeginTable("MaterialTable", 2, ImGuiTableFlags_SizingFixedFit)) {
+
+                            ImGui::TableSetupColumn("Labels", ImGuiTableColumnFlags_WidthFixed);
+                            ImGui::TableSetupColumn("Sliders", ImGuiTableColumnFlags_WidthStretch);
+
+                            ImGui::TableNextRow();
+                            ImGui::TableSetColumnIndex(0);
+                            ImGui::AlignTextToFramePadding();
+                            ImGui::Text("Metallic");
+
+                            ImGui::TableSetColumnIndex(1);
+                            ImGui::PushItemWidth(sliderWidth);
+                            if (ImGui::SliderFloat("##MetallicSlider", &displayMetallic, 0.0f, 1.0f)) {
+                                if (!entity->bOverrideMaterial) {
+                                    entity->bOverrideMaterial = true;
+                                    entity->roughness = displayRoughness;
+                                    entity->opacity = displayOpacity;
+                                }
+                                entity->metallic = displayMetallic;
+                            }
+                            ImGui::PopItemWidth();
+
+                            ImGui::TableNextRow();
+                            ImGui::TableSetColumnIndex(0);
+                            ImGui::AlignTextToFramePadding();
+                            ImGui::Text("Roughness");
+
+                            ImGui::TableSetColumnIndex(1);
+                            ImGui::PushItemWidth(sliderWidth);
+                            if (ImGui::SliderFloat("##RoughnessSlider", &displayRoughness, 0.0f, 1.0f)) {
+                                if (!entity->bOverrideMaterial) {
+                                    entity->bOverrideMaterial = true;
+                                    entity->metallic = displayMetallic;
+                                    entity->opacity = displayOpacity;
+                                }
+                                entity->roughness = displayRoughness;
+                            }
+                            ImGui::PopItemWidth();
+
+                            ImGui::TableNextRow();
+                            ImGui::TableSetColumnIndex(0);
+                            ImGui::AlignTextToFramePadding();
+                            ImGui::Text("Opacity");
+
+                            ImGui::TableSetColumnIndex(1);
+                            ImGui::PushItemWidth(sliderWidth);
+                            if (ImGui::SliderFloat("##OpacitySlider", &displayOpacity, 0.0f, 1.0f, "%.2f")) {
+                                if (!entity->bOverrideMaterial) {
+                                    entity->bOverrideMaterial = true;
+                                    entity->metallic = displayMetallic;
+                                    entity->roughness = displayRoughness;
+                                }
+                                entity->opacity = displayOpacity;
+                            }
+                            ImGui::PopItemWidth();
+
+                            ImGui::EndTable();
+                        }
+
+                        if (entity->bOverrideMaterial) {
+                            ImGui::Spacing();
+                            if (ImGui::Button("Reset to Model Defaults", ImVec2(-FLT_MIN, 0.0f))) {
+                                entity->bOverrideMaterial = false;
+                                entity->opacity = 1.0f;
+                            }
+                        }
                     }
                     break;
             }

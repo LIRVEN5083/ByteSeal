@@ -189,9 +189,8 @@ void Scene::CullingAndSubmit(RenderSystem& renderSystem, PipelineManager& pipeli
 
         AABB worldAABB = entity.GetWorldAABB(_modelManager);
 
-        // Проверяем коробку объекта против 6 плоскостей камеры
         if (!frustum.IsBoxVisible(worldAABB.min, worldAABB.max)) {
-            continue; // ОБЪЕКТ НЕ ВИДЕН! Скипаем весь цикл генерации RenderObject
+            continue;
         }
 
         Model& model = _modelManager.GetModel(entity.modelAssetId);
@@ -206,7 +205,6 @@ void Scene::CullingAndSubmit(RenderSystem& renderSystem, PipelineManager& pipeli
 
         for (const auto& meshNode : model.meshNodes) {
             if (!meshNode->mesh) continue;
-
             for (const auto& surface : meshNode->mesh->surfaces) {
                 if (!surface.material) continue;
 
@@ -218,12 +216,38 @@ void Scene::CullingAndSubmit(RenderSystem& renderSystem, PipelineManager& pipeli
                 RealPipeline* pipeline = pipelineManager.GetPipelineByName(targetPipelineName);
                 if (!pipeline) continue;
 
+
+                uint64_t opacitySection = 0;
+                if (pipeline->opacity == PipelineOpacity::Transparent) {
+                    opacitySection = 2;
+                } else if (pipeline->opacity == PipelineOpacity::AlphaTested) {
+                    opacitySection = 1;
+                }
+
+                glm::vec4 finalBaseColor = surface.material->baseColorFactor;
+
+                if (entity.bOverrideMaterial) {
+                    finalBaseColor.a = entity.opacity;
+
+                    if (entity.opacity < 1.0f && opacitySection != 2) {
+                        opacitySection = 2;
+
+                        targetPipelineName = "TransparentMesh";
+
+                        RealPipeline* transparentPipeline = pipelineManager.GetPipelineByName(targetPipelineName);
+                        if (transparentPipeline) {
+                            pipeline = transparentPipeline;
+                        }
+                    }
+                }
+
                 RenderObject ro;
                 ro.render_matrix = meshNode->worldTransform;
                 ro.indexBuffer = meshNode->mesh->meshBuffers.indexBuffer.buffer;
                 ro.vertexBufferAddress = meshNode->mesh->meshBuffers.vertexBufferAddress;
                 ro.indexCount = surface.count;
                 ro.firstIndex = surface.startIndex;
+
                 ro.pipeline = pipeline->pipeline;
                 ro.pipelineLayout = pipeline->layout;
 
@@ -231,22 +255,18 @@ void Scene::CullingAndSubmit(RenderSystem& renderSystem, PipelineManager& pipeli
                 ro.metallicRoughnessTextureID = surface.material->metallicRoughnessTextureID;
                 ro.normalTextureID = surface.material->normalTextureID;
                 ro.occlusionTextureID = surface.material->occlusionTextureID;
-                ro.baseColorFactor = surface.material->baseColorFactor;
+
+                ro.baseColorFactor = finalBaseColor;
+
+                float finalRoughness = entity.bOverrideMaterial ? entity.roughness : surface.material->roughnessFactor;
+                float finalMetallic  = entity.bOverrideMaterial ? entity.metallic  : surface.material->metallicFactor;
 
                 ro.materialFactors = glm::vec4(
-                    surface.material->roughnessFactor,
-                    surface.material->metallicFactor,
-                    0.0f, // padding
-                    0.0f  // padding
+                    finalRoughness,
+                    finalMetallic,
+                    0.0f,
+                    0.0f
                 );
-
-                // Определяем секцию прозрачности
-                uint64_t opacitySection = 0; // Opaque (BaseMesh)
-                if (pipeline->opacity == PipelineOpacity::Transparent) {
-                    opacitySection = 2; // Transparent (TransparentMesh)
-                } else if (pipeline->opacity == PipelineOpacity::AlphaTested) {
-                    opacitySection = 1;
-                }
 
                 // Сборка ключа сортировки
                 uint64_t key = 0;
@@ -257,8 +277,6 @@ void Scene::CullingAndSubmit(RenderSystem& renderSystem, PipelineManager& pipeli
                 if (opacitySection == 2) {
                     float safeDist = (distanceToCamera < 0.01f) ? 0.01f : distanceToCamera;
                     float invDist = 1.0f / safeDist;
-
-                    // Умножаем на миллион для сохранения высокой точности float в uint32
                     uint32_t quantizedDist = static_cast<uint32_t>(invDist * 1000000.0f);
                     key |= (quantizedDist & 0xFFFFFFFFULL);
                 }
@@ -266,6 +284,7 @@ void Scene::CullingAndSubmit(RenderSystem& renderSystem, PipelineManager& pipeli
                 ro.sortKey = key;
                 renderSystem.Submit(ro);
             }
+
         }
     }
 }
