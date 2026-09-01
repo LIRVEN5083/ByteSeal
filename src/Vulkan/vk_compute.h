@@ -39,10 +39,11 @@ class IBLProcessorComputePass : public ComputePass {
 public:
     IBLProcessorComputePass(VK_INIT_ENGINE::_inited_engine& init,
                             const IBL_TEXTURES* iblTextures,
-                            GPUTexture panoramaTexture)
+                            GPUTexture panoramaTexture, PipelineManager& pipelineManager)
         : ComputePass(init, ComputePassType::IBL), // Один общий тип пасса
           _ibl(iblTextures),
-          _panorama(panoramaTexture) {}
+          _panorama(panoramaTexture),
+          _pipelineManager(pipelineManager){}
 
     ~IBLProcessorComputePass() override = default;
 
@@ -57,7 +58,8 @@ public:
     }
 
 private:
-    // Указатели на твои 4 «вычислюшки»
+    PipelineManager& _pipelineManager;
+
     RealPipeline* _brdfPipeline{ nullptr };
     RealPipeline* _panoramaPipeline{ nullptr };
     RealPipeline* _diffusePipeline{ nullptr };
@@ -79,13 +81,14 @@ private:
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 class ComputeRenderSystem {
 public:
-    ComputeRenderSystem(VK_INIT_ENGINE::_inited_engine& init) : _init(init){}
+    ComputeRenderSystem(VK_INIT_ENGINE::_inited_engine& init, PipelineManager& pipelineManager)
+        : _init(init), _pipelineManager(pipelineManager) {}
 
     void init();
 
     void cleanup();
 
-    ComputePass* AddPass(std::unique_ptr<ComputePass> pass, PipelineManager& pipelineManager);
+    ComputePass* AddPass(std::unique_ptr<ComputePass> pass);
 
     bool Dispatch(VkDescriptorSet bindlessTextureSet);
 
@@ -102,6 +105,8 @@ private:
 
     VkSemaphore _computeFinishedSemaphore = VK_NULL_HANDLE;
     VkFence _computeFence = VK_NULL_HANDLE;
+
+    PipelineManager& _pipelineManager;
 
     std::vector<std::unique_ptr<ComputePass>> _computePasses;
 };

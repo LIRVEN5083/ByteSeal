@@ -617,13 +617,17 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     RenderPass* SkyBox_RP = _renderSystem.AddPass(std::make_unique<SkyBoxRenderPass>(_init), *_pipelineManager);
     RenderPass* Grid_RP = _renderSystem.AddPass(std::make_unique<GridRenderPass>(_init), *_pipelineManager);
 
+    // FIXME:: ЖИРНЮЩИЙ КОСТЫЛЬ который мне лень фиксить (Я передаю просто так два раза pipelineManager)
     const IBL_TEXTURES* iblResources = _textureManager.GetIBLTextures();
     auto* skyboxPass = dynamic_cast<SkyBoxRenderPass*>(SkyBox_RP);
     GPUTexture hdrPanorama = skyboxPass->GetPanoramicTexture();
-    _computeSystem.AddPass(
-    std::make_unique<IBLProcessorComputePass>(_init, iblResources, hdrPanorama),
-    *_pipelineManager
-);
+    auto iblPass = std::make_unique<IBLProcessorComputePass>(
+        _init,
+        iblResources,
+        hdrPanorama,
+        *_pipelineManager
+    );
+    _computeSystem.AddPass(std::move(iblPass));
 
     /* МОЖНА ТЕПЕРЬ ОТКЛЮЧАТЬ ПРОХОДЫ! МУХЕХЕХЕХЕ
     _renderSystem.SetPassEnabled(RenderPassType::Skybox, true);
