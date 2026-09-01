@@ -39,26 +39,15 @@ void VK_INIT_ENGINE::VulkanInitEngine::init_cleanup(){
             ready_init._drawImage.image = VK_NULL_HANDLE;
             ready_init._drawImage.allocation = VK_NULL_HANDLE;
         }
-
-        // MSAA
-        if (ready_init._msaaColorImage.imageView != VK_NULL_HANDLE) {
-            vkDestroyImageView(ready_init._device, ready_init._msaaColorImage.imageView, nullptr);
-            ready_init._msaaColorImage.imageView = VK_NULL_HANDLE;
+        // Глубина
+        if (ready_init._depthImage.imageView != VK_NULL_HANDLE) {
+            vkDestroyImageView(ready_init._device, ready_init._depthImage.imageView, nullptr);
+            ready_init._depthImage.imageView = VK_NULL_HANDLE;
         }
-        if (ready_init._msaaColorImage.image != VK_NULL_HANDLE) {
-            vmaDestroyImage(ready_init._allocator, ready_init._msaaColorImage.image, ready_init._msaaColorImage.allocation);
-            ready_init._msaaColorImage.image = VK_NULL_HANDLE;
-            ready_init._msaaColorImage.allocation = VK_NULL_HANDLE;
-        }
-
-        if (ready_init._msaaDepthImage.imageView != VK_NULL_HANDLE) {
-            vkDestroyImageView(ready_init._device, ready_init._msaaDepthImage.imageView, nullptr);
-            ready_init._msaaDepthImage.imageView = VK_NULL_HANDLE;
-        }
-        if (ready_init._msaaDepthImage.image != VK_NULL_HANDLE) {
-            vmaDestroyImage(ready_init._allocator, ready_init._msaaDepthImage.image, ready_init._msaaDepthImage.allocation);
-            ready_init._msaaDepthImage.image = VK_NULL_HANDLE;
-            ready_init._msaaDepthImage.allocation = VK_NULL_HANDLE;
+        if (ready_init._depthImage.image != VK_NULL_HANDLE) {
+            vmaDestroyImage(ready_init._allocator, ready_init._depthImage.image, ready_init._depthImage.allocation);
+            ready_init._depthImage.image = VK_NULL_HANDLE;
+            ready_init._depthImage.allocation = VK_NULL_HANDLE;
         }
     }
 
@@ -137,9 +126,6 @@ void VK_INIT_ENGINE::VulkanInitEngine::init_swapchain(){
         1
     };
 
-    // 1. Получаем поддерживаемое видеокартой количество сэмплов для MSAA
-    VkSampleCountFlagBits msaaSamples = vkinit::max_samples(ready_init);
-
     // ==========================================
     // Обычная плоская картинка (_drawImage, 1 sample)
     // ==========================================
@@ -165,41 +151,28 @@ void VK_INIT_ENGINE::VulkanInitEngine::init_swapchain(){
     VkImageViewCreateInfo rview_info = vkinit::imageview_create_info(ready_init._drawImage.imageFormat, ready_init._drawImage.image, VK_IMAGE_ASPECT_COLOR_BIT);
     VK_CHECK(vkCreateImageView(ready_init._device, &rview_info, nullptr, &ready_init._drawImage.imageView));
 
+    // ==========================================
+    // Создание буфера глубины (_depthImage, 1 sample)
+    // ==========================================
 
-    // Новая многовыборочная цветная картинка (_msaaColorImage)
-
-    ready_init._msaaColorImage.imageFormat = ready_init._drawImage.imageFormat; // Формат совпадает с основным холстом
-    ready_init._msaaColorImage.imageExtent = drawImageExtent;
-
-    VkImageUsageFlags msaaColorUsages{};
-    msaaColorUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; // Используем как таргет для 3D сцены
-    msaaColorUsages |= VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT; // Оптимизация GPU: память может не выделяться на диске физически, она временная
-
-    VkImageCreateInfo msaa_img_info = vkinit::image_create_info(ready_init._msaaColorImage.imageFormat, msaaColorUsages, drawImageExtent);
-    msaa_img_info.samples = msaaSamples;
-
-    // Выделяем память
-    vmaCreateImage(ready_init._allocator, &msaa_img_info, &rimg_allocinfo, &ready_init._msaaColorImage.image, &ready_init._msaaColorImage.allocation, nullptr);
-
-    VkImageViewCreateInfo msaa_view_info = vkinit::imageview_create_info(ready_init._msaaColorImage.imageFormat, ready_init._msaaColorImage.image, VK_IMAGE_ASPECT_COLOR_BIT);
-    VK_CHECK(vkCreateImageView(ready_init._device, &msaa_view_info, nullptr, &ready_init._msaaColorImage.imageView));
-
-    // Новая многовыборочная глубина (_msaaDepthImage)
-
-    ready_init._msaaDepthImage.imageFormat = VK_FORMAT_D32_SFLOAT;
-    ready_init._msaaDepthImage.imageExtent = drawImageExtent;
+    ready_init._depthImage.imageFormat = VK_FORMAT_D32_SFLOAT;
+    ready_init._depthImage.imageExtent = drawImageExtent;
 
     VkImageUsageFlags depthImageUsages{};
     depthImageUsages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-    depthImageUsages |= VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
+    // depthImageUsages |= VK_IMAGE_USAGE_SAMPLED_BIT;
 
-    VkImageCreateInfo dimg_info = vkinit::image_create_info(ready_init._msaaDepthImage.imageFormat, depthImageUsages, drawImageExtent);
-    dimg_info.samples = msaaSamples;
+    VkImageCreateInfo dimg_info = vkinit::image_create_info(ready_init._depthImage.imageFormat, depthImageUsages, drawImageExtent);
+    dimg_info.samples = VK_SAMPLE_COUNT_1_BIT;
 
-    vmaCreateImage(ready_init._allocator, &dimg_info, &rimg_allocinfo, &ready_init._msaaDepthImage.image, &ready_init._msaaDepthImage.allocation, nullptr);
+    VmaAllocationCreateInfo dimg_allocinfo = {};
+    dimg_allocinfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+    dimg_allocinfo.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-    VkImageViewCreateInfo dview_info = vkinit::imageview_create_info(ready_init._msaaDepthImage.imageFormat, ready_init._msaaDepthImage.image, VK_IMAGE_ASPECT_DEPTH_BIT);
-    VK_CHECK(vkCreateImageView(ready_init._device, &dview_info, nullptr, &ready_init._msaaDepthImage.imageView));
+    vmaCreateImage(ready_init._allocator, &dimg_info, &dimg_allocinfo, &ready_init._depthImage.image, &ready_init._depthImage.allocation, nullptr);
+
+    VkImageViewCreateInfo dview_info = vkinit::imageview_create_info(ready_init._depthImage.imageFormat, ready_init._depthImage.image, VK_IMAGE_ASPECT_DEPTH_BIT);
+    VK_CHECK(vkCreateImageView(ready_init._device, &dview_info, nullptr, &ready_init._depthImage.imageView));
 }
 
 void VK_INIT_ENGINE::VulkanInitEngine::init_sync_structures(){

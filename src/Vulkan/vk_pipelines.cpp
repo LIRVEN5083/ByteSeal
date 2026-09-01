@@ -458,7 +458,7 @@ RealPipeline* PipelineManager::CreatePipelineFromMemory(const PipelineCreateInfo
 }
 
 RealPipeline* PipelineManager::CreatePipeline(const PipelineCreateInfo& info, VkFormat colorFormat,
-                                              VkFormat depthFormat, VkSampleCountFlagBits maxSamples){
+                                              VkFormat depthFormat){
 
     std::vector<uint32_t> vertCode = UTILS::CompileGLSLToSPIRV(info.vertexShaderPath);
     if (vertCode.empty()) {
@@ -476,12 +476,12 @@ RealPipeline* PipelineManager::CreatePipeline(const PipelineCreateInfo& info, Vk
         }
     }
 
-    return CreatePipelineFromMemory(info, vertCode, fragCode, colorFormat, depthFormat, maxSamples);
+    return CreatePipelineFromMemory(info, vertCode, fragCode, colorFormat, depthFormat);
 }
 
 RealPipeline* PipelineManager::CreatePipelineFromMemory(const PipelineCreateInfo& info,
     const std::vector<uint32_t>& vertCode, const std::vector<uint32_t>& fragCode, VkFormat colorFormat,
-    VkFormat depthFormat, VkSampleCountFlagBits maxSamples){
+    VkFormat depthFormat){
 
     if (_pipelinesByName.find(info.name) != _pipelinesByName.end()) {
         return &_pipelinesByName[info.name];
@@ -525,7 +525,7 @@ RealPipeline* PipelineManager::CreatePipelineFromMemory(const PipelineCreateInfo
     pipelineBuilder.set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
 
     // Определяем сэмплы для MSAA
-    VkSampleCountFlagBits samplesToUse = info.useMSAA ? maxSamples : VK_SAMPLE_COUNT_1_BIT;
+    VkSampleCountFlagBits samplesToUse = VK_SAMPLE_COUNT_1_BIT;
 
     if (info.passType == RenderPassType::ShadowCSM){
         pipelineBuilder.set_polygon_mode(VK_POLYGON_MODE_FILL);
@@ -599,7 +599,6 @@ RealPipeline* PipelineManager::CreatePipelineFromMemory(const PipelineCreateInfo
     pipelineData.fragmentShaderPath = info.fragmentShaderPath;
     pipelineData.colorFormat        = colorFormat;
     pipelineData.depthFormat        = depthFormat;
-    pipelineData.maxSamples         = maxSamples;
     _pipelinesByName[info.name] = pipelineData;
 
     RealPipeline* insertedPtr = &_pipelinesByName[info.name];
@@ -710,7 +709,6 @@ bool PipelineManager:: ReloadAllPipelines(){
         std::string compPath;
         VkFormat colorFormat;
         VkFormat depthFormat;
-        VkSampleCountFlagBits maxSamples;
 
         // Прикол такой что в бинарное дерево при перезагрузке конвееры загружаются случайно, а не в старом порядке
         // из-за этого случайные айди конвееров ломают отрисовку в CullingAndSubmit
@@ -734,7 +732,6 @@ bool PipelineManager:: ReloadAllPipelines(){
             realPipeline.computeShaderPath,
             realPipeline.colorFormat,
             realPipeline.depthFormat,
-            realPipeline.maxSamples,
             realPipeline.id,
             realPipeline.isCompute,
             newVertCodes[name],
@@ -761,7 +758,6 @@ bool PipelineManager:: ReloadAllPipelines(){
         info.name = pipeline.name;
         info.passType = pipeline.passType;
         info.opacity = pipeline.opacity;
-        info.useMSAA = (pipeline.maxSamples > VK_SAMPLE_COUNT_1_BIT);
         info.vertexShaderPath = pipeline.vertPath;
         info.fragmentShaderPath = pipeline.fragPath;
         info.computeShaderPath = pipeline.compPath;
@@ -779,8 +775,8 @@ bool PipelineManager:: ReloadAllPipelines(){
                 pipeline.vertCode,
                 pipeline.fragCode,
                 pipeline.colorFormat,
-                pipeline.depthFormat,
-                pipeline.maxSamples);
+                pipeline.depthFormat
+                );
         }
 
         if (rebuilt) {

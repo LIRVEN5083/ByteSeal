@@ -55,11 +55,6 @@ namespace VK_APPLICATION {
         CONTROLLER::Camera _camera;
         CONTROLLER::Delta _delta;
 
-        VkSampleCountFlagBits _maxSamples;
-
-        // Для теста нодов
-        float angle{0.0f};
-
         std::unique_ptr<PipelineManager> _pipelineManager;
         TextureManager _textureManager;
         MeshManager _meshManager;

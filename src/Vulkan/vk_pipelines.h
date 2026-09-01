@@ -113,8 +113,6 @@ struct PipelineCreateInfo {
     RenderPassType passType;
     // Enum class
     PipelineOpacity opacity;
-    // MSAA
-    bool useMSAA{ false };
 
     // Shaders
     std::string vertexShaderPath;
@@ -141,7 +139,7 @@ struct RealPipeline {
 
     VkFormat colorFormat{ VK_FORMAT_UNDEFINED };
     VkFormat depthFormat{ VK_FORMAT_UNDEFINED };
-    VkSampleCountFlagBits maxSamples{ VK_SAMPLE_COUNT_1_BIT };
+
     bool isCompute = false;
 };
 
@@ -155,12 +153,12 @@ public:
 
     RealPipeline* CreatePipelineFromMemory(const PipelineCreateInfo& info, const std::vector<uint32_t>& compCode);
 
-    RealPipeline* CreatePipeline(const PipelineCreateInfo& info, VkFormat colorFormat, VkFormat depthFormat, VkSampleCountFlagBits maxSamples);
+    RealPipeline* CreatePipeline(const PipelineCreateInfo& info, VkFormat colorFormat, VkFormat depthFormat);
 
     RealPipeline* CreatePipelineFromMemory(const PipelineCreateInfo& info,
                                            const std::vector<uint32_t>& vertCode,
                                            const std::vector<uint32_t>& fragCode,
-                                           VkFormat colorFormat, VkFormat depthFormat, VkSampleCountFlagBits maxSamples);
+                                           VkFormat colorFormat, VkFormat depthFormat);
 
     RealPipeline* GetPipeline(RenderPassType passType, PipelineOpacity opacity);
 

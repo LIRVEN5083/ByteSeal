@@ -50,7 +50,6 @@ void VK_APPLICATION::VulkanApplication::cleanup(){
 void VK_APPLICATION::VulkanApplication::run(){
     init_commands();
     init_descriptors();
-    _maxSamples = vkinit::max_samples(_init);
     init_scene();
     init_render();
 
@@ -176,9 +175,8 @@ void VK_APPLICATION::VulkanApplication::renderLoop(){
     VkCommandBufferBeginInfo cmdBeginInfo = vkinit::command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
     VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
 
-    vkutil::transition_image(cmd, _init._msaaColorImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-    vkutil::transition_image(cmd, _init._msaaDepthImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL); // Наша 4х глубина
-    vkutil::transition_image(cmd, _init._drawImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL); // Наш 1х resolve-таргет
+    vkutil::transition_image(cmd, _init._drawImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    vkutil::transition_image(cmd, _init._depthImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
     VkDescriptorSet bindlessSet = _textureManager.GetTextureSet();
 
@@ -226,7 +224,6 @@ void VK_APPLICATION::VulkanApplication::renderLoop(){
 
     // Если нихуя нету - то нихуя не ждём
     if (computeSubmitted) {
-        VkSemaphore waitCompute = _computeSystem.GetComputeSemaphore();
         if (waitCompute != VK_NULL_HANDLE) {
             waitInfos.push_back(vkinit::semaphore_submit_info(
                 VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT_KHR,
@@ -318,26 +315,18 @@ void VK_APPLICATION::VulkanApplication::resize_swapchain(){
     vmaCreateImage(_init._allocator, &rimg_info, &rimg_allocinfo, &_init._drawImage.image, &_init._drawImage.allocation, nullptr);
     VkImageViewCreateInfo rview_info = vkinit::imageview_create_info(_init._drawImage.imageFormat, _init._drawImage.image, VK_IMAGE_ASPECT_COLOR_BIT);
     VK_CHECK(vkCreateImageView(_init._device, &rview_info, nullptr, &_init._drawImage.imageView));
-    // Холст MSAA
-    _init._msaaColorImage.imageFormat = _init._drawImage.imageFormat;
-    _init._msaaColorImage.imageExtent = drawImageExtent;
-    VkImageUsageFlags msaaColorUsages = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
-    VkImageCreateInfo msaa_img_info = vkinit::image_create_info(_init._msaaColorImage.imageFormat, msaaColorUsages, drawImageExtent);
-    msaa_img_info.samples = _maxSamples;
-    vmaCreateImage(_init._allocator, &msaa_img_info, &rimg_allocinfo, &_init._msaaColorImage.image, &_init._msaaColorImage.allocation, nullptr);
-    VkImageViewCreateInfo msaa_view_info = vkinit::imageview_create_info(_init._msaaColorImage.imageFormat, _init._msaaColorImage.image, VK_IMAGE_ASPECT_COLOR_BIT);
-    VK_CHECK(vkCreateImageView(_init._device, &msaa_view_info, nullptr, &_init._msaaColorImage.imageView));
-    // Буфер глубины MSAA
-    _init._msaaDepthImage.imageFormat = VK_FORMAT_D32_SFLOAT;
-    _init._msaaDepthImage.imageExtent = drawImageExtent;
+    // Обычная глубина
+    _init._depthImage.imageFormat = VK_FORMAT_D32_SFLOAT;
+    _init._depthImage.imageExtent = drawImageExtent;
+
     VkImageUsageFlags depthImageUsages = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
-    VkImageCreateInfo dimg_info = vkinit::image_create_info(_init._msaaDepthImage.imageFormat, depthImageUsages, drawImageExtent);
-    dimg_info.samples = _maxSamples;
+    VkImageCreateInfo dimg_info = vkinit::image_create_info(_init._depthImage.imageFormat, depthImageUsages, drawImageExtent);
+    dimg_info.samples = VK_SAMPLE_COUNT_1_BIT;
 
     // Аллокация строго в переменные _msaaDepthImage
-    vmaCreateImage(_init._allocator, &dimg_info, &rimg_allocinfo, &_init._msaaDepthImage.image, &_init._msaaDepthImage.allocation, nullptr);
-    VkImageViewCreateInfo dview_info = vkinit::imageview_create_info(_init._msaaDepthImage.imageFormat, _init._msaaDepthImage.image, VK_IMAGE_ASPECT_DEPTH_BIT);
-    VK_CHECK(vkCreateImageView(_init._device, &dview_info, nullptr, &_init._msaaDepthImage.imageView));
+    vmaCreateImage(_init._allocator, &dimg_info, &rimg_allocinfo, &_init._depthImage.image, &_init._depthImage.allocation, nullptr);
+    VkImageViewCreateInfo dview_info = vkinit::imageview_create_info(_init._depthImage.imageFormat, _init._depthImage.image, VK_IMAGE_ASPECT_DEPTH_BIT);
+    VK_CHECK(vkCreateImageView(_init._device, &dview_info, nullptr, &_init._depthImage.imageView));
 
     ImGui_ImplVulkan_SetMinImageCount(_init._swapchainImageViews.size());
 
@@ -353,41 +342,21 @@ void VK_APPLICATION::VulkanApplication::destroy_swapchain(){
             vkDestroyImageView(_init._device, _init._drawImage.imageView, nullptr);
             _init._drawImage.imageView = VK_NULL_HANDLE;
         }
-        /*
+
         if (_init._depthImage.imageView != VK_NULL_HANDLE) {
             vkDestroyImageView(_init._device, _init._depthImage.imageView, nullptr);
             _init._depthImage.imageView = VK_NULL_HANDLE;
-        }
-        */
-        if (_init._msaaColorImage.imageView != VK_NULL_HANDLE) {
-            vkDestroyImageView(_init._device, _init._msaaColorImage.imageView, nullptr);
-            _init._msaaColorImage.imageView = VK_NULL_HANDLE;
-        }
-        if (_init._msaaDepthImage.imageView != VK_NULL_HANDLE) {
-            vkDestroyImageView(_init._device, _init._msaaDepthImage.imageView, nullptr);
-            _init._msaaDepthImage.imageView = VK_NULL_HANDLE;
         }
         if (_init._drawImage.image != VK_NULL_HANDLE) {
             vmaDestroyImage(_init._allocator, _init._drawImage.image, _init._drawImage.allocation);
             _init._drawImage.image = VK_NULL_HANDLE;
             _init._drawImage.allocation = VK_NULL_HANDLE;
         }
-        /*
+
         if (_init._depthImage.image != VK_NULL_HANDLE) {
             vmaDestroyImage(_init._allocator, _init._depthImage.image, _init._depthImage.allocation);
             _init._depthImage.image = VK_NULL_HANDLE;
             _init._depthImage.allocation = VK_NULL_HANDLE;
-        }
-        */
-        if (_init._msaaColorImage.image != VK_NULL_HANDLE) {
-            vmaDestroyImage(_init._allocator, _init._msaaColorImage.image, _init._msaaColorImage.allocation);
-            _init._msaaColorImage.image = VK_NULL_HANDLE;
-            _init._msaaColorImage.allocation = VK_NULL_HANDLE;
-        }
-        if (_init._msaaDepthImage.image != VK_NULL_HANDLE) {
-            vmaDestroyImage(_init._allocator, _init._msaaDepthImage.image, _init._msaaDepthImage.allocation);
-            _init._msaaDepthImage.image = VK_NULL_HANDLE;
-            _init._msaaDepthImage.allocation = VK_NULL_HANDLE;
         }
     }
 
@@ -456,8 +425,8 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     _computeSystem.init();
     _pipelineManager->InitCommonLayout(_gpuSceneDataDescriptorLayout, textureLayout);
     // Форматы для Dynamic Rendering берем из вашей MSAA картинки, как в старом коде
-    VkFormat colorFormat = _init._msaaColorImage.imageFormat;
-    VkFormat depthFormat = _init._msaaDepthImage.imageFormat;
+    VkFormat colorFormat = _init._drawImage.imageFormat;
+    VkFormat depthFormat = _init._depthImage.imageFormat;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Конвеер для базовых моделей (непрозрачных)
@@ -465,11 +434,10 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     baseMeshInfo.name = "BaseMesh";
     baseMeshInfo.passType = RenderPassType::Forward;
     baseMeshInfo.opacity = PipelineOpacity::Opaque;
-    baseMeshInfo.useMSAA = true; // Так как в старом коде было _maxSamples
     baseMeshInfo.vertexShaderPath = "../Shaders/BaseMesh/mesh.vert";
     baseMeshInfo.fragmentShaderPath = "../Shaders/BaseMesh/mesh.frag";
 
-    RealPipeline* basePipeline = _pipelineManager->CreatePipeline(baseMeshInfo, colorFormat, depthFormat, _maxSamples);
+    RealPipeline* basePipeline = _pipelineManager->CreatePipeline(baseMeshInfo, colorFormat, depthFormat);
     if (basePipeline) {
         fmt::print("[PipelineManager] Pipeline 'BaseMesh' successfully loaded and built.\n");
     }
@@ -480,11 +448,10 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     transparentMeshInfo.name = "TransparentMesh";
     transparentMeshInfo.passType = RenderPassType::Forward;
     transparentMeshInfo.opacity = PipelineOpacity::Transparent;
-    transparentMeshInfo.useMSAA = true;
     transparentMeshInfo.vertexShaderPath = "../Shaders/BaseMesh/mesh.vert";
     transparentMeshInfo.fragmentShaderPath = "../Shaders/BaseMesh/mesh.frag";
 
-    RealPipeline* transPipeline = _pipelineManager->CreatePipeline(transparentMeshInfo, colorFormat, depthFormat, _maxSamples);
+    RealPipeline* transPipeline = _pipelineManager->CreatePipeline(transparentMeshInfo, colorFormat, depthFormat);
     if (transPipeline) {
         fmt::print("[PipelineManager] Pipeline 'TransparentMesh' successfully loaded and built.\n");
     }
@@ -494,11 +461,10 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     alphaTestedMeshInfo.name = "AlphaTestedMesh";
     alphaTestedMeshInfo.passType = RenderPassType::Forward;
     alphaTestedMeshInfo.opacity = PipelineOpacity::AlphaTested;
-    alphaTestedMeshInfo.useMSAA = true;
     alphaTestedMeshInfo.vertexShaderPath = "../Shaders/BaseMesh/mesh.vert";
     alphaTestedMeshInfo.fragmentShaderPath = "../Shaders/BaseMesh/mesh.frag";
 
-    RealPipeline* alphaPipeline = _pipelineManager->CreatePipeline(alphaTestedMeshInfo, colorFormat, depthFormat, _maxSamples);
+    RealPipeline* alphaPipeline = _pipelineManager->CreatePipeline(alphaTestedMeshInfo, colorFormat, depthFormat);
     if (alphaPipeline) {
         fmt::print("[PipelineManager] Pipeline 'AlphaTestedMesh' successfully loaded and built.\n");
     }
@@ -508,11 +474,10 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     gridInfo.name = "Grid";
     gridInfo.passType = RenderPassType::Forward;
     gridInfo.opacity = PipelineOpacity::Transparent; // Включает AlphaBlend, отключает запись в глубину
-    gridInfo.useMSAA = true; // Использовал set_multisampling_alpha(_maxSamples)
     gridInfo.vertexShaderPath = "../Shaders/InfGrid/grid.vert";
     gridInfo.fragmentShaderPath = "../Shaders/InfGrid/grid.frag";
 
-    RealPipeline* gridPipeline = _pipelineManager->CreatePipeline(gridInfo, colorFormat, depthFormat, _maxSamples);
+    RealPipeline* gridPipeline = _pipelineManager->CreatePipeline(gridInfo, colorFormat, depthFormat);
     if (gridPipeline) {
         fmt::print("[PipelineManager] Pipeline 'Grid' successfully loaded and built.\n");
     }
@@ -523,13 +488,12 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     shadowInfo.name = "Shadow";
     shadowInfo.passType = RenderPassType::ShadowCSM;
     shadowInfo.opacity = PipelineOpacity::Opaque;
-    shadowInfo.useMSAA = false;
     shadowInfo.vertexShaderPath = "../Shaders/SCM/shadow.vert";
     shadowInfo.fragmentShaderPath = "";
 
     VkFormat shadowDepthFormat = VK_FORMAT_D32_SFLOAT;
 
-    RealPipeline* shadowPipeline = _pipelineManager->CreatePipeline(shadowInfo, VK_FORMAT_UNDEFINED, shadowDepthFormat, VK_SAMPLE_COUNT_1_BIT);
+    RealPipeline* shadowPipeline = _pipelineManager->CreatePipeline(shadowInfo, VK_FORMAT_UNDEFINED, shadowDepthFormat);
     if (shadowPipeline) {
         fmt::print("[PipelineManager] Pipeline 'ShadowCSM' successfully loaded and built for Layered Rendering.\n");
     }
@@ -540,11 +504,10 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     skyboxProcInfo.name = "SkyBox_proc";
     skyboxProcInfo.passType = RenderPassType::Skybox;
     skyboxProcInfo.opacity = PipelineOpacity::Opaque;
-    skyboxProcInfo.useMSAA = true;
     skyboxProcInfo.vertexShaderPath = "../Shaders/SkyBox_proc/SkyBox.vert";
     skyboxProcInfo.fragmentShaderPath = "../Shaders/SkyBox_proc/SkyBox.frag";
 
-    RealPipeline* skybox_procPipeline = _pipelineManager->CreatePipeline(skyboxProcInfo, colorFormat, depthFormat, _maxSamples);
+    RealPipeline* skybox_procPipeline = _pipelineManager->CreatePipeline(skyboxProcInfo, colorFormat, depthFormat);
     if (skybox_procPipeline) {
         fmt::print("[PipelineManager] Pipeline 'SkyBox_proc' successfully loaded and built.\n");
     }
@@ -555,11 +518,10 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     skyboxInfo.name = "SkyBox";
     skyboxInfo.passType = RenderPassType::Skybox;
     skyboxInfo.opacity = PipelineOpacity::Opaque;
-    skyboxInfo.useMSAA = true;
     skyboxInfo.vertexShaderPath = "../Shaders/SkyBox/SkyBox.vert";
     skyboxInfo.fragmentShaderPath = "../Shaders/SkyBox/SkyBox.frag";
 
-    RealPipeline* skyboxPipeline = _pipelineManager->CreatePipeline(skyboxInfo, colorFormat, depthFormat, _maxSamples);
+    RealPipeline* skyboxPipeline = _pipelineManager->CreatePipeline(skyboxInfo, colorFormat, depthFormat);
     if (skyboxPipeline) {
         fmt::print("[PipelineManager] Pipeline 'SkyBox' successfully loaded and built.\n");
     }

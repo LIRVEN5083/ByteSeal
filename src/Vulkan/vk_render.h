@@ -175,8 +175,6 @@ public:
 
     void SetPassEnabled(RenderPassType type, bool enabled);
 
-    void ExecuteMSAAResolve(VkCommandBuffer cmd, VkExtent2D drawExtent);
-
     void UpdateSkyBoxTexture(GPUTexture& newTex, TextureManager& textureManager, ComputeRenderSystem& computeSystem);
 
     void ToggleSkyBox();
