@@ -2,16 +2,16 @@
 #include "vk_pipelines.h"
 #include "vk_glTF_loading.h"
 
-void IBLProcessorComputePass::Init(PipelineManager& pipelineManager){
-    _brdfPipeline     = pipelineManager.GetPipelineByName("IBL_BrdfLUT");
-    _panoramaPipeline = pipelineManager.GetPipelineByName("IBL_EquirectToCubemap");
-    _diffusePipeline  = pipelineManager.GetPipelineByName("IBL_DiffuseIrradiance");
-    _specularPipeline = pipelineManager.GetPipelineByName("IBL_SpecularPreFilter");
-}
+void IBLProcessorComputePass::Init(PipelineManager& pipelineManager){}
 
 void IBLProcessorComputePass::Execute(const ComputeContext& ctx){
     VkCommandBuffer cmd = ctx.cmd;
     fmt::print("[IBL Processor] Starting full asynchronous PBR-IBL generation...\n");
+
+    _brdfPipeline     = _pipelineManager.GetPipelineByName("IBL_BrdfLUT");
+    _panoramaPipeline = _pipelineManager.GetPipelineByName("IBL_EquirectToCubemap");
+    _diffusePipeline  = _pipelineManager.GetPipelineByName("IBL_DiffuseIrradiance");
+    _specularPipeline = _pipelineManager.GetPipelineByName("IBL_SpecularPreFilter");
 
     GPUDrawPushConstants push {};
 
@@ -170,8 +170,8 @@ void ComputeRenderSystem::cleanup(){
     vkDestroyCommandPool(_init._device, _computeCommandPool, nullptr);
 }
 
-ComputePass* ComputeRenderSystem::AddPass(std::unique_ptr<ComputePass> pass, PipelineManager& pipelineManager){
-    pass->Init(pipelineManager);
+ComputePass* ComputeRenderSystem::AddPass(std::unique_ptr<ComputePass> pass){
+    pass->Init(_pipelineManager);
     _computePasses.push_back(std::move(pass));
     return _computePasses.back().get();
 }
