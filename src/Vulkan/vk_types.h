@@ -179,15 +179,16 @@ enum class RenderPassType : uint8_t {
     Grid,           // Editor grid
     ShadowCSM,      // SCM
     Skybox,         // Sky
-    PostProcess,     // Post-effects
     Compute
 };
 
 enum class ComputePassType : uint8_t{
     IBL,
-    TAA, // Soon...
-    GTAO, // Soon...
-    BLOOM // Soon...
+    TonaMapping,
+    ColorCorrection,
+    TAA,
+    GTAO,
+    BLOOM
 };
 
 enum class PipelineOpacity{
