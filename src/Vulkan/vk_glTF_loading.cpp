@@ -4,7 +4,7 @@
 #include "stb_image.h"
 
 void TextureManager::init(VK_INIT_ENGINE::_inited_engine& _init){
-    VmaPoolCreateInfo poolCreateInfo {};
+     VmaPoolCreateInfo poolCreateInfo {};
 
     _device = _init._device;
     _allocator = _init._allocator;
@@ -18,28 +18,28 @@ void TextureManager::init(VK_INIT_ENGINE::_inited_engine& _init){
 
     bindings[1].binding = 1;
     bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    bindings[1].descriptorCount = MAX_BINDLESS_TEXTURES;
+    bindings[1].descriptorCount = 10;
     bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
 
     bindings[2].binding = 2;
     bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    bindings[2].descriptorCount = MAX_BINDLESS_TEXTURES;
+    bindings[2].descriptorCount = 10;
     bindings[2].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
 
     bindings[3].binding = 3;
     bindings[3].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-    bindings[3].descriptorCount = MAX_BINDLESS_TEXTURES;
+    bindings[3].descriptorCount = 10;
     bindings[3].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
 
-    // Настраиваем флаги отдельно ДЛЯ КАЖДОГО биндинга
+    bindings[4].binding = 4;
+    bindings[4].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    bindings[4].descriptorCount = 10;
+    bindings[4].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
+
     VkDescriptorBindingFlags bindlessFlags = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
-                                             VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
-    std::vector<VkDescriptorBindingFlags> flagsArray = {
-        bindlessFlags,
-        bindlessFlags,
-        bindlessFlags,
-        bindlessFlags
-    };
+                                         VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
+    std::vector<VkDescriptorBindingFlags> flagsArray(BINDING_COUNT, bindlessFlags);
+
 
     VkDescriptorSetLayoutBindingFlagsCreateInfo extInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO };
     extInfo.bindingCount = static_cast<uint32_t>(bindings.size());
@@ -54,9 +54,10 @@ void TextureManager::init(VK_INIT_ENGINE::_inited_engine& _init){
     vkCreateDescriptorSetLayout(_device, &layoutInfo, nullptr, &_textureLayout);
 
     std::vector<VkDescriptorPoolSize> poolSizes = {
-        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, MAX_BINDLESS_TEXTURES * 3 },
-        { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, MAX_BINDLESS_TEXTURES }
+        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, MAX_BINDLESS_TEXTURES + 20 },
+        { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 20 }
     };
+
     VkDescriptorPoolCreateInfo poolInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
     poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
     poolInfo.maxSets = 1;
@@ -123,6 +124,11 @@ void TextureManager::init(VK_INIT_ENGINE::_inited_engine& _init){
     samplerInfo.unnormalizedCoordinates = VK_FALSE;
 
     vkCreateSampler(_device, &samplerInfo, nullptr, &_defaultSampler);
+
+    _frameImages._drawImage = &_init._drawImage;
+    _frameImages._depthImage = &_init._depthImage;
+    _frameImages._velocityImage = &_init._velocityImage;
+    _frameImages._normalImage = &_init._normalImage;
 
     create_default_white_texture(_init);
     create_ibl_textures(_init);
@@ -206,6 +212,39 @@ GPUTexture TextureManager::AllocateTexture(
     }
 
     return texture;
+}
+
+void TextureManager::UpdatePostProcessDescriptorSets(){
+    std::vector<VkDescriptorImageInfo> imageInfos(4);
+
+    imageInfos[0].imageView = _frameImages._drawImage->imageView;
+    imageInfos[0].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+    imageInfos[0].sampler = VK_NULL_HANDLE;
+
+    imageInfos[1].imageView = _frameImages._depthImage->imageView;
+    imageInfos[1].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+    imageInfos[1].sampler = VK_NULL_HANDLE;
+
+    imageInfos[2].imageView = _frameImages._velocityImage->imageView;
+    imageInfos[2].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+    imageInfos[2].sampler = VK_NULL_HANDLE;
+
+    imageInfos[3].imageView = _frameImages._normalImage->imageView;
+    imageInfos[3].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+    imageInfos[3].sampler = VK_NULL_HANDLE;
+
+    // Одна общая структура записи для всего нашего массива в binding = 4
+    VkWriteDescriptorSet postProcessWrite{ VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+    postProcessWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    postProcessWrite.dstSet = _textureSet;
+    postProcessWrite.dstBinding = 4;
+    postProcessWrite.dstArrayElement = 0;
+    postProcessWrite.descriptorCount = 4;
+    postProcessWrite.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    postProcessWrite.pImageInfo = imageInfos.data();
+
+    // Финально отправляем это дерьмо на GPU
+    vkUpdateDescriptorSets(_device, 1, &postProcessWrite, 0, nullptr);
 }
 
 void TextureManager::UpdateIBLDescriptorSets(){

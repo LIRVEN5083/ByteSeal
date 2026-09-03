@@ -142,10 +142,21 @@ struct IBL_TEXTURES {
     GPUTexture BRDF_LUT;
 };
 
+struct FrameImages{
+    // Холст цветной куда шейдеры выводят изображение
+    AllocatedImage* _drawImage;
+    // Буфер глубины
+    AllocatedImage* _depthImage;
+    // Буфер движения
+    AllocatedImage* _velocityImage;
+    // Буфер нормалей
+    AllocatedImage* _normalImage;
+};
+
 class TextureManager{
 public:
     const uint32_t MAX_BINDLESS_TEXTURES = 1000;
-    const uint32_t BINDING_COUNT = 4;
+    const uint32_t BINDING_COUNT = 5;
 
     void init(VK_INIT_ENGINE::_inited_engine& _init);
 
@@ -156,6 +167,7 @@ public:
         const SamplerOptions& params = {},
         ModelLifetime lifetime = ModelLifetime::Dynamic);
 
+    void UpdatePostProcessDescriptorSets();
     void UpdateIBLDescriptorSets();
 
     void FreeIBLtextures();
@@ -174,6 +186,8 @@ public:
 private:
     VkSampler CreateSampler(const SamplerOptions& params);
 
+    FrameImages _frameImages;
+
     GPUTexture defaultTexture;
 
     VkDevice _device{ VK_NULL_HANDLE };
@@ -191,8 +205,8 @@ private:
     // Хэш ддя сэмплеров
     std::unordered_map<VkSamplerCreateInfo, VkSampler, vkutil::SamplerCreateInfoHash, vkutil::SamplerCreateInfoEqual> _samplerCache;
 
-    std::vector<uint32_t> _nextIndices{0, 0, 0, 0};
-    std::vector<std::vector<uint32_t>> _freeIndices{ {}, {}, {}, {} };
+    std::vector<uint32_t> _nextIndices{0, 0, 0, 0, 0};
+    std::vector<std::vector<uint32_t>> _freeIndices{ {}, {}, {}, {}, {} };
 
     GPUTexture _activeSkyboxTexture{};
     IBL_TEXTURES _iblTextures{};

@@ -49,6 +49,26 @@ void VK_INIT_ENGINE::VulkanInitEngine::init_cleanup(){
             ready_init._depthImage.image = VK_NULL_HANDLE;
             ready_init._depthImage.allocation = VK_NULL_HANDLE;
         }
+        // Вектор движения
+        if (ready_init._velocityImage.imageView != VK_NULL_HANDLE) {
+            vkDestroyImageView(ready_init._device, ready_init._velocityImage.imageView, nullptr);
+            ready_init._velocityImage.imageView = VK_NULL_HANDLE;
+        }
+        if (ready_init._velocityImage.image != VK_NULL_HANDLE) {
+            vmaDestroyImage(ready_init._allocator, ready_init._velocityImage.image, ready_init._velocityImage.allocation);
+            ready_init._velocityImage.image = VK_NULL_HANDLE;
+            ready_init._velocityImage.allocation = VK_NULL_HANDLE;
+        }
+        // Нормаль
+        if (ready_init._normalImage.imageView != VK_NULL_HANDLE) {
+            vkDestroyImageView(ready_init._device, ready_init._normalImage.imageView, nullptr);
+            ready_init._normalImage.imageView = VK_NULL_HANDLE;
+        }
+        if (ready_init._normalImage.image != VK_NULL_HANDLE) {
+            vmaDestroyImage(ready_init._allocator, ready_init._normalImage.image, ready_init._normalImage.allocation);
+            ready_init._normalImage.image = VK_NULL_HANDLE;
+            ready_init._normalImage.allocation = VK_NULL_HANDLE;
+        }
     }
 
     for (auto imageView : ready_init._swapchainImageViews) {
@@ -160,7 +180,8 @@ void VK_INIT_ENGINE::VulkanInitEngine::init_swapchain(){
 
     VkImageUsageFlags depthImageUsages{};
     depthImageUsages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-    // depthImageUsages |= VK_IMAGE_USAGE_SAMPLED_BIT;
+    depthImageUsages |= VK_IMAGE_USAGE_SAMPLED_BIT;
+    depthImageUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
 
     VkImageCreateInfo dimg_info = vkinit::image_create_info(ready_init._depthImage.imageFormat, depthImageUsages, drawImageExtent);
     dimg_info.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -173,6 +194,46 @@ void VK_INIT_ENGINE::VulkanInitEngine::init_swapchain(){
 
     VkImageViewCreateInfo dview_info = vkinit::imageview_create_info(ready_init._depthImage.imageFormat, ready_init._depthImage.image, VK_IMAGE_ASPECT_DEPTH_BIT);
     VK_CHECK(vkCreateImageView(ready_init._device, &dview_info, nullptr, &ready_init._depthImage.imageView));
+
+    // ==========================================
+    // Векторы движения (_velocityImage)
+    // ==========================================
+
+    ready_init._velocityImage.imageFormat = VK_FORMAT_R16G16_SFLOAT;
+    ready_init._velocityImage.imageExtent = drawImageExtent;
+
+    VkImageUsageFlags velocityUsages{};
+    velocityUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    velocityUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
+    velocityUsages |= VK_IMAGE_USAGE_SAMPLED_BIT;
+
+    VkImageCreateInfo vimg_info = vkinit::image_create_info(ready_init._velocityImage.imageFormat, velocityUsages, drawImageExtent);
+    vimg_info.samples = VK_SAMPLE_COUNT_1_BIT;
+
+    vmaCreateImage(ready_init._allocator, &vimg_info, &rimg_allocinfo, &ready_init._velocityImage.image, &ready_init._velocityImage.allocation, nullptr);
+
+    VkImageViewCreateInfo vview_info = vkinit::imageview_create_info(ready_init._velocityImage.imageFormat, ready_init._velocityImage.image, VK_IMAGE_ASPECT_COLOR_BIT);
+    VK_CHECK(vkCreateImageView(ready_init._device, &vview_info, nullptr, &ready_init._velocityImage.imageView));
+
+
+    // ==========================================
+    // Буфер нормалей экрана (_normalImage)
+    // ==========================================
+    ready_init._normalImage.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
+    ready_init._normalImage.imageExtent = drawImageExtent;
+
+    VkImageUsageFlags normalUsages{};
+    normalUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    normalUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
+    normalUsages |= VK_IMAGE_USAGE_SAMPLED_BIT;
+
+    VkImageCreateInfo nimg_info = vkinit::image_create_info(ready_init._normalImage.imageFormat, normalUsages, drawImageExtent);
+    nimg_info.samples = VK_SAMPLE_COUNT_1_BIT;
+
+    vmaCreateImage(ready_init._allocator, &nimg_info, &rimg_allocinfo, &ready_init._normalImage.image, &ready_init._normalImage.allocation, nullptr);
+
+    VkImageViewCreateInfo nview_info = vkinit::imageview_create_info(ready_init._normalImage.imageFormat, ready_init._normalImage.image, VK_IMAGE_ASPECT_COLOR_BIT);
+    VK_CHECK(vkCreateImageView(ready_init._device, &nview_info, nullptr, &ready_init._normalImage.imageView));
 }
 
 void VK_INIT_ENGINE::VulkanInitEngine::init_sync_structures(){

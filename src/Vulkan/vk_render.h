@@ -121,9 +121,9 @@ public:
 private:
     RealPipeline* _shadowPipeline{ nullptr };
 };
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // ПРОХОД для SkyBox
-
 enum class SkyBoxType : uint32_t{
     Panoramic = 0,
     Cubemap = 1,
@@ -153,6 +153,41 @@ private:
 
     GPUTexture _panoramicTexture{};
     bool _hasTexture{ false };
+};
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// ПРОХОД для SkyBox
+//Стандартные методы для Ton Mapping
+enum class TonemapOperator : uint32_t {
+    Linear = 0,
+    Reinhard = 1,
+    ACES = 2,
+    Filmic = 3
+};
+
+struct PostProcessSettings {
+    TonemapOperator tonemapOp{ TonemapOperator::ACES };
+    float exposure{ 1.0f };
+    float gamma{ 2.2f };
+    float saturation{ 1.0f };
+    float contrast{ 1.0f };
+    float colorTint[3]{ 1.0f, 1.0f, 1.0f };
+};
+
+class PostProcessRenderPass : public RenderPass {
+public:
+    PostProcessRenderPass(VK_INIT_ENGINE::_inited_engine& init)
+        : RenderPass(init, RenderPassType::PostProcess) {}
+    ~PostProcessRenderPass() override = default;
+
+    void Init(PipelineManager& pipelineManager) override;
+
+    void Execute(const RenderContext& ctx, const std::vector<RenderObject>& queue) override;
+
+    void SetupDescriptor(const AllocatedImage& drawImage, VkSampler defaultSampler);
+
+private:
+    RealPipeline* _postProcessPipeline{ nullptr };
+    PostProcessSettings _settings{};
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

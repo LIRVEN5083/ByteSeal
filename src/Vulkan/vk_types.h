@@ -153,6 +153,10 @@ namespace VK_INIT_ENGINE {
         AllocatedImage _drawImage;
         // Буфер глубины
         AllocatedImage _depthImage;
+        // Буфер движения
+        AllocatedImage _velocityImage;
+        // Буфер нормалей
+        AllocatedImage _normalImage;
 
         // Набор для передачи данных в шейдер (Для загрузки glTF)
         // for immediate_submit
@@ -172,7 +176,7 @@ namespace VK_INIT_ENGINE {
 
 enum class RenderPassType : uint8_t {
     Forward,        // Base render
-    Grid,
+    Grid,           // Editor grid
     ShadowCSM,      // SCM
     Skybox,         // Sky
     PostProcess,     // Post-effects
@@ -180,7 +184,10 @@ enum class RenderPassType : uint8_t {
 };
 
 enum class ComputePassType : uint8_t{
-    IBL
+    IBL,
+    TAA, // Soon...
+    GTAO, // Soon...
+    BLOOM // Soon...
 };
 
 enum class PipelineOpacity{

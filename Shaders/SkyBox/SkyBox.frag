@@ -29,5 +29,16 @@ void main() {
 
     vec3 texColor = texture(skyPanoramaTex, uv).rgb;
     
+    float brightness = dot(texColor, vec3(0.2126, 0.7152, 0.0722));
+
+    if (isnan(texColor.r) || isnan(texColor.g) || isnan(texColor.b) ||
+        isinf(texColor.r) || isinf(texColor.g) || isinf(texColor.b) ||
+        texColor.r < 0.0f  || texColor.g < 0.0f  || texColor.b < 0.0f  ||
+        brightness < 0.01f)
+    {
+        // Силой заливаем сломанный пиксель белым светом
+        texColor = vec3(10000.0f); 
+    }
+
     outColor = vec4(texColor, 1.0);
 }

@@ -276,26 +276,38 @@ void SkyBoxRenderPass::Init(PipelineManager& pipelineManager){
 void SkyBoxRenderPass::Execute(const RenderContext& ctx, const std::vector<RenderObject>& queue){
     RealPipeline* activePipeline = nullptr;
 
-    switch (_currentType) {
-    case SkyBoxType::Procedural:
-        activePipeline = _procPipeline;
-        break;
-    case SkyBoxType::Panoramic:
-        activePipeline = _panoramicPipeline;
-        break;
-    }
-    if (!activePipeline) return;
+    bool isPanoramaLoaded = (_panoramicTexture.image.image != VK_NULL_HANDLE);
 
-    VkClearValue depthClear;
-    depthClear.depthStencil.depth = 1.0f;
+    SkyBoxType actualType = _currentType;
+    if (actualType == SkyBoxType::Panoramic && !isPanoramaLoaded) {
+        activePipeline = nullptr;
+    } else {
+        switch (actualType) {
+        case SkyBoxType::Procedural:
+            activePipeline = _procPipeline;
+            break;
+        case SkyBoxType::Panoramic:
+            activePipeline = _panoramicPipeline;
+            break;
+        }
+    }
+
+    VkClearValue clearColor;
+    clearColor.color = { { 0.3f, 0.3f, 0.3f, 1.0f } };
 
     VkRenderingAttachmentInfo colorAttachment{};
     colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
     colorAttachment.imageView = _init._drawImage.imageView;
     colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+
+    if (_currentType == SkyBoxType::Panoramic && !isPanoramaLoaded) {
+        colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    } else {
+        colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+    }
+
     colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    colorAttachment.clearValue = depthClear;
+    colorAttachment.clearValue = clearColor;
 
     VkRenderingAttachmentInfo depthAttachment{};
     depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
@@ -313,6 +325,16 @@ void SkyBoxRenderPass::Execute(const RenderContext& ctx, const std::vector<Rende
     renderingInfo.pDepthAttachment = &depthAttachment;
 
     vkCmdBeginRendering(ctx.cmd, &renderingInfo);
+
+    if (_currentType == SkyBoxType::Panoramic && !isPanoramaLoaded) {
+        vkCmdEndRendering(ctx.cmd);
+        return;
+    }
+
+    if (!activePipeline) {
+        vkCmdEndRendering(ctx.cmd);
+        return;
+    }
 
     VkViewport viewport = { 0.0f, 0.0f, (float)ctx.drawExtent.width, (float)ctx.drawExtent.height, 0.0f, 1.0f };
     vkCmdSetViewport(ctx.cmd, 0, 1, &viewport);
@@ -333,6 +355,7 @@ void SkyBoxRenderPass::Execute(const RenderContext& ctx, const std::vector<Rende
 
     vkCmdEndRendering(ctx.cmd);
 }
+
 
 void SkyBoxRenderPass::SetPanoramicTexture(const GPUTexture& texture){
     _panoramicTexture = texture;
