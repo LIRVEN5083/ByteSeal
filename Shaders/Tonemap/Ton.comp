@@ -7,6 +7,8 @@ layout(set = 1, binding = 4, rgba16f) uniform image2D postProcessImages[];
 layout(push_constant) uniform PushConstants {
     uint tonemapOp;
     float gamma;
+    float screenWidth; 
+    float screenHeight;
 } pc;
 
 // Reinhard (Классика: мягко и плавно зажимает яркие участки)
@@ -33,7 +35,8 @@ vec3 Tonemap_Filmic(vec3 color) {
 void main() {
     ivec2 uv = ivec2(gl_GlobalInvocationID.xy);
     
-    ivec2 size = imageSize(postProcessImages[0]); 
+    ivec2 size = ivec2(int(pc.screenWidth), int(pc.screenHeight)); 
+
 
     if (uv.x >= size.x || uv.y >= size.y) return;
 
@@ -45,14 +48,11 @@ void main() {
         color = vec3(0.0);
     }
 
-    if (pc.tonemapOp == 1) {
-        color = Tonemap_Reinhard(color);
-    } else if (pc.tonemapOp == 2) {
+    if (pc.tonemapOp == 2) {
         color = Tonemap_ACES(color);
-    } else if (pc.tonemapOp == 3) {
-        color = Tonemap_Filmic(color);
     }
 
+    // Гамма-коррекция
     color = pow(color, vec3(1.0 / pc.gamma));
 
     imageStore(postProcessImages[0], uv, vec4(color, 1.0));

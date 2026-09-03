@@ -53,6 +53,8 @@ void TonemapComputePass::Execute(const ComputeContext& ctx){
     TonemapPushConstants push{};
     push.tonemapOp = static_cast<uint32_t>(_settings.tonemapOp);
     push.gamma     = _settings.gamma;
+    push.screenWidth  = static_cast<float>(_init._windowExtent.width);
+    push.screenHeight = static_cast<float>(_init._windowExtent.height);
 
     vkCmdPushConstants(ctx.cmd, activePipeline->layout,
                        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(TonemapPushConstants), &push);

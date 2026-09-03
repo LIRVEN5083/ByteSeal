@@ -70,7 +70,9 @@ struct ColorCorrectionPushConstants {
 struct TonemapPushConstants {
     uint32_t tonemapOp{ 2 }; // 4 байта (2 = ACES)
     float gamma{ 2.2f };     // 4 байта
-    float padding0[2];       // 8 байт
+
+    float screenWidth;
+    float screenHeight;
 
     // Забиваем остаток до 128 байт
     uint8_t dummyPadding[112]{ 0 };

@@ -10,12 +10,12 @@ layout(push_constant) uniform PushConstants {
     float contrast;
 
     float padding;
-    
+
     layout(offset = 16) vec4 colorTint;
 } pc;
 
 void main() {
-    float tempExposure = 1.0; 
+    float tempExposure = 0.5; 
 
     ivec2 uv = ivec2(gl_GlobalInvocationID.xy);
     
