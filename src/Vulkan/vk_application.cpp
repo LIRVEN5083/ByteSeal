@@ -195,7 +195,7 @@ void VK_APPLICATION::VulkanApplication::renderLoop(){
     VkSemaphore waitCompute = _computeSystem.GetComputeSemaphore();
     _renderSystem.Draw(cmd, _drawExtent, globalDescriptor, bindlessSet, *_pipelineManager, *_lightManager);
     // ПОСТ ЭФФЕКТЫ!!!
-    _postProcessSystem.Execute(cmd, bindlessSet);
+    _postProcessSystem.Execute(cmd, bindlessSet, *_pipelineManager);
     // Рисуем интерфейс
     _gui.draw_imgui(_init, cmd, _drawExtent);
 
@@ -667,8 +667,8 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     );
 
     _computeSystem.AddPass(std::move(iblPass));
-    _postProcessSystem.AddPass(std::make_unique<ColorCorrectionComputePass>(_init), *_pipelineManager);
-    _postProcessSystem.AddPass(std::make_unique<TonemapComputePass>(_init), *_pipelineManager);
+    _postProcessSystem.AddPass(std::make_unique<ColorCorrectionComputePass>(_init, colorCorrectionInfo.name));
+    _postProcessSystem.AddPass(std::make_unique<TonemapComputePass>(_init, tonMapInfo.name));
 }
 
 void VK_APPLICATION::VulkanApplication::init_commands(){

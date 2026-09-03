@@ -2,20 +2,16 @@
 #include "vk_pipelines.h"
 #include "vk_glTF_loading.h"
 
-void ColorCorrectionComputePass::Init(PipelineManager& pipelineManager){
-    _pipeline = pipelineManager.GetPipelineByName("ColorCorrection");
-}
-
 void ColorCorrectionComputePass::Execute(const ComputeContext& ctx){
+    RealPipeline* activePipeline = ctx.pipelineManager->GetPipelineByName( _pipelineName);
+    if (!activePipeline) return;
 
     vkutil::transition_image(ctx.cmd, _init._drawImage.image,
                              VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                              VK_IMAGE_LAYOUT_GENERAL);
 
-    vkCmdBindPipeline(ctx.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _pipeline->pipeline);
-
-    vkCmdBindDescriptorSets(ctx.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _pipeline->layout,
-                            1, 1, &ctx.bindlessSet, 0, nullptr);
+    vkCmdBindPipeline(ctx.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, activePipeline->pipeline);
+    vkCmdBindDescriptorSets(ctx.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, activePipeline->layout, 1, 1, &ctx.bindlessSet, 0, nullptr);
 
     ColorCorrectionPushConstants push{};
     push.exposure   = _settings.exposure;
@@ -23,8 +19,9 @@ void ColorCorrectionComputePass::Execute(const ComputeContext& ctx){
     push.contrast   = _settings.contrast;
     push.colorTint  = glm::vec4(_settings.colorTint[0], _settings.colorTint[1], _settings.colorTint[2], 1.0f);
 
-    vkCmdPushConstants(ctx.cmd, _pipeline->layout,
-                       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ColorCorrectionPushConstants), &push);
+    vkCmdPushConstants(ctx.cmd, activePipeline->layout,
+                       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT,
+                       0, sizeof(ColorCorrectionPushConstants), &push);
 
     uint32_t groupCountX = (_init._windowExtent.width + 15) / 16;
     uint32_t groupCountY = (_init._windowExtent.height + 15) / 16;
@@ -44,21 +41,20 @@ void ColorCorrectionComputePass::Execute(const ComputeContext& ctx){
     vkCmdPipelineBarrier2(ctx.cmd, &dependencyInfo);
 }
 
-void TonemapComputePass::Init(PipelineManager& pipelineManager){
-    _pipeline = pipelineManager.GetPipelineByName("Tonemap");
-}
-
 void TonemapComputePass::Execute(const ComputeContext& ctx){
-    vkCmdBindPipeline(ctx.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _pipeline->pipeline);
+    RealPipeline* activePipeline = ctx.pipelineManager->GetPipelineByName(_pipelineName);
+    if (!activePipeline) return;
 
-    vkCmdBindDescriptorSets(ctx.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _pipeline->layout,
+    vkCmdBindPipeline(ctx.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, activePipeline->pipeline);
+
+    vkCmdBindDescriptorSets(ctx.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, activePipeline->layout,
                             1, 1, &ctx.bindlessSet, 0, nullptr);
 
     TonemapPushConstants push{};
     push.tonemapOp = static_cast<uint32_t>(_settings.tonemapOp);
     push.gamma     = _settings.gamma;
 
-    vkCmdPushConstants(ctx.cmd, _pipeline->layout,
+    vkCmdPushConstants(ctx.cmd, activePipeline->layout,
                        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(TonemapPushConstants), &push);
 
     uint32_t groupCountX = (_init._windowExtent.width + 15) / 16;
@@ -70,8 +66,6 @@ void TonemapComputePass::Execute(const ComputeContext& ctx){
                              VK_IMAGE_LAYOUT_GENERAL,
                              VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 }
-
-void IBLProcessorComputePass::Init(PipelineManager& pipelineManager){}
 
 void IBLProcessorComputePass::Execute(const ComputeContext& ctx){
     VkCommandBuffer cmd = ctx.cmd;
@@ -240,7 +234,6 @@ void ComputeRenderSystem::cleanup(){
 }
 
 ComputePass* ComputeRenderSystem::AddPass(std::unique_ptr<ComputePass> pass){
-    pass->Init(_pipelineManager);
     _computePasses.push_back(std::move(pass));
     return _computePasses.back().get();
 }
@@ -318,20 +311,18 @@ void ComputeRenderSystem::RefreshIBL(GPUTexture newPanorama){
     fmt::print("[ComputeSystem Error] IBLProcessorComputePass not found for recalculation!\n");
 }
 
-ComputePass* PostProcessComputeSystem::AddPass(std::unique_ptr<ComputePass> pass,  PipelineManager& pipelineManager){
+ComputePass* PostProcessComputeSystem::AddPass(std::unique_ptr<ComputePass> pass){
     if (!pass) return nullptr;
 
     ComputePass* rawPassPtr = pass.get();
-
-    pass->Init(pipelineManager);
 
     _passes.push_back(std::move(pass));
 
     return rawPassPtr;
 }
 
-void PostProcessComputeSystem::Execute(VkCommandBuffer mainCmd, VkDescriptorSet bindlessSet){
-    ComputeContext ctx{ mainCmd, bindlessSet };
+void PostProcessComputeSystem::Execute(VkCommandBuffer mainCmd, VkDescriptorSet bindlessSet, PipelineManager& pipelineManager){
+    ComputeContext ctx{ mainCmd, bindlessSet, &pipelineManager };
 
     for (auto& pass : _passes) {
         // Если проход выключен — скипаем к чертям

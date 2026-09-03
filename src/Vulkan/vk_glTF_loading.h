@@ -57,9 +57,10 @@ struct ColorCorrectionPushConstants {
     float exposure{ 1.0f };    // 4 байта
     float saturation{ 1.0f };  // 4 байта
     float contrast{ 1.0f };    // 4 байта
-    float padding0;            // 4 байта (добили до 16)
 
-    glm::vec4 colorTint{ 1.0f, 1.0f, 1.0f, 1.0f };
+    float padding;
+
+    glm::vec4 colorTint;
 
     // Забиваем остаток до 128 байт
     uint8_t dummyPadding[96]{ 0 };

@@ -8,6 +8,7 @@ struct IBL_TEXTURES;
 struct ComputeContext {
     VkCommandBuffer cmd;
     VkDescriptorSet bindlessSet;
+    PipelineManager* pipelineManager;
 };
 
 class ComputePass {
@@ -27,8 +28,6 @@ public:
     bool IsEnabled() const { return _isEnabled; }
     void Toggle() { _isEnabled = !_isEnabled;}
 
-    virtual void Init(PipelineManager& pipelineManager) = 0;
-
     virtual void Execute(const ComputeContext& ctx) = 0;
 };
 
@@ -44,7 +43,7 @@ struct PostProcessSettings {
     TonemapOperator tonemapOp{ TonemapOperator::ACES };
 
     // Общая экспозиция/яркость (1.0f — стандарт)
-    float exposure{ 1.0f };
+    float exposure{ 0.5f };
 
     // Гамма-коррекция для монитора (2.2f — стандарт для sRGB экранов)
     float gamma{ 2.2f };
@@ -61,34 +60,32 @@ struct PostProcessSettings {
 
 class ColorCorrectionComputePass : public ComputePass{
 public:
-    ColorCorrectionComputePass(VK_INIT_ENGINE::_inited_engine& init):ComputePass(init, ComputePassType::ColorCorrection){}
+    ColorCorrectionComputePass(VK_INIT_ENGINE::_inited_engine& init, std::string pipelineName)
+        : ComputePass(init, ComputePassType::ColorCorrection), _pipelineName(pipelineName) {}
 
     ~ColorCorrectionComputePass() override = default;
-
-    void Init(PipelineManager& pipelineManager) override;
 
     void Execute(const ComputeContext& ctx) override;
 
     void UpdateSettings(const PostProcessSettings& newSettings) { _settings = newSettings; }
 
 private:
-    RealPipeline* _pipeline{ nullptr };
+    std::string _pipelineName;
     PostProcessSettings _settings{};
 };
 
 class TonemapComputePass : public ComputePass{
 public:
-    TonemapComputePass(VK_INIT_ENGINE::_inited_engine& init):ComputePass(init, ComputePassType::TonMapping){}
+    TonemapComputePass(VK_INIT_ENGINE::_inited_engine& init, std::string pipelineName)
+        : ComputePass(init, ComputePassType::TonMapping), _pipelineName(pipelineName) {}
 
     ~TonemapComputePass() override = default;
-
-    void Init(PipelineManager& pipelineManager) override;
 
     void Execute(const ComputeContext& ctx) override;
 
     void UpdateSettings(const PostProcessSettings& newSettings) { _settings = newSettings; }
 private:
-    RealPipeline* _pipeline{ nullptr };
+    std::string _pipelineName;
     PostProcessSettings _settings{};
 };
 
@@ -105,8 +102,6 @@ public:
           _pipelineManager(pipelineManager){}
 
     ~IBLProcessorComputePass() override = default;
-
-    void Init(PipelineManager& pipelineManager) override;
 
     void Execute(const ComputeContext& ctx) override;
 
@@ -176,9 +171,9 @@ public:
 
     ~PostProcessComputeSystem() = default;
 
-    ComputePass* AddPass(std::unique_ptr<ComputePass> pass,  PipelineManager& pipelineManager);
+    ComputePass* AddPass(std::unique_ptr<ComputePass> pass);
 
-    void Execute(VkCommandBuffer mainCmd, VkDescriptorSet bindlessSet);
+    void Execute(VkCommandBuffer mainCmd, VkDescriptorSet bindlessSet, PipelineManager& pipelineManager);
 
 private:
     VK_INIT_ENGINE::_inited_engine& _init;

@@ -374,12 +374,6 @@ roughness = max(roughness, 0.05f);
 	// Финальный цвет (Свет + Тени)
 	vec3 color = iblAmbient + finalDirectLight;
 
-	// Шобы цвета подфиксить
-	float exposure = 0.85; 
-	color *= exposure;
-	color = ACESFilm(color);
-	color = pow(color, vec3(1.0 / 2.2));
-
 	// --GLASS--
 	float finalAlpha = finalAlbedo.a;
 

@@ -9,6 +9,51 @@ layout(push_constant) uniform PushConstants {
     float gamma;
 } pc;
 
-void main() {
+// Reinhard (Классика: мягко и плавно зажимает яркие участки)
+vec3 Tonemap_Reinhard(vec3 color) {
+    return color / (color + vec3(1.0));
+}
 
+// ACES Film (Кинематографический стандарт: глубокие сочные тени, красивый блик солнца)
+vec3 Tonemap_ACES(vec3 x) {
+    float a = 2.51f;
+    float b = 0.03f;
+    float c = 2.43f;
+    float d = 0.59f;
+    float e = 0.14f;
+    return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0f, 1.0f);
+}
+
+// Filmic
+vec3 Tonemap_Filmic(vec3 color) {
+    vec3 x = max(vec3(0.0), color - vec3(0.004));
+    return (x * (6.2 * x + 0.5)) / (x * (6.2 * x + 1.7) + 0.06);
+}
+
+void main() {
+    ivec2 uv = ivec2(gl_GlobalInvocationID.xy);
+    
+    ivec2 size = imageSize(postProcessImages[0]); 
+
+    if (uv.x >= size.x || uv.y >= size.y) return;
+
+    vec3 color = imageLoad(postProcessImages[0], uv).rgb;
+
+    if (isnan(color.r) || isnan(color.g) || isnan(color.b) || 
+        isinf(color.r) || isinf(color.g) || isinf(color.b)) 
+    {
+        color = vec3(0.0);
+    }
+
+    if (pc.tonemapOp == 1) {
+        color = Tonemap_Reinhard(color);
+    } else if (pc.tonemapOp == 2) {
+        color = Tonemap_ACES(color);
+    } else if (pc.tonemapOp == 3) {
+        color = Tonemap_Filmic(color);
+    }
+
+    color = pow(color, vec3(1.0 / pc.gamma));
+
+    imageStore(postProcessImages[0], uv, vec4(color, 1.0));
 }
