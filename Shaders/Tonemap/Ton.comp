@@ -1,0 +1,14 @@
+#version 460
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+layout(set = 1, binding = 4, rgba16f) uniform image2D postProcessImages[];
+
+layout(push_constant) uniform PushConstants {
+    uint tonemapOp;
+    float gamma;
+} pc;
+
+void main() {
+
+}

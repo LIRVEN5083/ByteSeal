@@ -2,6 +2,75 @@
 #include "vk_pipelines.h"
 #include "vk_glTF_loading.h"
 
+void ColorCorrectionComputePass::Init(PipelineManager& pipelineManager){
+    _pipeline = pipelineManager.GetPipelineByName("ColorCorrection");
+}
+
+void ColorCorrectionComputePass::Execute(const ComputeContext& ctx){
+
+    vkutil::transition_image(ctx.cmd, _init._drawImage.image,
+                             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                             VK_IMAGE_LAYOUT_GENERAL);
+
+    vkCmdBindPipeline(ctx.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _pipeline->pipeline);
+
+    vkCmdBindDescriptorSets(ctx.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _pipeline->layout,
+                            1, 1, &ctx.bindlessSet, 0, nullptr);
+
+    ColorCorrectionPushConstants push{};
+    push.exposure   = _settings.exposure;
+    push.saturation = _settings.saturation;
+    push.contrast   = _settings.contrast;
+    push.colorTint  = glm::vec4(_settings.colorTint[0], _settings.colorTint[1], _settings.colorTint[2], 1.0f);
+
+    vkCmdPushConstants(ctx.cmd, _pipeline->layout,
+                       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ColorCorrectionPushConstants), &push);
+
+    uint32_t groupCountX = (_init._windowExtent.width + 15) / 16;
+    uint32_t groupCountY = (_init._windowExtent.height + 15) / 16;
+
+    vkCmdDispatch(ctx.cmd, groupCountX, groupCountY, 1);
+
+    VkMemoryBarrier2 computeBarrier{ VK_STRUCTURE_TYPE_MEMORY_BARRIER_2 };
+    computeBarrier.srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+    computeBarrier.srcAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT;
+    computeBarrier.dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+    computeBarrier.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
+
+    VkDependencyInfo dependencyInfo{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
+    dependencyInfo.memoryBarrierCount = 1;
+    dependencyInfo.pMemoryBarriers = &computeBarrier;
+
+    vkCmdPipelineBarrier2(ctx.cmd, &dependencyInfo);
+}
+
+void TonemapComputePass::Init(PipelineManager& pipelineManager){
+    _pipeline = pipelineManager.GetPipelineByName("Tonemap");
+}
+
+void TonemapComputePass::Execute(const ComputeContext& ctx){
+    vkCmdBindPipeline(ctx.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _pipeline->pipeline);
+
+    vkCmdBindDescriptorSets(ctx.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _pipeline->layout,
+                            1, 1, &ctx.bindlessSet, 0, nullptr);
+
+    TonemapPushConstants push{};
+    push.tonemapOp = static_cast<uint32_t>(_settings.tonemapOp);
+    push.gamma     = _settings.gamma;
+
+    vkCmdPushConstants(ctx.cmd, _pipeline->layout,
+                       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(TonemapPushConstants), &push);
+
+    uint32_t groupCountX = (_init._windowExtent.width + 15) / 16;
+    uint32_t groupCountY = (_init._windowExtent.height + 15) / 16;
+
+    vkCmdDispatch(ctx.cmd, groupCountX, groupCountY, 1);
+
+    vkutil::transition_image(ctx.cmd, _init._drawImage.image,
+                             VK_IMAGE_LAYOUT_GENERAL,
+                             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+}
+
 void IBLProcessorComputePass::Init(PipelineManager& pipelineManager){}
 
 void IBLProcessorComputePass::Execute(const ComputeContext& ctx){
@@ -247,4 +316,28 @@ void ComputeRenderSystem::RefreshIBL(GPUTexture newPanorama){
         }
     }
     fmt::print("[ComputeSystem Error] IBLProcessorComputePass not found for recalculation!\n");
+}
+
+ComputePass* PostProcessComputeSystem::AddPass(std::unique_ptr<ComputePass> pass,  PipelineManager& pipelineManager){
+    if (!pass) return nullptr;
+
+    ComputePass* rawPassPtr = pass.get();
+
+    pass->Init(pipelineManager);
+
+    _passes.push_back(std::move(pass));
+
+    return rawPassPtr;
+}
+
+void PostProcessComputeSystem::Execute(VkCommandBuffer mainCmd, VkDescriptorSet bindlessSet){
+    ComputeContext ctx{ mainCmd, bindlessSet };
+
+    for (auto& pass : _passes) {
+        // Если проход выключен — скипаем к чертям
+        if (!pass->IsEnabled()) { continue; }
+
+        // Фигачим пасс
+        pass->Execute(ctx);
+    }
 }

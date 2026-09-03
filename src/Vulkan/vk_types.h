@@ -184,7 +184,7 @@ enum class RenderPassType : uint8_t {
 
 enum class ComputePassType : uint8_t{
     IBL,
-    TonaMapping,
+    TonMapping,
     ColorCorrection,
     TAA,
     GTAO,

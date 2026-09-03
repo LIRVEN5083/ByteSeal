@@ -30,7 +30,66 @@ public:
     virtual void Init(PipelineManager& pipelineManager) = 0;
 
     virtual void Execute(const ComputeContext& ctx) = 0;
+};
 
+enum class TonemapOperator : uint32_t {
+    Linear = 0,
+    Reinhard = 1,
+    ACES = 2,
+    Filmic = 3
+};
+
+struct PostProcessSettings {
+    // Оператор тонмаппинга (дефолтом ставим имбовый кинематографический ACES)
+    TonemapOperator tonemapOp{ TonemapOperator::ACES };
+
+    // Общая экспозиция/яркость (1.0f — стандарт)
+    float exposure{ 1.0f };
+
+    // Гамма-коррекция для монитора (2.2f — стандарт для sRGB экранов)
+    float gamma{ 2.2f };
+
+    // Насыщенность цветов (0.0f — черно-белое, 1.0f — стандарт, >1.0f — сочнее)
+    float saturation{ 1.0f };
+
+    // Контрастность изображения (1.0f — стандарт)
+    float contrast{ 1.0f };
+
+    // Цветовой баланс / тинт (дефолт 1.0f по всем осям — чистый белый, без искажений)
+    float colorTint[3]{ 1.0f, 1.0f, 1.0f };
+};
+
+class ColorCorrectionComputePass : public ComputePass{
+public:
+    ColorCorrectionComputePass(VK_INIT_ENGINE::_inited_engine& init):ComputePass(init, ComputePassType::ColorCorrection){}
+
+    ~ColorCorrectionComputePass() override = default;
+
+    void Init(PipelineManager& pipelineManager) override;
+
+    void Execute(const ComputeContext& ctx) override;
+
+    void UpdateSettings(const PostProcessSettings& newSettings) { _settings = newSettings; }
+
+private:
+    RealPipeline* _pipeline{ nullptr };
+    PostProcessSettings _settings{};
+};
+
+class TonemapComputePass : public ComputePass{
+public:
+    TonemapComputePass(VK_INIT_ENGINE::_inited_engine& init):ComputePass(init, ComputePassType::TonMapping){}
+
+    ~TonemapComputePass() override = default;
+
+    void Init(PipelineManager& pipelineManager) override;
+
+    void Execute(const ComputeContext& ctx) override;
+
+    void UpdateSettings(const PostProcessSettings& newSettings) { _settings = newSettings; }
+private:
+    RealPipeline* _pipeline{ nullptr };
+    PostProcessSettings _settings{};
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -77,7 +136,6 @@ private:
     bool _needsRecalculation = true;
 };
 
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 class ComputeRenderSystem {
 public:
@@ -109,4 +167,20 @@ private:
     PipelineManager& _pipelineManager;
 
     std::vector<std::unique_ptr<ComputePass>> _computePasses;
+};
+
+class PostProcessComputeSystem {
+public:
+    PostProcessComputeSystem(VK_INIT_ENGINE::_inited_engine& init)
+        : _init(init) {}
+
+    ~PostProcessComputeSystem() = default;
+
+    ComputePass* AddPass(std::unique_ptr<ComputePass> pass,  PipelineManager& pipelineManager);
+
+    void Execute(VkCommandBuffer mainCmd, VkDescriptorSet bindlessSet);
+
+private:
+    VK_INIT_ENGINE::_inited_engine& _init;
+    std::vector<std::unique_ptr<ComputePass>> _passes;
 };

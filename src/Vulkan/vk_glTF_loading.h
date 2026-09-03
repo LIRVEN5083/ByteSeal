@@ -52,22 +52,28 @@ struct GPUShadowPushConstants {
     VkDeviceAddress vertexBuffer;
 }; // Итого: 72 байта
 
-struct PostProcessPushConstants {
-    // Занимаем место матрицы (первые 64 байта)
-    uint32_t tonemapOp;  // 4 байта
-    float exposure;      // 4 байта
-    float gamma;         // 4 байта
-    float saturation;    // 4 байта
-    float contrast;      // 4 байта
-    float padding0[3];   // 12 байт (выравниваем до 32)
+// Пуш-константы для пасса Цветокоррекции (128 байт)
+struct ColorCorrectionPushConstants {
+    float exposure{ 1.0f };    // 4 байта
+    float saturation{ 1.0f };  // 4 байта
+    float contrast{ 1.0f };    // 4 байта
+    float padding0;            // 4 байта (добили до 16)
 
-    glm::vec4 colorTint; // 16 байт (32 + 16 = 48)
-    glm::vec4 padding1;  // 16 байт (48 + 16 = 64) — ровно закрыли место матрицы!
+    glm::vec4 colorTint{ 1.0f, 1.0f, 1.0f, 1.0f };
 
-    // Забиваем оставшиеся 64 байта до полных 128, чтобы Vulkan Layout не ругался
-    glm::vec4 padding2[4]; // 64 байта (64 + 64 = 128)
+    // Забиваем остаток до 128 байт
+    uint8_t dummyPadding[96]{ 0 };
 };
 
+// Пуш-константы для пасса Тонмаппинга (128 байт)
+struct TonemapPushConstants {
+    uint32_t tonemapOp{ 2 }; // 4 байта (2 = ACES)
+    float gamma{ 2.2f };     // 4 байта
+    float padding0[2];       // 8 байт
+
+    // Забиваем остаток до 128 байт
+    uint8_t dummyPadding[112]{ 0 };
+};
 
 struct GPUSceneData {
     glm::mat4 view;

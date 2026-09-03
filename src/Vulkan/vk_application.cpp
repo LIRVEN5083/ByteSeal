@@ -194,8 +194,11 @@ void VK_APPLICATION::VulkanApplication::renderLoop(){
     _renderSystem.PrepareFrame();
     VkSemaphore waitCompute = _computeSystem.GetComputeSemaphore();
     _renderSystem.Draw(cmd, _drawExtent, globalDescriptor, bindlessSet, *_pipelineManager, *_lightManager);
+    // ПОСТ ЭФФЕКТЫ!!!
+    _postProcessSystem.Execute(cmd, bindlessSet);
     // Рисуем интерфейс
     _gui.draw_imgui(_init, cmd, _drawExtent);
+
 
     vkutil::transition_image(cmd, _init._drawImage.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
     // Переводим текущую картинку Swapchain в режим приемника копирования
@@ -623,7 +626,29 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     if (iblBrdfLUTPipeline) {
         fmt::print("[PipelineManager] Compute Pipeline 'IBL_BrdfLUT' successfully loaded and built.\n");
     }
+    //TODO: Post-processing
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Конвеер для ColorCorrection
+    PipelineCreateInfo colorCorrectionInfo{};
+    colorCorrectionInfo.name = "ColorCorrection";
+    colorCorrectionInfo.passType = RenderPassType::Compute;
+    colorCorrectionInfo.computeShaderPath = "../Shaders/ColorCorrection/Color.comp";
 
+    RealPipeline* colorCorrectionPipeline = _pipelineManager->CreateComputePipeline(colorCorrectionInfo);
+    if (colorCorrectionPipeline) {
+        fmt::print("[PipelineManager] Compute Pipeline 'ColorCorrection' successfully loaded and built.\n");
+    }
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Конвеер для Tonmap
+    PipelineCreateInfo tonMapInfo{};
+    tonMapInfo.name = "Tonemap";
+    tonMapInfo.passType = RenderPassType::Compute;
+    tonMapInfo.computeShaderPath = "../Shaders/Tonemap/Ton.comp";
+
+    RealPipeline* tonMapPipeline = _pipelineManager->CreateComputePipeline(tonMapInfo);
+    if (tonMapPipeline) {
+        fmt::print("[PipelineManager] Compute Pipeline 'Tonemap' successfully loaded and built.\n");
+    }
 
     // Проходы рендера
     RenderPass* SCM_RP = _renderSystem.AddPass(std::make_unique<ShadowCSMRenderPass>(_init), *_pipelineManager);
@@ -631,7 +656,6 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     RenderPass* SkyBox_RP = _renderSystem.AddPass(std::make_unique<SkyBoxRenderPass>(_init), *_pipelineManager);
     RenderPass* Grid_RP = _renderSystem.AddPass(std::make_unique<GridRenderPass>(_init), *_pipelineManager);
 
-    // FIXME:: ЖИРНЮЩИЙ КОСТЫЛЬ который мне лень фиксить (Я передаю просто так два раза pipelineManager)
     const IBL_TEXTURES* iblResources = _textureManager.GetIBLTextures();
     auto* skyboxPass = dynamic_cast<SkyBoxRenderPass*>(SkyBox_RP);
     GPUTexture hdrPanorama = skyboxPass->GetPanoramicTexture();
@@ -641,15 +665,10 @@ void VK_APPLICATION::VulkanApplication::init_render(){
         hdrPanorama,
         *_pipelineManager
     );
+
     _computeSystem.AddPass(std::move(iblPass));
-
-    /* МОЖНА ТЕПЕРЬ ОТКЛЮЧАТЬ ПРОХОДЫ! МУХЕХЕХЕХЕ
-    _renderSystem.SetPassEnabled(RenderPassType::Skybox, true);
-    _renderSystem.SetPassEnabled(RenderPassType::Grid, false);
-    _renderSystem.SetPassEnabled(RenderPassType::ShadowCSM, false);
-    */
-
-    //_renderSystem.ToggleSkyBox();
+    _postProcessSystem.AddPass(std::make_unique<ColorCorrectionComputePass>(_init), *_pipelineManager);
+    _postProcessSystem.AddPass(std::make_unique<TonemapComputePass>(_init), *_pipelineManager);
 }
 
 void VK_APPLICATION::VulkanApplication::init_commands(){

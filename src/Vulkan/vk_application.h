@@ -59,8 +59,11 @@ namespace VK_APPLICATION {
         TextureManager _textureManager;
         MeshManager _meshManager;
         ModelManager _modelManager{_init, _meshManager, _textureManager};
+
         RenderSystem _renderSystem{_init};
         ComputeRenderSystem _computeSystem{_init, *_pipelineManager};
+        PostProcessComputeSystem _postProcessSystem{_init};
+
         std::unique_ptr<Scene> _activeScene;
         std::unique_ptr<LightManager> _lightManager;
         VK_GUI::GUI _gui;
