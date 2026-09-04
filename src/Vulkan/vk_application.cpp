@@ -364,6 +364,39 @@ void VK_APPLICATION::VulkanApplication::resize_swapchain(){
     VkImageViewCreateInfo nview_info = vkinit::imageview_create_info(_init._normalImage.imageFormat, _init._normalImage.image, VK_IMAGE_ASPECT_COLOR_BIT);
     VK_CHECK(vkCreateImageView(_init._device, &nview_info, nullptr, &_init._normalImage.imageView));
 
+    VkImageUsageFlags historyUsages{};
+    historyUsages |= VK_IMAGE_USAGE_SAMPLED_BIT;
+    historyUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
+    historyUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+
+    for (int i = 0; i < 2; i++) {
+        _init._historyImages[i].imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
+        _init._historyImages[i].imageExtent = drawImageExtent;
+
+        VkImageCreateInfo hist_info = vkinit::image_create_info(
+            _init._historyImages[i].imageFormat,
+            historyUsages,
+            drawImageExtent
+        );
+        hist_info.samples = VK_SAMPLE_COUNT_1_BIT;
+
+        VK_CHECK(vmaCreateImage(
+            _init._allocator,
+            &hist_info,
+            &rimg_allocinfo,
+            &_init._historyImages[i].image,
+            &_init._historyImages[i].allocation,
+            nullptr
+        ));
+
+        VkImageViewCreateInfo hview_info = vkinit::imageview_create_info(
+            _init._historyImages[i].imageFormat,
+            _init._historyImages[i].image,
+            VK_IMAGE_ASPECT_COLOR_BIT
+        );
+        VK_CHECK(vkCreateImageView(_init._device, &hview_info, nullptr, &_init._historyImages[i].imageView));
+    }
+
     ImGui_ImplVulkan_SetMinImageCount(_init._swapchainImageViews.size());
 
     // Прописываем новые, только что созданные VkImageView в наш Bindless Set 1, binding = 4
@@ -412,6 +445,17 @@ void VK_APPLICATION::VulkanApplication::destroy_swapchain(){
             vmaDestroyImage(_init._allocator, _init._normalImage.image, _init._normalImage.allocation);
             _init._normalImage.image = VK_NULL_HANDLE;
             _init._normalImage.allocation = VK_NULL_HANDLE;
+        }
+        for (int i = 0; i < 2; i++){
+            if (_init._historyImages[i].imageView != VK_NULL_HANDLE) {
+                vkDestroyImageView(_init._device, _init._historyImages[i].imageView, nullptr);
+                _init._historyImages[i].imageView = VK_NULL_HANDLE;
+            }
+            if (_init._historyImages[i].image != VK_NULL_HANDLE) {
+                vmaDestroyImage(_init._allocator, _init._historyImages[i].image, _init._historyImages[i].allocation);
+                _init._historyImages[i].image = VK_NULL_HANDLE;
+                _init._historyImages[i].allocation = VK_NULL_HANDLE;
+            }
         }
     }
 

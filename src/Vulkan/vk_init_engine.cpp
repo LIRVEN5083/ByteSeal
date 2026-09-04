@@ -69,6 +69,18 @@ void VK_INIT_ENGINE::VulkanInitEngine::init_cleanup(){
             ready_init._normalImage.image = VK_NULL_HANDLE;
             ready_init._normalImage.allocation = VK_NULL_HANDLE;
         }
+        // Память кадра
+        for (int i = 0; i < 2; i++){
+            if (ready_init._historyImages[i].imageView != VK_NULL_HANDLE) {
+                vkDestroyImageView(ready_init._device, ready_init._historyImages[i].imageView, nullptr);
+                ready_init._historyImages[i].imageView = VK_NULL_HANDLE;
+            }
+            if (ready_init._historyImages[i].image != VK_NULL_HANDLE) {
+                vmaDestroyImage(ready_init._allocator, ready_init._historyImages[i].image, ready_init._historyImages[i].allocation);
+                ready_init._historyImages[i].image = VK_NULL_HANDLE;
+                ready_init._historyImages[i].allocation = VK_NULL_HANDLE;
+            }
+        }
     }
 
     for (auto imageView : ready_init._swapchainImageViews) {
@@ -234,6 +246,45 @@ void VK_INIT_ENGINE::VulkanInitEngine::init_swapchain(){
 
     VkImageViewCreateInfo nview_info = vkinit::imageview_create_info(ready_init._normalImage.imageFormat, ready_init._normalImage.image, VK_IMAGE_ASPECT_COLOR_BIT);
     VK_CHECK(vkCreateImageView(ready_init._device, &nview_info, nullptr, &ready_init._normalImage.imageView));
+
+    // ==========================================
+    // Текстуры истории TAA (_historyImages[2])
+    // ==========================================
+
+    VkImageUsageFlags historyUsages{};
+    historyUsages |= VK_IMAGE_USAGE_SAMPLED_BIT;
+    historyUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
+    historyUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+
+    for (int i = 0; i < 2; i++) {
+        ready_init._historyImages[i].imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
+        ready_init._historyImages[i].imageExtent = drawImageExtent;
+
+        VkImageCreateInfo hist_info = vkinit::image_create_info(
+            ready_init._historyImages[i].imageFormat,
+            historyUsages,
+            drawImageExtent
+        );
+        hist_info.samples = VK_SAMPLE_COUNT_1_BIT;
+
+        // Используем rimg_allocinfo, так как они тоже GPU_ONLY и DEVICE_LOCAL
+        VK_CHECK(vmaCreateImage(
+            ready_init._allocator,
+            &hist_info,
+            &rimg_allocinfo,
+            &ready_init._historyImages[i].image,
+            &ready_init._historyImages[i].allocation,
+            nullptr
+        ));
+
+        VkImageViewCreateInfo hview_info = vkinit::imageview_create_info(
+            ready_init._historyImages[i].imageFormat,
+            ready_init._historyImages[i].image,
+            VK_IMAGE_ASPECT_COLOR_BIT
+        );
+        VK_CHECK(vkCreateImageView(ready_init._device, &hview_info, nullptr, &ready_init._historyImages[i].imageView));
+    }
+
 }
 
 void VK_INIT_ENGINE::VulkanInitEngine::init_sync_structures(){

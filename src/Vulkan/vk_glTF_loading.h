@@ -176,6 +176,8 @@ struct FrameImages{
     AllocatedImage* _velocityImage;
     // Буфер нормалей
     AllocatedImage* _normalImage;
+
+    AllocatedImage* _historyImages[2];
 };
 
 class TextureManager{

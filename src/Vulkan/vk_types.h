@@ -157,6 +157,8 @@ namespace VK_INIT_ENGINE {
         AllocatedImage _velocityImage;
         // Буфер нормалей
         AllocatedImage _normalImage;
+        // Буфер истории кадров
+        AllocatedImage _historyImages[2];
 
         // Набор для передачи данных в шейдер (Для загрузки glTF)
         // for immediate_submit

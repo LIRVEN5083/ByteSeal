@@ -129,6 +129,9 @@ void TextureManager::init(VK_INIT_ENGINE::_inited_engine& _init){
     _frameImages._depthImage = &_init._depthImage;
     _frameImages._velocityImage = &_init._velocityImage;
     _frameImages._normalImage = &_init._normalImage;
+    for (int i = 0; i < 2; i++){
+        _frameImages._historyImages[i] = &_init._historyImages[i];
+    }
 
     create_default_white_texture(_init);
     create_ibl_textures(_init);
@@ -215,23 +218,35 @@ GPUTexture TextureManager::AllocateTexture(
 }
 
 void TextureManager::UpdatePostProcessDescriptorSets(){
-    std::vector<VkDescriptorImageInfo> imageInfos(4);
+    std::vector<VkDescriptorImageInfo> imageInfos(6);
 
+    // Draw
     imageInfos[0].imageView = _frameImages._drawImage->imageView;
     imageInfos[0].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
     imageInfos[0].sampler = VK_NULL_HANDLE;
 
+    // Depth
     imageInfos[1].imageView = _frameImages._depthImage->imageView;
     imageInfos[1].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
     imageInfos[1].sampler = VK_NULL_HANDLE;
 
+    // Velocity
     imageInfos[2].imageView = _frameImages._velocityImage->imageView;
     imageInfos[2].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
     imageInfos[2].sampler = VK_NULL_HANDLE;
 
+    // Normal
     imageInfos[3].imageView = _frameImages._normalImage->imageView;
     imageInfos[3].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
     imageInfos[3].sampler = VK_NULL_HANDLE;
+
+    // History
+    imageInfos[4].imageView = _frameImages._historyImages[0]->imageView;
+    imageInfos[4].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+    imageInfos[4].sampler = VK_NULL_HANDLE;
+    imageInfos[5].imageView = _frameImages._historyImages[1]->imageView;
+    imageInfos[5].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+    imageInfos[5].sampler = VK_NULL_HANDLE;
 
     // Одна общая структура записи для всего нашего массива в binding = 4
     VkWriteDescriptorSet postProcessWrite{ VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
@@ -239,7 +254,7 @@ void TextureManager::UpdatePostProcessDescriptorSets(){
     postProcessWrite.dstSet = _textureSet;
     postProcessWrite.dstBinding = 4;
     postProcessWrite.dstArrayElement = 0;
-    postProcessWrite.descriptorCount = 4;
+    postProcessWrite.descriptorCount = 6;
     postProcessWrite.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
     postProcessWrite.pImageInfo = imageInfos.data();
 
