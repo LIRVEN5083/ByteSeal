@@ -4,6 +4,8 @@ layout(location = 0) in vec3 inWorldViewDir;
 layout(location = 1) in vec2 inUV;
 
 layout(location = 0) out vec4 outColor;
+layout(location = 1) out vec2 outVelocity;
+layout(location = 2) out vec4 outNormal;
 
 layout(set = 1, binding = 0) uniform sampler2D globalTextures[];
 // layout(set = 1, binding = 1) uniform sampler2DArray shadowCascades;
@@ -36,9 +38,10 @@ void main() {
         texColor.r < 0.0f  || texColor.g < 0.0f  || texColor.b < 0.0f  ||
         brightness < 0.01f)
     {
-        // Силой заливаем сломанный пиксель белым светом
         texColor = vec3(10000.0f); 
     }
 
     outColor = vec4(texColor, 1.0);
+    outVelocity = vec2(0.0); // Небо не движется
+    outNormal = vec4(0.0);
 }

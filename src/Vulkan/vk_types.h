@@ -181,7 +181,8 @@ enum class RenderPassType : uint8_t {
     Grid,           // Editor grid
     ShadowCSM,      // SCM
     Skybox,         // Sky
-    Compute
+    Compute,
+    Post_procces
 };
 
 enum class ComputePassType : uint8_t{

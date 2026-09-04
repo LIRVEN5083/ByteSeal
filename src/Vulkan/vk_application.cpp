@@ -178,6 +178,9 @@ void VK_APPLICATION::VulkanApplication::renderLoop(){
     vkutil::transition_image(cmd, _init._drawImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     vkutil::transition_image(cmd, _init._depthImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
+    vkutil::transition_image(cmd, _init._velocityImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    vkutil::transition_image(cmd, _init._normalImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
     VkDescriptorSet bindlessSet = _textureManager.GetTextureSet();
 
     // Начинаем паралельно делать вычисления

@@ -48,6 +48,7 @@ public:
     VkPipelineDepthStencilStateCreateInfo _depthStencil;
     VkPipelineRenderingCreateInfo _renderInfo;
     VkFormat _colorAttachmentformat;
+    std::vector<VkFormat> _colorAttachmentFormats;
 
     // Базовый конструктор инициируем пустыми полями
     PipelineBuilder(){ clear(); }
@@ -75,6 +76,8 @@ public:
     void disable_blending();
 
     void set_color_attachment_format(VkFormat format);
+
+    void set_color_attachment_formats_multi(const std::vector<VkFormat>& formats);
 
     void set_depth_format(VkFormat format);
 

@@ -141,20 +141,40 @@ VkPipeline PipelineBuilder::build_pipeline(VkDevice device){
     VkPipelineViewportStateCreateInfo viewportState = {};
     viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
     viewportState.pNext = nullptr;
-
     viewportState.viewportCount = 1;
     viewportState.scissorCount = 1;
 
-    // setup dummy color blending. We arent using transparent objects yet
-    // the blending is just "no blend", but we do write to the color attachment
+    std::vector<VkPipelineColorBlendAttachmentState> blendAttachments;
+
     VkPipelineColorBlendStateCreateInfo colorBlending = {};
     colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
     colorBlending.pNext = nullptr;
-
     colorBlending.logicOpEnable = VK_FALSE;
     colorBlending.logicOp = VK_LOGIC_OP_COPY;
-    colorBlending.attachmentCount = 1;
-    colorBlending.pAttachments = &_colorBlendAttachment;
+
+    if (!_colorAttachmentFormats.empty()) {
+        _renderInfo.colorAttachmentCount = static_cast<uint32_t>(_colorAttachmentFormats.size());
+        _renderInfo.pColorAttachmentFormats = _colorAttachmentFormats.data();
+
+        blendAttachments.resize(_colorAttachmentFormats.size(), _colorBlendAttachment);
+
+        colorBlending.attachmentCount = static_cast<uint32_t>(blendAttachments.size());
+        colorBlending.pAttachments = blendAttachments.data();
+    }
+    else {
+        _renderInfo.colorAttachmentCount = (_colorAttachmentformat == VK_FORMAT_UNDEFINED) ? 0 : 1;
+        _renderInfo.pColorAttachmentFormats = &_colorAttachmentformat;
+
+        colorBlending.attachmentCount = _renderInfo.colorAttachmentCount;
+        colorBlending.pAttachments = &_colorBlendAttachment;
+    }
+
+    if (_shaderStages.size() == 1) {
+        colorBlending.attachmentCount = 0;
+        colorBlending.pAttachments = nullptr;
+        _renderInfo.colorAttachmentCount = 0;
+        _renderInfo.pColorAttachmentFormats = nullptr;
+    }
 
     // completely clear VertexInputStateCreateInfo, as we have no need for it
     VkPipelineVertexInputStateCreateInfo _vertexInputInfo = { .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
@@ -165,14 +185,6 @@ VkPipeline PipelineBuilder::build_pipeline(VkDevice device){
     VkGraphicsPipelineCreateInfo pipelineInfo = { .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
     // connect the renderInfo to the pNext extension mechanism
     pipelineInfo.pNext = &_renderInfo;
-
-    if (_shaderStages.size() == 1) {
-        colorBlending.attachmentCount = 0;
-        colorBlending.pAttachments = nullptr;
-    } else {
-        colorBlending.attachmentCount = 1;
-        colorBlending.pAttachments = &_colorBlendAttachment;
-    }
 
     pipelineInfo.stageCount = (uint32_t)_shaderStages.size();
     pipelineInfo.pStages = _shaderStages.data();
@@ -289,6 +301,10 @@ void PipelineBuilder::set_color_attachment_format(VkFormat format){
         _renderInfo.colorAttachmentCount = 1;
         _renderInfo.pColorAttachmentFormats = &_colorAttachmentformat;
     }
+}
+
+void PipelineBuilder::set_color_attachment_formats_multi(const std::vector<VkFormat>& formats){
+    _colorAttachmentFormats = formats;
 }
 
 void PipelineBuilder::set_depth_format(VkFormat format){
@@ -527,13 +543,25 @@ RealPipeline* PipelineManager::CreatePipelineFromMemory(const PipelineCreateInfo
     // Определяем сэмплы для MSAA
     VkSampleCountFlagBits samplesToUse = VK_SAMPLE_COUNT_1_BIT;
 
+    std::vector<VkFormat> forwardFormats = {
+        VK_FORMAT_R16G16B16A16_SFLOAT,
+        VK_FORMAT_R16G16_SFLOAT,
+        VK_FORMAT_R16G16B16A16_SFLOAT
+    };
+
+    pipelineBuilder.set_depth_format(depthFormat);
+
     if (info.passType == RenderPassType::ShadowCSM){
+        pipelineBuilder.set_color_attachment_format(VK_FORMAT_UNDEFINED);
+
         pipelineBuilder.set_polygon_mode(VK_POLYGON_MODE_FILL);
         pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
         pipelineBuilder.set_multisampling(VK_SAMPLE_COUNT_1_BIT); // Тени всегда 1 сепмл
         pipelineBuilder.enable_depthtest(VK_TRUE, VK_COMPARE_OP_GREATER_OR_EQUAL);
     }
     else if (info.passType == RenderPassType::Skybox){
+        pipelineBuilder.set_color_attachment_formats_multi(forwardFormats);
+
         pipelineBuilder.set_polygon_mode(VK_POLYGON_MODE_FILL);
 
         pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
@@ -544,6 +572,8 @@ RealPipeline* PipelineManager::CreatePipelineFromMemory(const PipelineCreateInfo
         pipelineBuilder.enable_depthtest(VK_FALSE, VK_COMPARE_OP_GREATER_OR_EQUAL);
     }
     else{
+        pipelineBuilder.set_color_attachment_formats_multi(forwardFormats);
+
         pipelineBuilder.set_polygon_mode(VK_POLYGON_MODE_FILL);
         pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
 
@@ -566,10 +596,6 @@ RealPipeline* PipelineManager::CreatePipelineFromMemory(const PipelineCreateInfo
             pipelineBuilder.enable_depthtest(VK_TRUE, VK_COMPARE_OP_GREATER_OR_EQUAL);   // Reversed-Z, запись вкл
         }
     }
-
-    // Прокидываем форматы динамического рендеринга
-    pipelineBuilder.set_color_attachment_format(colorFormat);
-    pipelineBuilder.set_depth_format(depthFormat);
 
     VkPipeline newPipeline = pipelineBuilder.build_pipeline(_device);
 

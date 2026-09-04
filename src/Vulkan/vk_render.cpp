@@ -12,11 +12,28 @@ void ForwardRenderPass::Execute(const RenderContext& ctx, const std::vector<Rend
     VkClearValue clearColor;
     clearColor.color = { { 0.3f, 0.3f, 0.3f, 1.0f } };
 
-    VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(_init._drawImage.imageView, &clearColor, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    colorAttachment.resolveMode = VK_RESOLVE_MODE_NONE;
-    colorAttachment.resolveImageView = VK_NULL_HANDLE;
+    VkClearValue clearVelocity;
+    clearVelocity.color = { { 0.0f, 0.0f, 0.0f, 0.0f } };
+
+    VkClearValue clearNormal;
+    clearNormal.color = { { 0.0f, 0.0f, 0.0f, 0.0f } };
+
+    VkRenderingAttachmentInfo colorAttachments[3];
+
+    // [0] основной Draw Image
+    colorAttachments[0] = vkinit::attachment_info(_init._drawImage.imageView, &clearColor, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    colorAttachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    colorAttachments[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
+    // [1] Velocity Image (Векторы движения)
+    colorAttachments[1] = vkinit::attachment_info(_init._velocityImage.imageView, &clearVelocity, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    colorAttachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    colorAttachments[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
+    // [2] Normal Image (Буфер нормалей)
+    colorAttachments[2] = vkinit::attachment_info(_init._normalImage.imageView, &clearNormal, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    colorAttachments[2].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    colorAttachments[2].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 
     VkClearValue depthClear;
     depthClear.depthStencil.depth = 0.0f;
@@ -26,7 +43,17 @@ void ForwardRenderPass::Execute(const RenderContext& ctx, const std::vector<Rend
     depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
     depthAttachment.clearValue = depthClear;
 
-    VkRenderingInfo renderInfo = vkinit::rendering_info(ctx.drawExtent, &colorAttachment, &depthAttachment);
+    VkRenderingInfo renderInfo{};
+    renderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+    renderInfo.pNext = nullptr;
+    renderInfo.renderArea = VkRect2D{ VkOffset2D{ 0, 0 }, ctx.drawExtent };
+    renderInfo.layerCount = 1;
+
+    renderInfo.colorAttachmentCount = 3;
+    renderInfo.pColorAttachments = colorAttachments;
+
+    renderInfo.pDepthAttachment = &depthAttachment;
+    renderInfo.pStencilAttachment = nullptr;
 
     vkCmdBeginRendering(ctx.cmd, &renderInfo);
 
@@ -122,19 +149,41 @@ void GridRenderPass::Init(PipelineManager& pipelineManager){
 void GridRenderPass::Execute(const RenderContext& ctx, const std::vector<RenderObject>& queue){
     if (!_gridPipeline) return;
 
-    VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(_init._drawImage.imageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    VkClearValue clearVelocity;
+    clearVelocity.color = { { 0.0f, 0.0f, 0.0f, 0.0f } };
 
-    colorAttachment.resolveMode = VK_RESOLVE_MODE_NONE;
-    colorAttachment.resolveImageView = VK_NULL_HANDLE;
-    colorAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    VkClearValue clearNormal;
+    clearNormal.color = { { 0.0f, 0.0f, 0.0f, 0.0f } };
+
+    VkRenderingAttachmentInfo colorAttachments[3];
+
+    colorAttachments[0] = vkinit::attachment_info(_init._drawImage.imageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    colorAttachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+    colorAttachments[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
+    colorAttachments[1] = vkinit::attachment_info(_init._velocityImage.imageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    colorAttachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+    colorAttachments[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
+    colorAttachments[2] = vkinit::attachment_info(_init._normalImage.imageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    colorAttachments[2].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+    colorAttachments[2].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 
     VkRenderingAttachmentInfo depthAttachment = vkinit::depth_attachment_info(_init._depthImage.imageView, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
     depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
     depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 
-    VkRenderingInfo renderInfo = vkinit::rendering_info(ctx.drawExtent, &colorAttachment, &depthAttachment);
+    VkRenderingInfo renderInfo{};
+    renderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+    renderInfo.pNext = nullptr;
+    renderInfo.renderArea = VkRect2D{ VkOffset2D{ 0, 0 }, ctx.drawExtent };
+    renderInfo.layerCount = 1;
+
+    renderInfo.colorAttachmentCount = 3;
+    renderInfo.pColorAttachments = colorAttachments;
+
+    renderInfo.pDepthAttachment = &depthAttachment;
+    renderInfo.pStencilAttachment = nullptr;
 
     vkCmdBeginRendering(ctx.cmd, &renderInfo);
 
@@ -295,19 +344,33 @@ void SkyBoxRenderPass::Execute(const RenderContext& ctx, const std::vector<Rende
     VkClearValue clearColor;
     clearColor.color = { { 0.3f, 0.3f, 0.3f, 1.0f } };
 
-    VkRenderingAttachmentInfo colorAttachment{};
-    colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-    colorAttachment.imageView = _init._drawImage.imageView;
-    colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    VkClearValue clearVelocity;
+    clearVelocity.color = { { 0.0f, 0.0f, 0.0f, 0.0f } };
 
+    VkClearValue clearNormal;
+    clearNormal.color = { { 0.0f, 0.0f, 0.0f, 0.0f } };
+
+    VkRenderingAttachmentInfo colorAttachments[3];
+
+    // [0] основной Draw Image
+    colorAttachments[0] = vkinit::attachment_info(_init._drawImage.imageView, &clearColor, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     if (_currentType == SkyBoxType::Panoramic && !isPanoramaLoaded) {
-        colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        colorAttachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     } else {
-        colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+        colorAttachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
     }
+    colorAttachments[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    colorAttachments[0].clearValue = clearColor;
 
-    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    colorAttachment.clearValue = clearColor;
+    // [1] Velocity Image
+    colorAttachments[1] = vkinit::attachment_info(_init._velocityImage.imageView, &clearVelocity, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    colorAttachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+    colorAttachments[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
+    // [2] Normal Image
+    colorAttachments[2] = vkinit::attachment_info(_init._normalImage.imageView, &clearNormal, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    colorAttachments[2].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+    colorAttachments[2].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 
     VkRenderingAttachmentInfo depthAttachment{};
     depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
@@ -316,15 +379,19 @@ void SkyBoxRenderPass::Execute(const RenderContext& ctx, const std::vector<Rende
     depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
     depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 
-    VkRenderingInfo renderingInfo{};
-    renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
-    renderingInfo.renderArea = { {0, 0}, ctx.drawExtent };
-    renderingInfo.layerCount = 1;
-    renderingInfo.colorAttachmentCount = 1;
-    renderingInfo.pColorAttachments = &colorAttachment;
-    renderingInfo.pDepthAttachment = &depthAttachment;
+    VkRenderingInfo renderInfo{};
+    renderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+    renderInfo.pNext = nullptr;
+    renderInfo.renderArea = VkRect2D{ VkOffset2D{ 0, 0 }, ctx.drawExtent };
+    renderInfo.layerCount = 1;
 
-    vkCmdBeginRendering(ctx.cmd, &renderingInfo);
+    renderInfo.colorAttachmentCount = 3;
+    renderInfo.pColorAttachments = colorAttachments;
+
+    renderInfo.pDepthAttachment = &depthAttachment;
+    renderInfo.pStencilAttachment = nullptr;
+
+    vkCmdBeginRendering(ctx.cmd, &renderInfo);
 
     if (_currentType == SkyBoxType::Panoramic && !isPanoramaLoaded) {
         vkCmdEndRendering(ctx.cmd);
