@@ -1,6 +1,7 @@
 #version 460
 #extension GL_EXT_nonuniform_qualifier : require
 #extension GL_EXT_buffer_reference : require
+#extension GL_ARB_gpu_shader_int64 : require
 
 layout (location = 0) in vec4 inColor;
 layout (location = 1) in vec2 inUV;
@@ -8,12 +9,21 @@ layout (location = 2) in vec3 inNormal;
 layout (location = 3) in vec3 inWorldPos;
 layout (location = 4) in vec4 inTangent;
 
-layout (location = 0) out vec4 outFragColor;
+layout (location = 5) in vec4 inCurrentPos; // Позиция на экране сейчас (без джиттера)
+layout (location = 6) in vec4 inPrevPos; 	// Позиция на экране в прошлом кадре (без джиттера)
+
+layout (location = 0) out vec4 outFragColor; // _drawImage
+layout (location = 1) out vec2 outVelocity;  // Векторы движения пикселя (_velocityImage)
+layout (location = 2) out vec4 outNormal;    // Закодированные нормали экрана (_normalImage)
 
 layout(set = 0, binding = 0) uniform SceneData {
 	mat4 view;
 	mat4 proj;
 	mat4 viewproj;
+
+	// Для TAA
+	mat4 viewProjNonJittered; // Текущая чистая камера
+	mat4 prevViewProj;        // Прошлая чистая камера
 
 	// Направленный источник света
 	vec4 ambientColor;
@@ -26,25 +36,24 @@ layout(set = 0, binding = 0) uniform SceneData {
 } scene;
 
 layout(set = 1, binding = 0) uniform sampler2D globalTextures[];
-
-// Для каскадов
 layout(set = 1, binding = 1) uniform sampler2DArray globalTextureArray;
-
 layout(set = 1, binding = 3, rgba16f) uniform readonly imageCube iblStorageMaps[];
 
 struct Vertex {
+
 	vec3 position; float uv_x;
 	vec3 normal;   float uv_y;
 	vec4 color;
 	vec4 tangent;
 };
+
 layout(buffer_reference, std430) readonly buffer VertexBuffer {
 	Vertex vertices[];
 };
 
-layout( push_constant ) uniform constants
-{
-	mat4 worldMatrix;
+layout( push_constant ) uniform constants{
+
+	uint64_t matrixAddress;
 	VertexBuffer vertexBuffer;
 
 	uint colorTextureID;
@@ -52,10 +61,8 @@ layout( push_constant ) uniform constants
 	uint normalTextureID;
 	uint occlusionTextureID;
 
-	vec2 padding;
-
 	vec4 baseColorFactor;
-	vec4 materialFactors;
+	vec4 materialFactors; // x: roughness, y: metallic, z: emissive, w: padding
 } PushConstants;
 
 const float PI = 3.14159265359;
@@ -186,8 +193,8 @@ void main()
 		metallic  = mrSample.b * metallicFactor;
 	}
 
-// Защита от артефактов (слишком зеркальные поверхности могут ломать PBR блики)
-roughness = max(roughness, 0.05f);
+	// Защита от артефактов (слишком зеркальные поверхности могут ломать PBR блики)
+	roughness = max(roughness, 0.05f);
 
 	// --ИНТЕГРАЦИЯ КАРТ НОРМАЛЕЙ--
 	vec3 normal_vertex = normalize(inNormal);
@@ -386,6 +393,17 @@ roughness = max(roughness, 0.05f);
 		finalAlpha = max(finalAlpha, fresnelAlpha * 0.5f); 
 		finalAlpha = clamp(finalAlpha, 0.0f, 0.95f);
 	}
+
+	//  --Векторы движения и нормали--
+	vec2 currentNDC = inCurrentPos.xy / inCurrentPos.w;
+	vec2 prevNDC = inPrevPos.xy / inPrevPos.w;
+
+	vec2 ndcVelocity = currentNDC - prevNDC;
+
+	outVelocity = ndcVelocity * vec2(0.5, 0.5);
+
+	outNormal = vec4(N * 0.5 + 0.5, 1.0);
+	//-----------------------------------------------------------------------------
 
 	outFragColor = vec4(color, finalAlpha);
 }

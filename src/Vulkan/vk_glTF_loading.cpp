@@ -704,11 +704,30 @@ void Node::AddChild(std::shared_ptr<Node> child){
     children.push_back(child);
 }
 
-void Node::UpdateMatrices(const glm::mat4& parentMatrix){
+void Node::UpdateMatrices(const glm::mat4& parentMatrix, const glm::mat4& prevParentMatrix){
+    prevWorldTransform = worldTransform;
+
     worldTransform = parentMatrix * localTransform;
 
     for (auto& child : children) {
-        child->UpdateMatrices(worldTransform);
+        child->UpdateMatrices(worldTransform, prevWorldTransform);
+    }
+}
+
+void Model::Update(TransformBufferManager& transformManager, const glm::mat4& modelRootMatrix,
+    const glm::mat4& prevModelRootMatrix){
+    if (!bIsValid || !rootNode) return;
+
+    rootNode->UpdateMatrices(modelRootMatrix, prevModelRootMatrix);
+
+    for (auto& meshNode : meshNodes) {
+        if (meshNode->hasTransformSlot) {
+            transformManager.UpdateTransform(
+                meshNode->transformSlot,
+                meshNode->worldTransform,
+                meshNode->prevWorldTransform
+            );
+        }
     }
 }
 
@@ -725,6 +744,13 @@ void Model::destroy(VK_INIT_ENGINE::_inited_engine& _init, MeshManager& meshMana
     }
 
     Meshes.clear();
+
+    for (auto& meshNode : meshNodes) {
+        meshNode->hasTransformSlot = false;
+        meshNode->matrixGPUAddress = 0;
+        meshNode->transformSlot = 0;
+    }
+
     meshNodes.clear();
     rootNode.reset();
 }
@@ -1589,7 +1615,7 @@ Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init,
     // Накладываем исправления на наш временный корень bakeRoot
     bakeRoot->localTransform = gltfToZUp * normalizationMatrix;
 
-    bakeRoot->UpdateMatrices(glm::mat4(1.0f));
+    bakeRoot->UpdateMatrices(glm::mat4(1.0f), glm::mat4(1.0f));
 
     glm::vec3 finalMin(std::numeric_limits<float>::max());
     glm::vec3 finalMax(-std::numeric_limits<float>::max());
@@ -1633,7 +1659,7 @@ Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init,
     }
 
     // Финальный локальный апдейт модели в чистом Z-Up пространстве движка
-    loadedModel.rootNode->UpdateMatrices(glm::mat4(1.0f));
+    loadedModel.rootNode->UpdateMatrices(glm::mat4(1.0f), glm::mat4(1.0f));
 
 
     loadedModel.bIsValid = true;

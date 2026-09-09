@@ -59,6 +59,7 @@ namespace VK_APPLICATION {
         TextureManager _textureManager;
         MeshManager _meshManager;
         ModelManager _modelManager{_init, _meshManager, _textureManager};
+        TransformBufferManager _transformManager;
 
         RenderSystem _renderSystem{_init};
         ComputeRenderSystem _computeSystem{_init, *_pipelineManager};

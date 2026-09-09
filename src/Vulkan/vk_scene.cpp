@@ -2,6 +2,60 @@
 #include "vk_render.h"
 
 
+void TransformBufferManager::init(VkDevice device, VmaAllocator allocator, uint32_t maxObjects){
+    m_Device = device;
+    m_Allocator = allocator;
+    m_MaxObjects = maxObjects;
+
+    VkDeviceSize bufferSize = sizeof(GPUTransformMatrices) * m_MaxObjects;
+
+    VkBufferCreateInfo bufferInfo = {};
+    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufferInfo.size = bufferSize;
+    bufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    VmaAllocationCreateInfo allocInfo = {};
+    allocInfo.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
+    allocInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+    VmaAllocationInfo resultAllocInfo;
+    vmaCreateBuffer(m_Allocator, &bufferInfo, &allocInfo, &m_Buffer, &m_Allocation, &resultAllocInfo);
+
+    m_MappedData = resultAllocInfo.pMappedData;
+
+    VkBufferDeviceAddressInfo addressInfo = {};
+    addressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+    addressInfo.buffer = m_Buffer;
+    m_BaseDeviceAddress = vkGetBufferDeviceAddress(m_Device, &addressInfo);
+}
+
+uint32_t TransformBufferManager::AllocateTransformSlot(VkDeviceAddress& outAddress){
+    if (m_CurrentAllocatedObjects >= m_MaxObjects) {
+        assert(false && "Transform buffer overflow!");
+    }
+
+    uint32_t slot = m_CurrentAllocatedObjects++;
+
+    outAddress = m_BaseDeviceAddress + (slot * sizeof(GPUTransformMatrices));
+
+    return slot;
+}
+
+void TransformBufferManager::UpdateTransform(uint32_t slot, const glm::mat4& currentModel, const glm::mat4& prevModel){
+    GPUTransformMatrices* matricesArray = static_cast<GPUTransformMatrices*>(m_MappedData);
+    matricesArray[slot].currentModel = currentModel;
+    matricesArray[slot].prevModel = prevModel;
+
+    vmaFlushAllocation(m_Allocator, m_Allocation, slot * sizeof(GPUTransformMatrices), sizeof(GPUTransformMatrices));
+}
+
+void TransformBufferManager::cleanup(){
+    if (m_Buffer != VK_NULL_HANDLE) {
+        vmaDestroyBuffer(m_Allocator, m_Buffer, m_Allocation);
+    }
+}
+
 bool FrustumPlane::IsAABBInFront(const glm::vec3& min, const glm::vec3& max) const{
     // Находим ближайшую к плоскости точку AABB (p-vertex)
     glm::vec3 p = min;
@@ -99,9 +153,12 @@ GameEntity* Scene::CreateEntity(const std::string& name, uint32_t modelAssetId){
     entity.id = newId;
     entity.name = name;
     entity.modelAssetId = modelAssetId;
+    entity.prevModelMatrix = entity.GetLocalMatrix();
+
+    entity.transformSlot = _transformManager.AllocateTransformSlot(entity.matrixGPUAddress);
+    entity.hasTransformSlot = true;
 
     _idToIndex[newId] = _entities.size();
-
     _entities.push_back(entity);
 
     return &_entities.back();
@@ -177,10 +234,14 @@ void Scene::DestroyEntitiesByModel(uint32_t modelAssetId){
 }
 
 void Scene::CullingAndSubmit(RenderSystem& renderSystem, PipelineManager& pipelineManager,
-    const glm::vec3& cameraPosition, const glm::mat4& viewProjectionMatrix){
+    TransformBufferManager& transformManager,
+    const glm::vec3& cameraPosition,
+    const glm::mat4& currentViewProjJittered,  // Матрица С дрожанием (для куллинга)
+    const glm::mat4& currentViewProjNonJittered, // Текущая БЕЗ дрожания (для TAA)
+    const glm::mat4& prevViewProjNonJittered){  // Прошлая БЕЗ дрожания (для TAA)
      if (_entities.empty()) return;
 
-    CameraFrustum frustum = CreateFrustumFromMatrix(viewProjectionMatrix);
+    CameraFrustum frustum = CreateFrustumFromMatrix(currentViewProjJittered);
 
     for (const auto& entity : _entities)
     {
@@ -197,7 +258,19 @@ void Scene::CullingAndSubmit(RenderSystem& renderSystem, PipelineManager& pipeli
         if (!model.bIsValid || !model.rootNode) continue;
 
         glm::mat4 entityWorldMatrix = entity.GetLocalMatrix();
-        model.rootNode->UpdateMatrices(entityWorldMatrix);
+        glm::mat4 entityPrevWorldMatrix = entity.GetPrevLocalMatrix();
+
+        model.rootNode->UpdateMatrices(entityWorldMatrix, entityPrevWorldMatrix);
+
+        if (entity.hasTransformSlot) {
+            // Поскольку у модели может быть несколько под-мешей, для простоты
+            // мы пишем корневую матрицу модели (или иерархию, если меш один) в слот энтити
+            transformManager.UpdateTransform(
+                entity.transformSlot,
+                model.rootNode->worldTransform, // Берем посчитанную матрицу из корня модели
+                model.rootNode->prevWorldTransform
+            );
+        }
 
         // Считаем мировую позицию самого объекта для сортировки прозрачности
         glm::vec3 entityWorldPos = glm::vec3(entityWorldMatrix[3].x, entityWorldMatrix[3].y, entityWorldMatrix[3].z);
@@ -242,7 +315,7 @@ void Scene::CullingAndSubmit(RenderSystem& renderSystem, PipelineManager& pipeli
                 }
 
                 RenderObject ro;
-                ro.render_matrix = meshNode->worldTransform;
+                ro.matrixBufferAddress = entity.matrixGPUAddress;
                 ro.indexBuffer = meshNode->mesh->meshBuffers.indexBuffer.buffer;
                 ro.vertexBufferAddress = meshNode->mesh->meshBuffers.vertexBufferAddress;
                 ro.indexCount = surface.count;
@@ -287,6 +360,16 @@ void Scene::CullingAndSubmit(RenderSystem& renderSystem, PipelineManager& pipeli
 
         }
     }
+}
+
+void Scene::RegisterModelGraphics(Model& model, TransformBufferManager& transformManager){
+    for (auto& meshNode : model.meshNodes) {
+        meshNode->transformSlot = transformManager.AllocateTransformSlot(meshNode->matrixGPUAddress);
+        meshNode->hasTransformSlot = true;
+
+        transformManager.UpdateTransform(meshNode->transformSlot, meshNode->worldTransform, meshNode->prevWorldTransform);
+    }
+    model.bIsValid = true;
 }
 
 RaycastHit Scene::Raycast(const Ray& ray){

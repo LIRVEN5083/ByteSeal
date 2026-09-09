@@ -13,6 +13,7 @@ void VK_APPLICATION::VulkanApplication::cleanup(){
         _frames[i]._deletionQueue.flush();
     }
 
+    _transformManager.cleanup();
     _lightManager->cleanup();
     _pipelineManager->cleanup();
     _activeScene->DestroyAllEntites();
@@ -122,7 +123,7 @@ void VK_APPLICATION::VulkanApplication::run(){
         }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         _gui.update_imgui(_init, _delta, _camera, _modelManager, _activeScene,  sceneData,
-            *_pipelineManager, _renderSystem, _textureManager,  _computeSystem);
+            *_pipelineManager, _renderSystem, _textureManager,  _computeSystem, _transformManager);
         CONTROLLER::update_time(_movement, _delta);
         renderLoop();
         CONTROLLER::made_move(_movement, _camera, _delta);
@@ -191,7 +192,8 @@ void VK_APPLICATION::VulkanApplication::renderLoop(){
 
     // Сборка сцены
     glm::vec3 cameraPos = { _movement.valueX, _movement.valueY, _movement.valueZ };
-    _activeScene->CullingAndSubmit(_renderSystem, *_pipelineManager, cameraPos, sceneData.viewproj);
+    _activeScene->CullingAndSubmit(_renderSystem, *_pipelineManager, _transformManager, cameraPos,
+        sceneData.viewproj, sceneData.viewProjNonJittered, sceneData.prevViewProj);
 
     // Отрисовка RenderObject
     _renderSystem.PrepareFrame();
@@ -734,10 +736,11 @@ void VK_APPLICATION::VulkanApplication::init_scene(){
     _meshManager.init(_init);
     _textureManager.init(_init);
     _textureManager.UpdatePostProcessDescriptorSets();
-    _activeScene = std::make_unique<Scene>(_modelManager);
+    _activeScene = std::make_unique<Scene>(_modelManager, _transformManager);
     CSMConfig csmConfig{};
     _lightManager = std::make_unique<LightManager>(_init._device, _textureManager, csmConfig);
     _lightManager->init();
+    _transformManager.init(_init._device, _init._allocator);
     sceneData.sunlightDirection = glm::vec4(getLightDirByHour(12.0f), 3.0f);
     sceneData.sunlightColor = glm::vec4(1.0f, 0.98f, 0.92f, 1.0f);
     sceneData.ambientColor = glm::vec4(0.3f, 0.42f, 0.58f, 1.0f);

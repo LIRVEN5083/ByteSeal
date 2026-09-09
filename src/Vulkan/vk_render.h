@@ -8,7 +8,10 @@ class TextureManager;
 
 struct RenderObject{
     VkBuffer indexBuffer;
+
+    VkDeviceAddress matrixBufferAddress;
     VkDeviceAddress vertexBufferAddress;
+
     uint32_t indexCount;
     uint32_t firstIndex;
 

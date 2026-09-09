@@ -84,7 +84,7 @@ void ForwardRenderPass::Execute(const RenderContext& ctx, const std::vector<Rend
         }
 
         GPUDrawPushConstants push_constants;
-        push_constants.render_matrix = object.render_matrix;
+        push_constants.matrixAddress = object.matrixBufferAddress;
         push_constants.vertexBuffer = object.vertexBufferAddress;
         push_constants.colorTextureID = object.colorTextureID;
         push_constants.metallicRoughnessTextureID = object.metallicRoughnessTextureID;
@@ -121,7 +121,7 @@ void ForwardRenderPass::DrawFilteredObjects(const RenderContext& ctx, const std:
         }
 
         GPUDrawPushConstants push_constants;
-        push_constants.render_matrix = object.render_matrix;
+        push_constants.matrixAddress = object.matrixBufferAddress;
         push_constants.vertexBuffer = object.vertexBufferAddress;
 
         push_constants.colorTextureID = object.colorTextureID;
@@ -199,7 +199,6 @@ void GridRenderPass::Execute(const RenderContext& ctx, const std::vector<RenderO
     vkCmdBindDescriptorSets(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _gridPipeline->layout, 0, 2, setsToBind, 0, nullptr);
 
     GPUDrawPushConstants push_constants{};
-    push_constants.render_matrix = glm::mat4(1.0f);
     push_constants.vertexBuffer = 0;
     push_constants.colorTextureID = 0;
     push_constants.metallicRoughnessTextureID = 0;

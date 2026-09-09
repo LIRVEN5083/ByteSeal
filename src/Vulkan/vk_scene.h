@@ -13,6 +13,31 @@ struct AABB;
 #include <string>
 #include <vulkan/vulkan.h>
 
+class TransformBufferManager {
+private:
+    VkDevice m_Device;
+    VmaAllocator m_Allocator;
+
+    VkBuffer m_Buffer = VK_NULL_HANDLE;
+    VmaAllocation m_Allocation = VK_NULL_HANDLE;
+    VkDeviceAddress m_BaseDeviceAddress = 0;
+    void* m_MappedData = nullptr;
+
+    uint32_t m_MaxObjects = 1000; // Резервируем место, например, на 10к объектов
+    uint32_t m_CurrentAllocatedObjects = 0;
+
+public:
+    void init(VkDevice device, VmaAllocator allocator, uint32_t maxObjects = 10000);
+
+    // Вызывается нодой сцены при её создании (например, при загрузке меша)
+    uint32_t AllocateTransformSlot(VkDeviceAddress& outAddress);
+
+    // Обновление матриц конкретного объекта (вызывается из графа сцены)
+    void UpdateTransform(uint32_t slot, const glm::mat4& currentModel, const glm::mat4& prevModel);
+
+    void cleanup();
+};
+
 class PipelineManager;
 
 struct FrustumPlane {
@@ -55,7 +80,15 @@ struct GameEntity {
     uint32_t modelAssetId{ 0 };
     bool bIsVisible{ true };
 
+    glm::mat4 prevModelMatrix{ 1.0f };
+
+    uint32_t transformSlot{ 0 };
+    VkDeviceAddress matrixGPUAddress{ 0 };
+    bool hasTransformSlot{ false };
+
     glm::mat4 GetLocalMatrix() const;
+
+    glm::mat4 GetPrevLocalMatrix() const { return prevModelMatrix; }
 
     AABB GetWorldAABB(ModelManager& modelManager) const;
 };
@@ -89,9 +122,12 @@ struct RaycastHit {
     GameEntity* entity{ nullptr };
 };
 
+struct Model;
+
 class Scene{
 public:
-    Scene(ModelManager& modelManager) : _modelManager(modelManager){}
+    Scene(ModelManager& modelManager, TransformBufferManager& transformManager) :
+    _modelManager(modelManager), _transformManager(transformManager){}
 
     GameEntity* CreateEntity(const std::string& name, uint32_t modelAssetId);
 
@@ -103,11 +139,18 @@ public:
     void DestroyEntitiesByModel(uint32_t modelAssetId);
 
     void CullingAndSubmit(RenderSystem& renderSystem, PipelineManager& pipelineManager,
-        const glm::vec3& cameraPosition, const glm::mat4& viewProjectionMatrix);
+    TransformBufferManager& transformManager,
+    const glm::vec3& cameraPosition,
+    const glm::mat4& currentViewProjJittered,  // Матрица С дрожанием (для куллинга)
+    const glm::mat4& currentViewProjNonJittered, // Текущая БЕЗ дрожания (для TAA)
+    const glm::mat4& prevViewProjNonJittered);  // Прошлая БЕЗ дрожания (для TAA)
+
+    void RegisterModelGraphics(Model& model, TransformBufferManager& transformManager);
 
     RaycastHit Raycast(const Ray& ray);
 
 private:
+    TransformBufferManager& _transformManager;
     ModelManager& _modelManager;
 
     std::vector<GameEntity> _entities;

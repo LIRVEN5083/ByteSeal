@@ -1,5 +1,6 @@
 #version 460
 #extension GL_EXT_nonuniform_qualifier : require
+#extension GL_ARB_gpu_shader_int64 : require
 
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
@@ -7,15 +8,16 @@ layout(set = 1, binding = 2) uniform sampler2D skyPanoramaTex;
 layout(set = 1, binding = 3, rgba16f) uniform writeonly imageCube iblStorageMaps[];
 
 layout(push_constant) uniform PushConstants {
-    mat4 render_matrix;
+    uint64_t matrixAddress;
     uvec2 vertexBuffer;  
-    uint colorTextureID; 
+
+    uint colorTextureID;
     uint metallicRoughnessTextureID;
     uint normalTextureID;
     uint occlusionTextureID;
-    vec2 padding;
+    
     vec4 baseColorFactor;
-    vec4 materialFactors; // В materialFactors.x лежит roughness (от 0.0 до 1.0)
+    vec4 materialFactors; 
 };
 
 const float PI = 3.14159265359;

@@ -28,18 +28,21 @@ namespace vkutil{
     struct SamplerCreateInfoEqual;
 }
 
+struct GPUTransformMatrices {
+    glm::mat4 currentModel; // Текущая матрица трансформации объекта (64 байта)
+    glm::mat4 prevModel;    // Прошлая матрица трансформации объекта (64 байта)
+};
+
 // push constants для работы
 // Сука выравнивание на GPU по 16 байт
 struct GPUDrawPushConstants {
-    glm::mat4 render_matrix;          // Обычная матрица преобразований
+    VkDeviceAddress matrixAddress;
     VkDeviceAddress vertexBuffer;   // Вершинный буфер который мы алоцировали и получили адресс для передачи
 
     uint32_t colorTextureID;
     uint32_t metallicRoughnessTextureID;
     uint32_t normalTextureID;
     uint32_t occlusionTextureID;
-
-    glm::vec2 padding{0.0f};
 
     glm::vec4 baseColorFactor;
 
@@ -62,8 +65,7 @@ struct ColorCorrectionPushConstants {
 
     glm::vec4 colorTint;
 
-    // Забиваем остаток до 128 байт
-    uint8_t dummyPadding[96]{ 0 };
+    uint8_t dummyPadding[32]{ 0 };
 };
 
 // Пуш-константы для пасса Тонмаппинга (128 байт)
@@ -75,13 +77,16 @@ struct TonemapPushConstants {
     float screenHeight;
 
     // Забиваем остаток до 128 байт
-    uint8_t dummyPadding[112]{ 0 };
+    uint8_t dummyPadding[48]{ 0 };
 };
 
 struct GPUSceneData {
     glm::mat4 view;
     glm::mat4 proj;
     glm::mat4 viewproj;
+    glm::mat4 viewProjNonJittered; // Текущий кадр БЕЗ джиттера
+    glm::mat4 prevViewProj;        // Предыдущий кадр БЕЗ джиттера
+
     glm::vec4 ambientColor;
     glm::vec4 sunlightDirection; // w for sun power
     glm::vec4 sunlightColor;
@@ -272,6 +277,8 @@ public:
     glm::mat4 localTransform{ 1.0f };
     // Смещение в мировом пространстве
     glm::mat4 worldTransform{ 1.0f };
+    // Смещение в мировом пространстве за прошлый кадр
+    glm::mat4 prevWorldTransform{ 1.0f };
 
     virtual ~Node() = default;
 
@@ -280,7 +287,7 @@ public:
 
     // Идём сверху вниз по иерархии и собираем модель целиком
     // Рекурсивно обнавляем всем матрицы смещения
-    void UpdateMatrices(const glm::mat4& parentMatrix);
+    void UpdateMatrices(const glm::mat4& parentMatrix, const glm::mat4& prevParentMatrix);
 };
 
 // Нода привязанная к саб-мешу
@@ -288,7 +295,13 @@ class MeshNode : public Node {
 public:
     std::string meshID;
     std::shared_ptr<MeshAsset> mesh;
+
+    uint32_t transformSlot{ 0 };
+    VkDeviceAddress matrixGPUAddress{ 0 };
+    bool hasTransformSlot{ false };
 };
+
+class TransformBufferManager;
 
 struct Model{
     std::vector<std::shared_ptr<MeshAsset>> Meshes;
@@ -303,6 +316,8 @@ struct Model{
     bool bIsValid{ false };
 
     AABB localAABB;
+
+    void Update(TransformBufferManager& transformManager, const glm::mat4& modelRootMatrix, const glm::mat4& prevModelRootMatrix);
 
     void destroy(VK_INIT_ENGINE::_inited_engine& _init, MeshManager& meshManager, TextureManager& textureManager);
 };

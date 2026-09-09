@@ -13,6 +13,7 @@ struct GPUSceneData;
 class RenderSystem;
 class TextureManager;
 class ComputeRenderSystem;
+class TransformBufferManager;
 
 namespace VK_GUI{
     // TODO: Тема навайбкожена
@@ -24,7 +25,7 @@ namespace VK_GUI{
         void draw_imgui(VK_INIT_ENGINE::_inited_engine& _init, VkCommandBuffer cmd, VkExtent2D _drawExtent);
         void update_imgui(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER::Delta& _delta, CONTROLLER::Camera _camera, ModelManager& _modelManager,
             std::unique_ptr<Scene>& _scene, GPUSceneData& sceneData, PipelineManager& pipelineManager, RenderSystem& _renderSystem, TextureManager& _textureManager,
-            ComputeRenderSystem& _computeSystem);
+            ComputeRenderSystem& _computeSystem, TransformBufferManager& transformManager);
     private:
         void draw_inspector_window(VK_INIT_ENGINE::_inited_engine& _init, std::unique_ptr<Scene>& _scene, GPUSceneData& sceneData, CONTROLLER::Camera _camera, ModelManager& modelManager);
         void draw_settings();
@@ -32,7 +33,8 @@ namespace VK_GUI{
             TextureManager& _textureManager, ComputeRenderSystem& _computeSystem);
         void draw_model_properties_window(VK_INIT_ENGINE::_inited_engine& _init, ModelManager& modelManager);
         void draw_model_list_overlay(VK_INIT_ENGINE::_inited_engine& _init, ModelManager& _modelManager,
-            std::unique_ptr<Scene>& _scene, GPUSceneData& sceneData, PipelineManager& pipelineManager, RenderSystem& _renderSystem);
+            std::unique_ptr<Scene>& _scene, GPUSceneData& sceneData, PipelineManager& pipelineManager,
+            RenderSystem& _renderSystem, TransformBufferManager& transformManager);
         void draw_fps_overlay(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER::Delta _delta);
         void draw_gizmo(VK_INIT_ENGINE::_inited_engine& _init, std::unique_ptr<Scene>& _scene, GPUSceneData& sceneData, ModelManager& _modelManager, CONTROLLER::Camera _camera);
         void draw_view_navigation_widget(GPUSceneData& sceneData, CONTROLLER::Camera& _camera);

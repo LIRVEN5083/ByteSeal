@@ -7,13 +7,21 @@ layout(location = 2) out vec4 outNormal;
 
 layout(set = 0, binding = 0) uniform SceneData {
     mat4 view;
-    mat4 proj;
-    mat4 viewproj;
-    vec4 ambientColor;
-    vec4 sunlightDirection;
-    vec4 sunlightColor;
-    mat4 cascadeMatrices[4]; // Твой чистый массив без лишних ID
-    vec4 cascadeSplits;
+	mat4 proj;
+	mat4 viewproj;
+
+	// Для TAA
+	mat4 viewProjNonJittered; // Текущая чистая камера
+	mat4 prevViewProj;        // Прошлая чистая камера
+
+	// Направленный источник света
+	vec4 ambientColor;
+	vec4 sunlightDirection;
+	vec4 sunlightColor;
+
+	// Тени
+	mat4 cascadeMatrices[4]; // Матрицы света для 4 каскадов
+	vec4 cascadeSplits;      // Дистанции разделения каскадов упакованы в vec4 (x, y, z, w)
 
     // Коэффициенты Хошека-Вилки
     vec4 skyA; vec4 skyB; vec4 skyC; vec4 skyD; vec4 skyE;
