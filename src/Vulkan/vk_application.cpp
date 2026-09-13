@@ -801,6 +801,8 @@ VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& 
 
     // proj * view
     sceneData.viewproj = sceneData.proj * sceneData.view;
+    sceneData.viewProjNonJittered = sceneData.viewproj;
+    sceneData.prevViewProj = sceneData.viewproj;
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // КАСКАДЫ ТЕНЕЙ
     _lightManager->UpdateCascades(sceneData.view, fov, aspect, cNear, cFar, sceneData.sunlightDirection);
