@@ -132,6 +132,7 @@ namespace VK_INIT_ENGINE {
         VkDevice _device;
         VkSurfaceKHR _surface;
 
+        bool _useAftermath;
 
         VkQueue _graphicsQueue;
         uint32_t _graphicsQueueFamily;

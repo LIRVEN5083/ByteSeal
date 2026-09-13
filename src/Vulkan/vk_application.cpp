@@ -517,7 +517,7 @@ void VK_APPLICATION::VulkanApplication::init_descriptors(){
 }
 
 void VK_APPLICATION::VulkanApplication::init_render(){
-    _pipelineManager = std::make_unique<PipelineManager>(_init._device);
+    _pipelineManager = std::make_unique<PipelineManager>(_init._device, _init._useAftermath);
 
     VkDescriptorSetLayout textureLayout = _textureManager.GetTextureLayout();
 

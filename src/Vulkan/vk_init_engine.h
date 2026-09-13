@@ -1,5 +1,6 @@
 #pragma once
 #include "vk_types.h"
+#include "../Utils/NVidiaNsightAftermath.h"
 #include "VkBootstrap.h"
 #include "vk_initializers.h"
 #include "vk_pipelines.h"

@@ -465,7 +465,7 @@ void TextureManager::create_default_white_texture(VK_INIT_ENGINE::_inited_engine
     // Очищаем временный буфер
     vmaDestroyBuffer(_init._allocator, stagingBuffer.buffer, stagingBuffer.allocation);
 
-    std::cout << "TextureManager: Default white texture generated under Bindless ID = 0\n";
+    std::cout << "[TextureManager] Default white texture generated under Bindless ID = 0\n";
 }
 
 void TextureManager::create_ibl_textures(VK_INIT_ENGINE::_inited_engine& _init) {
@@ -657,7 +657,7 @@ void TextureManager::create_ibl_textures(VK_INIT_ENGINE::_inited_engine& _init) 
 
     _nextIndices[targetBinding] = totalDescriptors;
 
-    std::cout << "TextureManager: Bound " << totalDescriptors << " single-level storage views to binding 3.\n";
+    std::cout << "[TextureManager] Bound " << totalDescriptors << " single-level storage views to binding 3.\n";
 }
 
 VkSampler TextureManager::CreateSampler(const SamplerOptions& params){

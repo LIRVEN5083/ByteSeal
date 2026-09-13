@@ -408,7 +408,7 @@ RealPipeline* PipelineManager::CreateComputePipeline(const PipelineCreateInfo& i
         return nullptr;
     }
 
-    std::vector<uint32_t> compCode = UTILS::CompileGLSLToSPIRV(info.computeShaderPath);
+    std::vector<uint32_t> compCode = UTILS::CompileGLSLToSPIRV(info.computeShaderPath, _debugAftermath);
     if (compCode.empty()) {
         fmt::print(stderr, "[PipelineManager ERROR] Compute shader compilation failed for {}\n", info.name);
         return nullptr;
@@ -476,7 +476,7 @@ RealPipeline* PipelineManager::CreatePipelineFromMemory(const PipelineCreateInfo
 RealPipeline* PipelineManager::CreatePipeline(const PipelineCreateInfo& info, VkFormat colorFormat,
                                               VkFormat depthFormat){
 
-    std::vector<uint32_t> vertCode = UTILS::CompileGLSLToSPIRV(info.vertexShaderPath);
+    std::vector<uint32_t> vertCode = UTILS::CompileGLSLToSPIRV(info.vertexShaderPath, _debugAftermath);
     if (vertCode.empty()) {
         fmt::print(stderr, "[PipelineManager ERROR] Vertex shader compilation failed for {}\n", info.name);
         return nullptr;
@@ -485,7 +485,7 @@ RealPipeline* PipelineManager::CreatePipeline(const PipelineCreateInfo& info, Vk
     // Компилируем фрагментный шейдер ТОЛЬКО если путь к нему не пустой
     std::vector<uint32_t> fragCode;
     if (!info.fragmentShaderPath.empty()) {
-        fragCode = UTILS::CompileGLSLToSPIRV(info.fragmentShaderPath);
+        fragCode = UTILS::CompileGLSLToSPIRV(info.fragmentShaderPath, _debugAftermath);
         if (fragCode.empty()) {
             fmt::print(stderr, "[PipelineManager ERROR] Fragment shader compilation failed for {}\n", info.name);
             return nullptr;
@@ -696,7 +696,7 @@ bool PipelineManager:: ReloadAllPipelines(){
     for (const auto& [name, realPipeline] : _pipelinesByName) {
         // Если конвеер вычсилительный то хуячим вот сюда
         if (realPipeline.isCompute) {
-            auto compCode = UTILS::CompileGLSLToSPIRV(realPipeline.computeShaderPath);
+            auto compCode = UTILS::CompileGLSLToSPIRV(realPipeline.computeShaderPath, _debugAftermath);
             if (compCode.empty()) {
                 std::cerr << "[PipelineManager] Hot-reload aborted due to Compute shader compiler errors in " << name << ".\n";
                 return false;
@@ -705,7 +705,7 @@ bool PipelineManager:: ReloadAllPipelines(){
             continue;
         }
         // Вершинный шейдер компилируем всегда
-        auto vertCode = UTILS::CompileGLSLToSPIRV(realPipeline.vertexShaderPath);
+        auto vertCode = UTILS::CompileGLSLToSPIRV(realPipeline.vertexShaderPath, _debugAftermath);
         if (vertCode.empty()) {
             std::cerr << "[PipelineManager] Hot-reload aborted due to Vertex shader compiler errors in " << name << ".\n";
             return false;
@@ -715,7 +715,7 @@ bool PipelineManager:: ReloadAllPipelines(){
         // Фрагментный шейдер компилируем ТОЛЬКО если путь к нему существует
         std::vector<uint32_t> fragCode;
         if (!realPipeline.fragmentShaderPath.empty()) {
-            fragCode = UTILS::CompileGLSLToSPIRV(realPipeline.fragmentShaderPath);
+            fragCode = UTILS::CompileGLSLToSPIRV(realPipeline.fragmentShaderPath, _debugAftermath);
             if (fragCode.empty()) {
                 std::cerr << "[PipelineManager] Hot-reload aborted due to Fragment shader compiler errors in " << name << ".\n";
                 return false;

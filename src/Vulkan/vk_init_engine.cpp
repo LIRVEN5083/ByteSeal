@@ -419,17 +419,64 @@ VK_INIT_ENGINE::VulkanInitEngine::VulkanInitEngine(bool Validation_layers){
     baseFeatures.shaderInt64 = VK_TRUE;
 
     vkb::PhysicalDeviceSelector selector{ vkb_inst };
-    vkb::PhysicalDevice physicalDevice = selector
-    .set_minimum_version(1, 3)
-    .set_required_features(baseFeatures)
-    .set_required_features_13(features)
-    .set_required_features_12(features12)
-    .set_surface(this->ready_init._surface)
-    .add_required_extension(VK_EXT_SHADER_VIEWPORT_INDEX_LAYER_EXTENSION_NAME)
-    .select()
-    .value();
+    selector.set_minimum_version(1, 3)
+        .set_required_features(baseFeatures)
+        .set_required_features_13(features)
+        .set_required_features_12(features12)
+        .set_surface(this->ready_init._surface)
+        .add_required_extension(VK_EXT_SHADER_VIEWPORT_INDEX_LAYER_EXTENSION_NAME);
+
+    bool use_aftermath = false;
+
+    if (Validation_layers) {
+        auto selection_res = selector.select();
+        if (selection_res) {
+            VkPhysicalDeviceProperties props;
+            vkGetPhysicalDeviceProperties(selection_res.value().physical_device, &props);
+
+            // 0x10DE — это Vendor ID компании NVIDIA
+            if (props.vendorID == 0x10DE) {
+                use_aftermath = true;
+            }
+        }
+    }
+
+    if (use_aftermath) {
+        selector.add_required_extension(VK_NV_DEVICE_DIAGNOSTICS_CONFIG_EXTENSION_NAME);
+    }
+    vkb::PhysicalDevice physicalDevice = selector.select().value();
+
+    VkDeviceDiagnosticsConfigCreateInfoNV aftermathConfig{};
+    if (use_aftermath) {
+        aftermathConfig.sType = VK_STRUCTURE_TYPE_DEVICE_DIAGNOSTICS_CONFIG_CREATE_INFO_NV;
+        aftermathConfig.pNext = nullptr;
+        aftermathConfig.flags = VK_DEVICE_DIAGNOSTICS_CONFIG_ENABLE_SHADER_DEBUG_INFO_BIT_NV |
+                                VK_DEVICE_DIAGNOSTICS_CONFIG_ENABLE_RESOURCE_TRACKING_BIT_NV |
+                                VK_DEVICE_DIAGNOSTICS_CONFIG_ENABLE_AUTOMATIC_CHECKPOINTS_BIT_NV;
+
+        // Включаем сам Aftermath SDK до создания логического устройства
+        GFSDK_Aftermath_EnableGpuCrashDumps(
+            GFSDK_Aftermath_Version_API,
+            2, // 2. watchedApis: только Vulkan. У меня не находит enum class поэтому просто 2
+            GFSDK_Aftermath_GpuCrashDumpFeatureFlags_Default, // 3. flags: дефолтные флаги краш-дампов
+            GpuCrashDumpCallback,                          // 4. коллбэк дампа
+            nullptr,                                       // 5. shaderDebugInfoCb
+            nullptr,                                       // 6. descriptionCb
+            nullptr,                                       // 7. resolveMarkerCb
+            nullptr                                        // 8. pUserData
+        );
+        std::cout << "[InitEngine] NVIDIA Graphics detected. Nsight Aftermath initialized successfully." << std::endl;
+    }
+    else if (Validation_layers) {
+        std::cout << "[Engine] Non-NVIDIA Graphics detected. Skipping Nsight Aftermath initialization." << std::endl;
+    }
 
     vkb::DeviceBuilder deviceBuilder{ physicalDevice };
+
+    if (use_aftermath) {
+        deviceBuilder.add_pNext(&aftermathConfig);
+    }
+
     vkb::Device vkbDevice = deviceBuilder.build().value();
 
     this->ready_init._device = vkbDevice.device;
@@ -471,4 +518,6 @@ VK_INIT_ENGINE::VulkanInitEngine::VulkanInitEngine(bool Validation_layers){
     init_imgui();
 
     this->ready_init._isInitialized = true;
+
+    ready_init._useAftermath = use_aftermath;
 }

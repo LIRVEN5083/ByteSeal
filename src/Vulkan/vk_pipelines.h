@@ -148,7 +148,7 @@ struct RealPipeline {
 
 class PipelineManager{
 public:
-    PipelineManager(VkDevice device) : _device(device){}
+    PipelineManager(VkDevice device, bool Debug) : _device(device), _debugAftermath(Debug){};
 
     void InitCommonLayout(VkDescriptorSetLayout globalSetLayout, VkDescriptorSetLayout bindlessSetLayout);
 
@@ -180,6 +180,7 @@ public:
 
 private:
     VkDevice _device;
+    bool _debugAftermath;
     VkPipelineLayout _commonLayout{VK_NULL_HANDLE};
     VkPipelineLayout _shadowLayout{VK_NULL_HANDLE};
 
