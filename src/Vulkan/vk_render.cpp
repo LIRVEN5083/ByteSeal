@@ -289,7 +289,7 @@ void ShadowCSMRenderPass::Execute(const RenderContext& ctx, const std::vector<Re
         }
 
         GPUShadowPushConstants push_constants;
-        push_constants.worldMatrix = object.render_matrix;
+        push_constants.matrixBuffer = object.matrixBufferAddress;
         push_constants.vertexBuffer = object.vertexBufferAddress;
 
         vkCmdPushConstants(ctx.cmd, _shadowPipeline->layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUShadowPushConstants), &push_constants);

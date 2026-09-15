@@ -26,8 +26,6 @@ struct RenderObject{
     glm::vec4 baseColorFactor;
     glm::vec4 materialFactors;
 
-    glm::mat4 render_matrix;
-
     PipelineOpacity opacity;
 
     // Ключ для сортировки

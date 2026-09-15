@@ -30,15 +30,16 @@ void TransformBufferManager::init(VkDevice device, VmaAllocator allocator, uint3
     m_BaseDeviceAddress = vkGetBufferDeviceAddress(m_Device, &addressInfo);
 }
 
-uint32_t TransformBufferManager::AllocateTransformSlot(VkDeviceAddress& outAddress){
-    if (m_CurrentAllocatedObjects >= m_MaxObjects) {
+uint32_t TransformBufferManager::AllocateTransformSlot(VkDeviceAddress& outAddress, uint32_t count) {
+    if (m_CurrentAllocatedObjects + count > m_MaxObjects) {
         assert(false && "Transform buffer overflow!");
     }
-
-    uint32_t slot = m_CurrentAllocatedObjects++;
-
+    uint32_t slot = m_CurrentAllocatedObjects;
+    m_CurrentAllocatedObjects += count;
+    // Очень важная вещь
+    // до этого он брал ДЛЯ всех нодов неправильные матрицы к примеру есть модель на 10 нодов и на 50,
+    // загружаем на 10 все четко и классно, ставим модель на 50 и первые её 10 нод будут нодами модели по 10 нод, а не свои
     outAddress = m_BaseDeviceAddress + (slot * sizeof(GPUTransformMatrices));
-
     return slot;
 }
 
@@ -155,7 +156,11 @@ GameEntity* Scene::CreateEntity(const std::string& name, uint32_t modelAssetId){
     entity.modelAssetId = modelAssetId;
     entity.prevModelMatrix = entity.GetLocalMatrix();
 
-    entity.transformSlot = _transformManager.AllocateTransformSlot(entity.matrixGPUAddress);
+    Model& model = _modelManager.GetModel(modelAssetId);
+    uint32_t nodeCount = model.bIsValid ? static_cast<uint32_t>(model.meshNodes.size()) : 1;
+    if (nodeCount == 0) nodeCount = 1;
+
+    entity.transformSlot = _transformManager.AllocateTransformSlot(entity.matrixGPUAddress, nodeCount);
     entity.hasTransformSlot = true;
 
     _idToIndex[newId] = _entities.size();
@@ -263,21 +268,32 @@ void Scene::CullingAndSubmit(RenderSystem& renderSystem, PipelineManager& pipeli
         model.rootNode->UpdateMatrices(entityWorldMatrix, entityPrevWorldMatrix);
 
         if (entity.hasTransformSlot) {
-            // Поскольку у модели может быть несколько под-мешей, для простоты
-            // мы пишем корневую матрицу модели (или иерархию, если меш один) в слот энтити
-            transformManager.UpdateTransform(
-                entity.transformSlot,
-                model.rootNode->worldTransform, // Берем посчитанную матрицу из корня модели
-                model.rootNode->prevWorldTransform
-            );
+            for (size_t i = 0; i < model.meshNodes.size(); ++i) {
+                uint32_t nodeSlot = entity.transformSlot + static_cast<uint32_t>(i);
+
+                transformManager.UpdateTransform(
+                    nodeSlot,
+                    model.meshNodes[i]->worldTransform,     // Честная текущая матрица детали
+                    model.meshNodes[i]->prevWorldTransform    // Честная прошлая матрица детали
+                );
+            }
         }
 
         // Считаем мировую позицию самого объекта для сортировки прозрачности
         glm::vec3 entityWorldPos = glm::vec3(entityWorldMatrix[3].x, entityWorldMatrix[3].y, entityWorldMatrix[3].z);
         float distanceToCamera = glm::distance(entityWorldPos, cameraPosition);
 
+        uint32_t nodeIndex = 0;
         for (const auto& meshNode : model.meshNodes) {
-            if (!meshNode->mesh) continue;
+            if (!meshNode->mesh) {
+                nodeIndex++;
+                continue;
+            }
+
+            // Короче в чем прикол, до этого был mat4 render_matrix и мы его спокойно отправляли относительно саб меша из RAM
+            // НО ТЕПЕРЬ, мы отправляем адресс на VRAM и получается так что фактических данных у нас нету,
+            // то-есть теперь нужно вычеслять адресс в видеопамяти со смещением что-бы шейдер при чтении применял правильную позицию для всех саб-мешей
+            VkDeviceAddress meshNodeGPUAddress = entity.matrixGPUAddress + (nodeIndex * sizeof(GPUTransformMatrices));
             for (const auto& surface : meshNode->mesh->surfaces) {
                 if (!surface.material) continue;
 
@@ -315,7 +331,7 @@ void Scene::CullingAndSubmit(RenderSystem& renderSystem, PipelineManager& pipeli
                 }
 
                 RenderObject ro;
-                ro.matrixBufferAddress = entity.matrixGPUAddress;
+                ro.matrixBufferAddress = meshNodeGPUAddress;
                 ro.indexBuffer = meshNode->mesh->meshBuffers.indexBuffer.buffer;
                 ro.vertexBufferAddress = meshNode->mesh->meshBuffers.vertexBufferAddress;
                 ro.indexCount = surface.count;
@@ -357,19 +373,9 @@ void Scene::CullingAndSubmit(RenderSystem& renderSystem, PipelineManager& pipeli
                 ro.sortKey = key;
                 renderSystem.Submit(ro);
             }
-
+            nodeIndex++;
         }
     }
-}
-
-void Scene::RegisterModelGraphics(Model& model, TransformBufferManager& transformManager){
-    for (auto& meshNode : model.meshNodes) {
-        meshNode->transformSlot = transformManager.AllocateTransformSlot(meshNode->matrixGPUAddress);
-        meshNode->hasTransformSlot = true;
-
-        transformManager.UpdateTransform(meshNode->transformSlot, meshNode->worldTransform, meshNode->prevWorldTransform);
-    }
-    model.bIsValid = true;
 }
 
 RaycastHit Scene::Raycast(const Ray& ray){

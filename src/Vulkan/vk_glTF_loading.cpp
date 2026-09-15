@@ -1573,7 +1573,7 @@ Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init,
         return loadedModel;
     }
 
-    // Создаем ИСКУССТВЕННЫЙ временный корень для проведения операции запекания
+    // Создаем ИСКУСТВЕННЫЙ временный корень для проведения операции запекания
     auto bakeRoot = std::make_shared<Node>();
 
     size_t singleRootIdx = defaultScene.nodeIndices[0];

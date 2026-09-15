@@ -51,7 +51,7 @@ struct GPUDrawPushConstants {
 };
 
 struct GPUShadowPushConstants {
-    glm::mat4 worldMatrix;
+    VkDeviceAddress matrixBuffer;
     VkDeviceAddress vertexBuffer;
 }; // Итого: 72 байта
 

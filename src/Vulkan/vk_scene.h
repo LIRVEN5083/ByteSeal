@@ -30,7 +30,7 @@ public:
     void init(VkDevice device, VmaAllocator allocator, uint32_t maxObjects = 10000);
 
     // Вызывается нодой сцены при её создании (например, при загрузке меша)
-    uint32_t AllocateTransformSlot(VkDeviceAddress& outAddress);
+    uint32_t AllocateTransformSlot(VkDeviceAddress& outAddress, uint32_t count);
 
     // Обновление матриц конкретного объекта (вызывается из графа сцены)
     void UpdateTransform(uint32_t slot, const glm::mat4& currentModel, const glm::mat4& prevModel);
@@ -144,8 +144,6 @@ public:
     const glm::mat4& currentViewProjJittered,  // Матрица С дрожанием (для куллинга)
     const glm::mat4& currentViewProjNonJittered, // Текущая БЕЗ дрожания (для TAA)
     const glm::mat4& prevViewProjNonJittered);  // Прошлая БЕЗ дрожания (для TAA)
-
-    void RegisterModelGraphics(Model& model, TransformBufferManager& transformManager);
 
     RaycastHit Raycast(const Ray& ray);
 

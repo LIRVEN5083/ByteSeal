@@ -68,17 +68,9 @@ void main()
 	//load vertex data from device adress
 	Vertex v = PushConstants.vertexBuffer.vertices[gl_VertexIndex];
 
-	mat4 currentModelMatrix = mat4(1.0f);
-	mat4 prevModelMatrix = mat4(1.0f);
-
-	if (PushConstants.matrixAddress > 4096UL && PushConstants.matrixAddress < 0xFFFFFFFFFFFF0000UL) {
-		ModelMatricesRef modelBuffer = ModelMatricesRef(PushConstants.matrixAddress);
-		currentModelMatrix = modelBuffer.currentModel;
-		prevModelMatrix = modelBuffer.prevModel;
-	} else {
-		currentModelMatrix = mat4(1.0f);
-		prevModelMatrix = mat4(1.0f);
-	}
+	ModelMatricesRef modelBuffer = ModelMatricesRef(PushConstants.matrixAddress);
+	mat4 currentModelMatrix = modelBuffer.currentModel;
+	mat4 prevModelMatrix = modelBuffer.prevModel;
 
 	vec4 worldPos = currentModelMatrix * vec4(v.position, 1.0f);
 	outWorldPos = worldPos.xyz;
