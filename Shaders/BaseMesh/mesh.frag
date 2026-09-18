@@ -402,5 +402,5 @@ void main()
 	outNormal = vec4(N * 0.5 + 0.5, 1.0);
 	//-----------------------------------------------------------------------------
 	//vec2 debugVelocity = ndcVelocity * 250.0 + 0.5;
-	outFragColor = vec4(color, 1.0);
+	outFragColor = vec4(color, finalAlpha);
 }

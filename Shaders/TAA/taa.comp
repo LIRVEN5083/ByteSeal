@@ -1,5 +1,115 @@
 #version 460
+#extension GL_EXT_nonuniform_qualifier : require
+layout(local_size_x = 16, local_size_y = 16) in;
 
-void main(){
+// Тут хранятся картинки рендера
+layout(set = 1, binding = 4, rgba16f) uniform image2D globalScreenImages[];
 
+const uint CURRENT_COLOR_IDX = 0;
+const uint DEOTH_IDX         = 1;
+const uint VELOCITY_IDX      = 2;
+const uint DEPTH_IDX         = 3;
+const uint HISTORY_0_IDX     = 4;
+const uint HISTORY_1_IDX     = 5;
+
+layout(push_constant) uniform Constants {
+    uint frameIndex;
+    float screenWidth;
+    float screenHeight;
+} pc;
+
+vec4 SampleHistoryBilinear(uint imageIdx, vec2 uv, vec2 texSize) {
+    // Переводим UV в координаты пикселей
+    vec2 samplePos = uv * texSize - 0.5;
+    
+    // Находим базовый пиксель (левый верхний) и дробную часть сдвига
+    ivec2 baseCoord = ivec2(floor(samplePos));
+    vec2 f = fract(samplePos); // В GLSL используй: vec2 f = samplePos - floor(samplePos);
+
+    // Защита от вылета за границы экрана для всех 4-х соседей
+    ivec2 c00 = clamp(baseCoord + ivec2(0, 0), ivec2(0), ivec2(texSize) - 1);
+    ivec2 c10 = clamp(baseCoord + ivec2(1, 0), ivec2(0), ivec2(texSize) - 1);
+    ivec2 c01 = clamp(baseCoord + ivec2(0, 1), ivec2(0), ivec2(texSize) - 1);
+    ivec2 c11 = clamp(baseCoord + ivec2(1, 1), ivec2(0), ivec2(texSize) - 1);
+
+    // Читаем 4 соседних пикселя истории
+    vec4 s00 = imageLoad(globalScreenImages[imageIdx], c00);
+    vec4 s10 = imageLoad(globalScreenImages[imageIdx], c10);
+    vec4 s01 = imageLoad(globalScreenImages[imageIdx], c01);
+    vec4 s11 = imageLoad(globalScreenImages[imageIdx], c11);
+
+    // Интерполируем сначала по горизонтали, потом по вертикали
+    vec4 s0 = mix(s00, s10, f.x);
+    vec4 s1 = mix(s01, s11, f.x);
+    return mix(s0, s1, f.y);
+}
+
+void main() {
+    ivec2 pixelCoord = ivec2(gl_GlobalInvocationID.xy);
+    vec2 texSize = vec2(pc.screenWidth, pc.screenHeight);
+    
+    if (pixelCoord.x >= int(pc.screenWidth) || pixelCoord.y >= int(pc.screenHeight)) return;
+
+    vec4 currentColor = imageLoad(globalScreenImages[CURRENT_COLOR_IDX], pixelCoord);
+    if (isnan(currentColor.r) || isnan(currentColor.g) || isnan(currentColor.b)) currentColor = vec4(0.0);
+
+    // Улучшенный расчет AABB через среднее и среднеквадратичное (Variance)
+    vec3 m1 = vec3(0.0); // Первая гармоника (среднее)
+    vec3 m2 = vec3(0.0); // Вторая гармоника
+
+    for (int x = -1; x <= 1; ++x) {
+        for (int y = -1; y <= 1; ++y) {
+            ivec2 neighborCoord = clamp(pixelCoord + ivec2(x, y), ivec2(0), ivec2(texSize) - ivec2(1));
+            vec3 c = imageLoad(globalScreenImages[CURRENT_COLOR_IDX], neighborCoord).rgb;
+            if (isnan(c.r) || isnan(c.g) || isnan(c.b)) c = currentColor.rgb;
+            
+            m1 += c;
+            m2 += c * c;
+        }
+    }
+
+    // Вычисляем среднее значение и стандартное отклонение по окрестности 3x3
+    vec3 mu = m1 / 9.0;
+    vec3 sigma = sqrt(max(vec3(0.0), (m2 / 9.0) - (mu * mu)));
+    
+    // Мягкие рамки для обрезки истории
+    vec3 colorMin = mu - 1.0 * sigma;
+    vec3 colorMax = mu + 1.0 * sigma;
+
+    // Читаем скорость
+    vec2 velocity = imageLoad(globalScreenImages[VELOCITY_IDX], pixelCoord).rg;
+    if (isnan(velocity.x) || isnan(velocity.y)) velocity = vec2(0.0);
+
+    // Сдвигаем UV назад во времени
+    vec2 currentUV = (vec2(pixelCoord) + 0.5) / texSize;
+    vec2 prevUV = currentUV - velocity;
+
+    bool isOffscreen = prevUV.x < 0.0 || prevUV.x > 1.0 || prevUV.y < 0.0 || prevUV.y > 1.0;
+
+    uint prevHistoryIdx = (pc.frameIndex == 0) ? HISTORY_0_IDX : HISTORY_1_IDX;
+    uint outHistoryIdx  = (pc.frameIndex == 0) ? HISTORY_1_IDX : HISTORY_0_IDX;
+
+    vec4 historyColor = vec4(0.0);
+    float alpha = 0.96; // 1200 FPS позволяет сделать накопление чуть агрессивнее (0.93 - 0.95)
+
+    if (isOffscreen) {
+        historyColor = currentColor;
+        alpha = 0.0;
+    } else {
+        // ВАЖНО: Используем наш новый плавный билинейный сэмплер вместо дубового imageLoad!
+        historyColor = SampleHistoryBilinear(prevHistoryIdx, prevUV, texSize);
+        
+        if (isnan(historyColor.r) || isnan(historyColor.g) || isnan(historyColor.b)) {
+            historyColor = currentColor;
+            alpha = 0.0;
+        } else {
+            // Мягко обрезаем историю под рамки текущего кадра
+            historyColor.rgb = clamp(historyColor.rgb, colorMin, colorMax);
+        }
+    }
+
+    vec4 resolvedColor = mix(currentColor, historyColor, alpha);
+
+    imageStore(globalScreenImages[outHistoryIdx], pixelCoord, resolvedColor);
+    imageStore(globalScreenImages[CURRENT_COLOR_IDX], pixelCoord, resolvedColor);
 }
