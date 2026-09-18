@@ -698,6 +698,17 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     if (tonMapPipeline) {
         fmt::print("[PipelineManager] Compute Pipeline 'Tonemap' successfully loaded and built.\n");
     }
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Конвеер для TAA
+    PipelineCreateInfo TAAInfo{};
+    TAAInfo.name = "TAA";
+    TAAInfo.passType = RenderPassType::Compute;
+    TAAInfo.computeShaderPath = "../Shaders/TAA/taa.comp";
+
+    RealPipeline* TAAPipeline = _pipelineManager->CreateComputePipeline(TAAInfo);
+    if (TAAPipeline){
+        fmt::print("[PipelineManager] Compute Pipeline 'TAA' successfully loaded and built.\n");
+    }
 
     // Проходы рендера
     RenderPass* SCM_RP = _renderSystem.AddPass(std::make_unique<ShadowCSMRenderPass>(_init), *_pipelineManager);
@@ -716,6 +727,7 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     );
 
     _computeSystem.AddPass(std::move(iblPass));
+    _postProcessSystem.AddPass(std::make_unique<TAAComputePass>(_init, TAAInfo.name));
     _postProcessSystem.AddPass(std::make_unique<ColorCorrectionComputePass>(_init, colorCorrectionInfo.name));
     _postProcessSystem.AddPass(std::make_unique<TonemapComputePass>(_init, tonMapInfo.name));
 

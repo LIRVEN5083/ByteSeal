@@ -89,6 +89,20 @@ private:
     PostProcessSettings _settings{};
 };
 
+class TAAComputePass : public ComputePass
+{
+public:
+    TAAComputePass(VK_INIT_ENGINE::_inited_engine& init, std::string pipelineName)
+        : ComputePass(init, ComputePassType::TAA), _pipelineName(pipelineName) {}
+
+    void Execute(const ComputeContext& ctx) override;
+
+private:
+    std::string _pipelineName;
+
+    uint32_t _frameCounter{ 0 };
+};
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // ПРОХОД ДЛЯ ЕБУЧЕГО IBL
 class IBLProcessorComputePass : public ComputePass {

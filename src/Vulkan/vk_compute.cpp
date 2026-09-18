@@ -6,10 +6,6 @@ void ColorCorrectionComputePass::Execute(const ComputeContext& ctx){
     RealPipeline* activePipeline = ctx.pipelineManager->GetPipelineByName( _pipelineName);
     if (!activePipeline) return;
 
-    vkutil::transition_image(ctx.cmd, _init._drawImage.image,
-                             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                             VK_IMAGE_LAYOUT_GENERAL);
-
     vkCmdBindPipeline(ctx.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, activePipeline->pipeline);
     vkCmdBindDescriptorSets(ctx.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, activePipeline->layout, 1, 1, &ctx.bindlessSet, 0, nullptr);
 
@@ -67,6 +63,60 @@ void TonemapComputePass::Execute(const ComputeContext& ctx){
     vkutil::transition_image(ctx.cmd, _init._drawImage.image,
                              VK_IMAGE_LAYOUT_GENERAL,
                              VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+}
+
+void TAAComputePass::Execute(const ComputeContext& ctx){
+    RealPipeline* activePipeline = ctx.pipelineManager->GetPipelineByName(_pipelineName);
+    if (!activePipeline) return;
+
+    vkutil::transition_image(ctx.cmd, _init._drawImage.image,
+                         VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                         VK_IMAGE_LAYOUT_GENERAL);
+
+    vkutil::transition_image(ctx.cmd, _init._velocityImage.image,
+                             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                             VK_IMAGE_LAYOUT_GENERAL);
+
+    vkCmdBindPipeline(ctx.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, activePipeline->pipeline);
+    vkCmdBindDescriptorSets(ctx.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, activePipeline->layout,
+                            1, 1, &ctx.bindlessSet, 0, nullptr);
+
+    struct TAAPushConstants {
+        uint32_t frameIndex;
+        float screenWidth;
+        float screenHeight;
+        float padding; // Выравнивание по 16 байт для надежности в GLSL
+    } push;
+
+    // Передаем 0 или 1, чтобы шейдер внутри себя знал, какой буфер истории прошлый, а какой текущий
+    push.frameIndex   = _frameCounter % 2;
+    push.screenWidth  = static_cast<float>(_init._windowExtent.width);
+    push.screenHeight = static_cast<float>(_init._windowExtent.height);
+
+    vkCmdPushConstants(ctx.cmd, activePipeline->layout,
+                       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT,
+                       0, sizeof(TAAPushConstants), &push);
+
+    uint32_t groupCountX = (_init._windowExtent.width + 15) / 16;
+    uint32_t groupCountY = (_init._windowExtent.height + 15) / 16;
+
+    // Сам подсчет
+    vkCmdDispatch(ctx.cmd, groupCountX, groupCountY, 1);
+
+    VkMemoryBarrier2 computeBarrier{ VK_STRUCTURE_TYPE_MEMORY_BARRIER_2 };
+    computeBarrier.srcStageMask  = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+    computeBarrier.srcAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT;
+    computeBarrier.dstStageMask  = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+    computeBarrier.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
+
+    VkDependencyInfo dependencyInfo{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
+    dependencyInfo.memoryBarrierCount = 1;
+    dependencyInfo.pMemoryBarriers    = &computeBarrier;
+
+    vkCmdPipelineBarrier2(ctx.cmd, &dependencyInfo);
+
+    // Инкрементируем счетчик, чтобы на следующем кадре буферы истории поменялись ролями
+    _frameCounter++;
 }
 
 void IBLProcessorComputePass::Execute(const ComputeContext& ctx){
