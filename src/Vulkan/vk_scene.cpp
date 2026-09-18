@@ -657,6 +657,44 @@ SkyCoefficients LightManager::ComputeHosekWilkieParams(float turbidity, const gl
     return coeffs;
 }
 
+void TAA::Update(GPUSceneData& sceneData){
+    sceneData.prevViewProj = sceneData.viewProjNonJittered;
+
+    // Считаем новую чистую (без джиттера) матрицу viewproj
+    sceneData.viewproj = sceneData.proj * sceneData.view;
+    sceneData.viewProjNonJittered = sceneData.viewproj;
+
+    // Рассчитываем субпиксельное смещение кадра (Jitter)
+    glm::vec2 jitter = m_jitterSamples[m_frameIndex];
+
+    // Масштабируем сдвиг под размер одного пикселя в NDC пространстве.
+    // Ширина NDC = 2.0, Высота NDC = 2.0. Делим на разрешение экрана:
+    float jitterX = (jitter.x * 2.0f) / static_cast<float>(_init._swapchainExtent.width);
+    float jitterY = (jitter.y * 2.0f) / static_cast<float>(_init._swapchainExtent.height);
+
+    // Применяем джиттер к матрице ПРОЕКЦИИ (модифицируем основную sceneData.viewproj)
+    // Сдвиг в NDC делается простым смещением в матрице проекции (строка 2, колонки 0 и 1)
+    glm::mat4 jitteredProj = sceneData.proj;
+    jitteredProj[2][0] += jitterX;
+    jitteredProj[2][1] += jitterY;
+
+    sceneData.viewproj = jitteredProj * sceneData.view;
+
+    m_frameIndex = (m_frameIndex + 1) % 16;
+}
+
+float TAA::CalculateHalton(int index, int base){
+    float result = 0.0f;
+    float f = 1.0f / static_cast<float>(base);
+    int i = index;
+    while (i > 0) {
+        result += f * static_cast<float>(i % base);
+        i = std::floor(static_cast<float>(i) / static_cast<float>(base));
+        f = f / static_cast<float>(base);
+    }
+    return result;
+}
+
 
 Ray::Ray(const glm::vec3& origin, const glm::vec3& direction)
 : _origin(origin), _direction(glm::normalize(direction)) {}

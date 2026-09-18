@@ -214,3 +214,28 @@ private:
     std::array<glm::mat4, SHADOW_CASCADES_COUNT> m_cascadeMatrices;
     std::array<float, SHADOW_CASCADES_COUNT> m_cascadeSplits;
 };
+
+class TAA{
+public:
+    TAA(VK_INIT_ENGINE::_inited_engine& init) : _init(init){
+        m_jitterSamples.resize(16);
+        for (int i = 0; i < 16; ++i) {
+            m_jitterSamples[i] = glm::vec2(CalculateHalton(i + 1, 2), CalculateHalton(i + 1, 3));
+
+            // Переводим из диапазона [0, 1] в диапазон [-0.5, 0.5] (субпиксельный сдвиг)
+            m_jitterSamples[i].x -= 0.5f;
+            m_jitterSamples[i].y -= 0.5f;
+        }
+    }
+
+    void Update(GPUSceneData& sceneData);
+
+    glm::vec2 GetCurrentJitterPixels() const {return m_jitterSamples[m_frameIndex];}
+
+private:
+    float CalculateHalton(int index, int base);
+
+    VK_INIT_ENGINE::_inited_engine& _init;
+    uint32_t m_frameIndex;
+    std::vector<glm::vec2> m_jitterSamples;
+};

@@ -8,8 +8,8 @@ layout (location = 2) out vec3 outNormal;
 layout (location = 3) out vec3 outWorldPos;
 layout (location = 4) out vec4 outTangent;
 
-layout (location = 5) out vec4 outCurrentPos; // Позиция на экране сейчас (без джиттера)
-layout (location = 6) out vec4 outPrevPos; // Позиция на экране в прошлом кадре (без джиттера)
+layout (location = 5) noperspective out vec2 outCurrentPos; // Было vec4
+layout (location = 6) noperspective out vec2 outPrevPos;    // Было vec4
 
 layout(set = 0, binding = 0) uniform SceneData {
 	mat4 view;
@@ -72,15 +72,19 @@ void main()
 	mat4 currentModelMatrix = modelBuffer.currentModel;
 	mat4 prevModelMatrix = modelBuffer.prevModel;
 
+	// Ну типо позиции
 	vec4 worldPos = currentModelMatrix * vec4(v.position, 1.0f);
+	vec4 prevWorldPos = prevModelMatrix * vec4(v.position, 1.0f);
 	outWorldPos = worldPos.xyz;
 	gl_Position = scene.viewproj * worldPos;
+	
+	vec4 clipCurrent = scene.viewProjNonJittered * worldPos;
+    vec4 clipPrev = scene.prevViewProj * prevWorldPos;
 
-	outCurrentPos = scene.viewProjNonJittered * worldPos;
-
-	vec4 prevWorldPos = prevModelMatrix * vec4(v.position, 1.0f);
-	outPrevPos = scene.prevViewProj * prevWorldPos;
-
+    outCurrentPos = clipCurrent.xy / clipCurrent.w;
+    outPrevPos = clipPrev.xy / clipPrev.w;
+	//////////////////////////////////
+	
 	mat3 modelMat3 = mat3(currentModelMatrix);
 	mat3 normalMatrix = mat3(
 		normalize(modelMat3[0]),

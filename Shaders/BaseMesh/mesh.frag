@@ -9,8 +9,8 @@ layout (location = 2) in vec3 inNormal;
 layout (location = 3) in vec3 inWorldPos;
 layout (location = 4) in vec4 inTangent;
 
-layout (location = 5) in vec4 inCurrentPos; // Позиция на экране сейчас (без джиттера)
-layout (location = 6) in vec4 inPrevPos; 	// Позиция на экране в прошлом кадре (без джиттера)
+layout (location = 5) noperspective in vec2 inCurrentPos; // Было vec4
+layout (location = 6) noperspective in vec2 inPrevPos;    // Было vec4
 
 layout (location = 0) out vec4 outFragColor; // _drawImage
 layout (location = 1) out vec2 outVelocity;  // Векторы движения пикселя (_velocityImage)
@@ -395,15 +395,12 @@ void main()
 	}
 
 	//  --Векторы движения и нормали--
-	vec2 currentNDC = inCurrentPos.xy / inCurrentPos.w;
-	vec2 prevNDC = inPrevPos.xy / inPrevPos.w;
+	vec2 ndcVelocity = inCurrentPos - inPrevPos;
 
-	vec2 ndcVelocity = currentNDC - prevNDC;
-
-	outVelocity = ndcVelocity * vec2(0.5, 0.5);
+	outVelocity = ndcVelocity * 0.5; 
 
 	outNormal = vec4(N * 0.5 + 0.5, 1.0);
 	//-----------------------------------------------------------------------------
-
-	outFragColor = vec4(color, finalAlpha);
+	//vec2 debugVelocity = ndcVelocity * 250.0 + 0.5;
+	outFragColor = vec4(color, 1.0);
 }

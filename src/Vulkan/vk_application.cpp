@@ -718,6 +718,14 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     _computeSystem.AddPass(std::move(iblPass));
     _postProcessSystem.AddPass(std::make_unique<ColorCorrectionComputePass>(_init, colorCorrectionInfo.name));
     _postProcessSystem.AddPass(std::make_unique<TonemapComputePass>(_init, tonMapInfo.name));
+
+    std::string path = "../Data/Panoramic/Sky.hdr";
+    auto loadedTextureOpt = SkyBoxUpload(path, _init, _textureManager);
+
+    if (loadedTextureOpt.has_value()){
+        _renderSystem.UpdateSkyBoxTexture(loadedTextureOpt.value(), _textureManager, _computeSystem);
+    }
+
 }
 
 void VK_APPLICATION::VulkanApplication::init_commands(){
@@ -800,9 +808,7 @@ VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& 
     sceneData.proj[1][1] *= -1.0f;
 
     // proj * view
-    sceneData.viewproj = sceneData.proj * sceneData.view;
-    sceneData.viewProjNonJittered = sceneData.viewproj;
-    sceneData.prevViewProj = sceneData.viewproj;
+    _TAA.Update(sceneData);
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // КАСКАДЫ ТЕНЕЙ
     _lightManager->UpdateCascades(sceneData.view, fov, aspect, cNear, cFar, sceneData.sunlightDirection);

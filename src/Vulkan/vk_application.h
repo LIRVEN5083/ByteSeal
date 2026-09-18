@@ -67,6 +67,7 @@ namespace VK_APPLICATION {
 
         std::unique_ptr<Scene> _activeScene;
         std::unique_ptr<LightManager> _lightManager;
+        TAA _TAA{_init};
         VK_GUI::GUI _gui;
 
         void renderLoop();
