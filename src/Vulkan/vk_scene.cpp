@@ -270,12 +270,12 @@ void Scene::CullingAndSubmit(RenderSystem& renderSystem, PipelineManager& pipeli
         if (entity.hasTransformSlot) {
             for (size_t i = 0; i < model.meshNodes.size(); ++i) {
                 uint32_t nodeSlot = entity.transformSlot + static_cast<uint32_t>(i);
+                // Берем чистую локальную матрицу из ассета
+                glm::mat4 nodeLocal = model.meshNodes[i]->localTransform;
+                glm::mat4 nodeCurrentWorld = entityWorldMatrix * nodeLocal;
+                glm::mat4 nodePrevWorld = entityPrevWorldMatrix * nodeLocal;
 
-                transformManager.UpdateTransform(
-                    nodeSlot,
-                    model.meshNodes[i]->worldTransform,     // Честная текущая матрица детали
-                    model.meshNodes[i]->prevWorldTransform    // Честная прошлая матрица детали
-                );
+                transformManager.UpdateTransform(nodeSlot, nodeCurrentWorld, nodePrevWorld);
             }
         }
 
