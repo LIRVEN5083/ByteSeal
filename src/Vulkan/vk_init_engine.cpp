@@ -400,8 +400,8 @@ VK_INIT_ENGINE::VulkanInitEngine::VulkanInitEngine(bool Validation_layers){
     SDL_Vulkan_CreateSurface(ready_init._window, this->ready_init._instance, nullptr, &this->ready_init._surface);
 
     VkPhysicalDeviceVulkan13Features features{ .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES };
-    features.dynamicRendering = true;
-    features.synchronization2 = true;
+    features.dynamicRendering = VK_TRUE;
+    features.synchronization2 = VK_TRUE;
     features.shaderDemoteToHelperInvocation = VK_TRUE;
 
     VkPhysicalDeviceVulkan12Features features12{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES };
@@ -417,6 +417,7 @@ VK_INIT_ENGINE::VulkanInitEngine::VulkanInitEngine(bool Validation_layers){
     baseFeatures.samplerAnisotropy = VK_TRUE;
     baseFeatures.geometryShader = VK_TRUE;
     baseFeatures.shaderInt64 = VK_TRUE;
+    baseFeatures.independentBlend = VK_TRUE;
 
     vkb::PhysicalDeviceSelector selector{ vkb_inst };
     selector.set_minimum_version(1, 3)

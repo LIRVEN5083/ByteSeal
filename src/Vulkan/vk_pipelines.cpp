@@ -156,7 +156,16 @@ VkPipeline PipelineBuilder::build_pipeline(VkDevice device){
         _renderInfo.colorAttachmentCount = static_cast<uint32_t>(_colorAttachmentFormats.size());
         _renderInfo.pColorAttachmentFormats = _colorAttachmentFormats.data();
 
-        blendAttachments.resize(_colorAttachmentFormats.size(), _colorBlendAttachment);
+        blendAttachments.push_back(_colorBlendAttachment);
+
+        VkPipelineColorBlendAttachmentState noBlendAttachment = {};
+        noBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                                           VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+        noBlendAttachment.blendEnable = VK_FALSE; // Скорость НЕЛЬЗЯ блендить
+
+        for (size_t i = 1; i < _colorAttachmentFormats.size(); ++i) {
+            blendAttachments.push_back(noBlendAttachment);
+        }
 
         colorBlending.attachmentCount = static_cast<uint32_t>(blendAttachments.size());
         colorBlending.pAttachments = blendAttachments.data();
