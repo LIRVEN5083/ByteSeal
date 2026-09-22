@@ -2,10 +2,15 @@
 #extension GL_EXT_nonuniform_qualifier : require
 layout(local_size_x = 16, local_size_y = 16) in;
 
+// Тут хранятся картинки рендера
 layout(set = 1, binding = 4, rgba16f) uniform image2D globalScreenImages[];
 
-const uint CURRENT_COLOR_IDX = 0;
-const uint VELOCITY_IDX      = 2;
+const uint CURRENT_COLOR_IDX    = 0;
+const uint DEPTH_IDX            = 1;
+const uint VELOCITY_IDX         = 2;
+const uint NORMAL_IDX           = 3;
+const uint HISTORY_0_IDX        = 4;
+const uint HISTORY_1_IDX        = 5;
 
 layout(push_constant) uniform Constants {
     uint frameIndex;
@@ -14,18 +19,5 @@ layout(push_constant) uniform Constants {
 } pc;
 
 void main() {
-    ivec2 pixelCoord = ivec2(gl_GlobalInvocationID.xy);
     
-    if (pixelCoord.x >= int(pc.screenWidth) || pixelCoord.y >= int(pc.screenHeight)) return;
-
-    vec2 velocity = imageLoad(globalScreenImages[VELOCITY_IDX], pixelCoord).rg;
-    if (isnan(velocity.x) || isnan(velocity.y)) velocity = vec2(0.0);
-
-    vec3 debugColor = vec3(0.0);
-    
-    debugColor.r = abs(velocity.x) * 50.0;
-    debugColor.g = abs(velocity.y) * 50.0;
-    debugColor.b = 0.0; 
-
-    imageStore(globalScreenImages[CURRENT_COLOR_IDX], pixelCoord, vec4(debugColor, 1.0));
 }

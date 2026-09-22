@@ -731,7 +731,7 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     _postProcessSystem.AddPass(std::make_unique<ColorCorrectionComputePass>(_init, colorCorrectionInfo.name));
     _postProcessSystem.AddPass(std::make_unique<TonemapComputePass>(_init, tonMapInfo.name));
 
-    //_postProcessSystem.SetPassEnabled(ComputePassType::TAA, false);
+    _postProcessSystem.SetPassEnabled(ComputePassType::TAA, false);
 
     std::string path = "../Data/Panoramic/Sky.hdr";
     auto loadedTextureOpt = SkyBoxUpload(path, _init, _textureManager);
