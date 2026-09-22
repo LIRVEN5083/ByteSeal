@@ -228,7 +228,7 @@ public:
         }
     }
 
-    void Update(GPUSceneData& sceneData);
+    void Update(GPUSceneData& sceneData, int engineFrameNumber);
 
     glm::vec2 GetCurrentJitterPixels() const {return m_jitterSamples[m_frameIndex];}
 
@@ -238,4 +238,5 @@ private:
     VK_INIT_ENGINE::_inited_engine& _init;
     uint32_t m_frameIndex;
     std::vector<glm::vec2> m_jitterSamples;
+    alignas(16) glm::mat4 m_prevViewProjNonJittered = glm::mat4(1.0f);
 };

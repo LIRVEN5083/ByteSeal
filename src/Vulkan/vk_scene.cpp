@@ -657,30 +657,25 @@ SkyCoefficients LightManager::ComputeHosekWilkieParams(float turbidity, const gl
     return coeffs;
 }
 
-void TAA::Update(GPUSceneData& sceneData){
-    sceneData.prevViewProj = sceneData.viewProjNonJittered;
+void TAA::Update(GPUSceneData& sceneData, int engineFrameNumber) {
+    sceneData.prevViewProj = m_prevViewProjNonJittered;
 
-    // Считаем новую чистую (без джиттера) матрицу viewproj
     sceneData.viewproj = sceneData.proj * sceneData.view;
     sceneData.viewProjNonJittered = sceneData.viewproj;
 
-    // Рассчитываем субпиксельное смещение кадра (Jitter)
-    glm::vec2 jitter = m_jitterSamples[m_frameIndex];
+    m_prevViewProjNonJittered = sceneData.viewProjNonJittered;
 
-    // Масштабируем сдвиг под размер одного пикселя в NDC пространстве.
-    // Ширина NDC = 2.0, Высота NDC = 2.0. Делим на разрешение экрана:
+    uint32_t jitterIndex = static_cast<uint32_t>(engineFrameNumber % 16);
+    glm::vec2 jitter = m_jitterSamples[jitterIndex];
+
     float jitterX = (jitter.x * 2.0f) / static_cast<float>(_init._swapchainExtent.width);
-    float jitterY = (jitter.y * 2.0f) / static_cast<float>(_init._swapchainExtent.height);
+    float jitterY = (-jitter.y * 2.0f) / static_cast<float>(_init._swapchainExtent.height);
 
-    // Применяем джиттер к матрице ПРОЕКЦИИ (модифицируем основную sceneData.viewproj)
-    // Сдвиг в NDC делается простым смещением в матрице проекции (строка 2, колонки 0 и 1)
     glm::mat4 jitteredProj = sceneData.proj;
-    jitteredProj[2][0] += jitterX;
-    jitteredProj[2][1] += jitterY;
+    jitteredProj[3][0] += jitterX;
+    jitteredProj[3][1] += jitterY;
 
     sceneData.viewproj = jitteredProj * sceneData.view;
-
-    m_frameIndex = (m_frameIndex + 1) % 16;
 }
 
 float TAA::CalculateHalton(int index, int base){

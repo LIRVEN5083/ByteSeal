@@ -9,6 +9,7 @@ struct ComputeContext {
     VkCommandBuffer cmd;
     VkDescriptorSet bindlessSet;
     PipelineManager* pipelineManager;
+    int frameNumber;
 };
 
 class ComputePass {
@@ -187,7 +188,9 @@ public:
 
     ComputePass* AddPass(std::unique_ptr<ComputePass> pass);
 
-    void Execute(VkCommandBuffer mainCmd, VkDescriptorSet bindlessSet, PipelineManager& pipelineManager);
+    void Execute(VkCommandBuffer mainCmd, VkDescriptorSet bindlessSet, PipelineManager& pipelineManager, int _frameNumber);
+
+    void SetPassEnabled(ComputePassType type, bool enabled);
 
 private:
     VK_INIT_ENGINE::_inited_engine& _init;

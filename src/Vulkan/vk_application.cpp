@@ -200,7 +200,7 @@ void VK_APPLICATION::VulkanApplication::renderLoop(){
     VkSemaphore waitCompute = _computeSystem.GetComputeSemaphore();
     _renderSystem.Draw(cmd, _drawExtent, globalDescriptor, bindlessSet, *_pipelineManager, *_lightManager);
     // ПОСТ ЭФФЕКТЫ!!!
-    _postProcessSystem.Execute(cmd, bindlessSet, *_pipelineManager);
+    _postProcessSystem.Execute(cmd, bindlessSet, *_pipelineManager, _frameNumber);
     // Рисуем интерфейс
     _gui.draw_imgui(_init, cmd, _drawExtent);
 
@@ -731,13 +731,14 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     _postProcessSystem.AddPass(std::make_unique<ColorCorrectionComputePass>(_init, colorCorrectionInfo.name));
     _postProcessSystem.AddPass(std::make_unique<TonemapComputePass>(_init, tonMapInfo.name));
 
+    _postProcessSystem.SetPassEnabled(ComputePassType::TAA, false);
+
     std::string path = "../Data/Panoramic/Sky.hdr";
     auto loadedTextureOpt = SkyBoxUpload(path, _init, _textureManager);
 
     if (loadedTextureOpt.has_value()){
         _renderSystem.UpdateSkyBoxTexture(loadedTextureOpt.value(), _textureManager, _computeSystem);
     }
-
 }
 
 void VK_APPLICATION::VulkanApplication::init_commands(){
@@ -787,30 +788,6 @@ VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& 
     glm::vec3 target = eye + _camera.front;
     sceneData.view = glm::lookAt(eye, target, up);
 
-
-    /*
-    glm::vec3 lightDir;
-    const glm::vec3 START_LIGHT_DIR = glm::normalize(glm::vec3(0.15f, 0.2f, 0.95f));
-    const float rotationSpeed = 0.5f;
-
-    auto now = std::chrono::high_resolution_clock::now();
-    float totalTime = std::chrono::duration<float>(now - _delta.startTime).count();
-
-    float totalAngle = rotationSpeed * totalTime;
-
-    lightDir = glm::rotateY(START_LIGHT_DIR, totalAngle);
-    lightDir = glm::normalize(lightDir);
-    lightDir = START_LIGHT_DIR;
-    float sunPower = 8.5f; // Интенсивность для PBR
-
-    sceneData.sunlightDirection = glm::vec4( lightDir, sunPower);
-
-
-    sceneData.sunlightColor = glm::vec4(1.0f, 0.98f, 0.92f, 1.0f);
-
-    sceneData.ambientColor = glm::vec4(0.3f, 0.42f, 0.58f, 1.0f);
-    */
-
     float aspect = (float)_init._windowExtent.width / (float)_init._windowExtent.height;
     float fov = glm::radians(70.0f);
     float cNear = 0.1f;
@@ -820,7 +797,7 @@ VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& 
     sceneData.proj[1][1] *= -1.0f;
 
     // proj * view
-    _TAA.Update(sceneData);
+    _TAA.Update(sceneData, _frameNumber);
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // КАСКАДЫ ТЕНЕЙ
     _lightManager->UpdateCascades(sceneData.view, fov, aspect, cNear, cFar, sceneData.sunlightDirection);

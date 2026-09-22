@@ -23,18 +23,6 @@ void ColorCorrectionComputePass::Execute(const ComputeContext& ctx){
     uint32_t groupCountY = (_init._windowExtent.height + 15) / 16;
 
     vkCmdDispatch(ctx.cmd, groupCountX, groupCountY, 1);
-
-    VkMemoryBarrier2 computeBarrier{ VK_STRUCTURE_TYPE_MEMORY_BARRIER_2 };
-    computeBarrier.srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
-    computeBarrier.srcAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT;
-    computeBarrier.dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
-    computeBarrier.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
-
-    VkDependencyInfo dependencyInfo{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
-    dependencyInfo.memoryBarrierCount = 1;
-    dependencyInfo.pMemoryBarriers = &computeBarrier;
-
-    vkCmdPipelineBarrier2(ctx.cmd, &dependencyInfo);
 }
 
 void TonemapComputePass::Execute(const ComputeContext& ctx){
@@ -59,23 +47,11 @@ void TonemapComputePass::Execute(const ComputeContext& ctx){
     uint32_t groupCountY = (_init._windowExtent.height + 15) / 16;
 
     vkCmdDispatch(ctx.cmd, groupCountX, groupCountY, 1);
-
-    vkutil::transition_image(ctx.cmd, _init._drawImage.image,
-                             VK_IMAGE_LAYOUT_GENERAL,
-                             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 }
 
 void TAAComputePass::Execute(const ComputeContext& ctx){
-    RealPipeline* activePipeline = ctx.pipelineManager->GetPipelineByName(_pipelineName);
+     RealPipeline* activePipeline = ctx.pipelineManager->GetPipelineByName(_pipelineName);
     if (!activePipeline) return;
-
-    vkutil::transition_image(ctx.cmd, _init._drawImage.image,
-                         VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                         VK_IMAGE_LAYOUT_GENERAL);
-
-    vkutil::transition_image(ctx.cmd, _init._velocityImage.image,
-                             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                             VK_IMAGE_LAYOUT_GENERAL);
 
     vkCmdBindPipeline(ctx.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, activePipeline->pipeline);
     vkCmdBindDescriptorSets(ctx.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, activePipeline->layout,
@@ -85,11 +61,10 @@ void TAAComputePass::Execute(const ComputeContext& ctx){
         uint32_t frameIndex;
         float screenWidth;
         float screenHeight;
-        float padding; // Выравнивание по 16 байт для надежности в GLSL
+        float padding;
     } push;
 
-    // Передаем 0 или 1, чтобы шейдер внутри себя знал, какой буфер истории прошлый, а какой текущий
-    push.frameIndex   = _frameCounter % 2;
+    push.frameIndex   = static_cast<uint32_t>(ctx.frameNumber % 2);
     push.screenWidth  = static_cast<float>(_init._windowExtent.width);
     push.screenHeight = static_cast<float>(_init._windowExtent.height);
 
@@ -100,23 +75,7 @@ void TAAComputePass::Execute(const ComputeContext& ctx){
     uint32_t groupCountX = (_init._windowExtent.width + 15) / 16;
     uint32_t groupCountY = (_init._windowExtent.height + 15) / 16;
 
-    // Сам подсчет
     vkCmdDispatch(ctx.cmd, groupCountX, groupCountY, 1);
-
-    VkMemoryBarrier2 computeBarrier{ VK_STRUCTURE_TYPE_MEMORY_BARRIER_2 };
-    computeBarrier.srcStageMask  = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
-    computeBarrier.srcAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT;
-    computeBarrier.dstStageMask  = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
-    computeBarrier.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
-
-    VkDependencyInfo dependencyInfo{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
-    dependencyInfo.memoryBarrierCount = 1;
-    dependencyInfo.pMemoryBarriers    = &computeBarrier;
-
-    vkCmdPipelineBarrier2(ctx.cmd, &dependencyInfo);
-
-    // Инкрементируем счетчик, чтобы на следующем кадре буферы истории поменялись ролями
-    _frameCounter++;
 }
 
 void IBLProcessorComputePass::Execute(const ComputeContext& ctx){
@@ -373,14 +332,95 @@ ComputePass* PostProcessComputeSystem::AddPass(std::unique_ptr<ComputePass> pass
     return rawPassPtr;
 }
 
-void PostProcessComputeSystem::Execute(VkCommandBuffer mainCmd, VkDescriptorSet bindlessSet, PipelineManager& pipelineManager){
-    ComputeContext ctx{ mainCmd, bindlessSet, &pipelineManager };
+void PostProcessComputeSystem::Execute(VkCommandBuffer mainCmd, VkDescriptorSet bindlessSet, PipelineManager& pipelineManager, int _frameNumber){
+    ComputeContext ctx{ mainCmd, bindlessSet, &pipelineManager, _frameNumber };
 
+    {
+        VkImageMemoryBarrier2 inputsBarriers[2] = {};
+
+        // DrawImage: COLOR_ATTACHMENT_WRITE -> COMPUTE READ/WRITE
+        inputsBarriers[0].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+        inputsBarriers[0].srcStageMask  = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR;
+        inputsBarriers[0].srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+        inputsBarriers[0].dstStageMask  = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+        inputsBarriers[0].dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT;
+        inputsBarriers[0].oldLayout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        inputsBarriers[0].newLayout     = VK_IMAGE_LAYOUT_GENERAL;
+        inputsBarriers[0].image         = _init._drawImage.image;
+        inputsBarriers[0].subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+
+        // VelocityImage: COLOR_ATTACHMENT_WRITE -> COMPUTE READ
+        inputsBarriers[1].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+        inputsBarriers[1].srcStageMask  = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR;
+        inputsBarriers[1].srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+        inputsBarriers[1].dstStageMask  = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+        inputsBarriers[1].dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
+        inputsBarriers[1].oldLayout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        inputsBarriers[1].newLayout     = VK_IMAGE_LAYOUT_GENERAL;
+        inputsBarriers[1].image         = _init._velocityImage.image;
+        inputsBarriers[1].subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+
+        VkDependencyInfo depInfo{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
+        depInfo.imageMemoryBarrierCount = 2;
+        depInfo.pImageMemoryBarriers    = inputsBarriers;
+        vkCmdPipelineBarrier2(mainCmd, &depInfo);
+    }
+
+    for (size_t i = 0; i < _passes.size(); ++i) {
+        if (!_passes.at(i)->IsEnabled()) { continue; }
+
+        _passes.at(i)->Execute(ctx);
+
+        bool isLastActive = true;
+        for (size_t j = i + 1; j < _passes.size(); ++j) {
+            if (_passes[j]->IsEnabled()) {
+                isLastActive = false;
+                break;
+            }
+        }
+
+        if (!isLastActive) {
+            VkImageMemoryBarrier2 computeToComputeBarrier{ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };
+            computeToComputeBarrier.srcStageMask        = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+            computeToComputeBarrier.srcAccessMask       = VK_ACCESS_2_SHADER_WRITE_BIT;
+            computeToComputeBarrier.dstStageMask        = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+            computeToComputeBarrier.dstAccessMask       = VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT;
+            computeToComputeBarrier.oldLayout           = VK_IMAGE_LAYOUT_GENERAL;
+            computeToComputeBarrier.newLayout           = VK_IMAGE_LAYOUT_GENERAL;
+            computeToComputeBarrier.image               = _init._drawImage.image;
+            computeToComputeBarrier.subresourceRange    = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+
+            VkDependencyInfo depInfo{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
+            depInfo.imageMemoryBarrierCount = 1;
+            depInfo.pImageMemoryBarriers    = &computeToComputeBarrier;
+            vkCmdPipelineBarrier2(mainCmd, &depInfo);
+        }
+    }
+
+    {
+        VkImageMemoryBarrier2 outputBarrier{ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };
+        outputBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+        outputBarrier.srcStageMask        = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+        outputBarrier.srcAccessMask       = VK_ACCESS_2_SHADER_WRITE_BIT;
+        outputBarrier.dstStageMask        = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR;
+        outputBarrier.dstAccessMask       = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+        outputBarrier.oldLayout           = VK_IMAGE_LAYOUT_GENERAL;
+        outputBarrier.newLayout           = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        outputBarrier.image               = _init._drawImage.image;
+        outputBarrier.subresourceRange    = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+
+        VkDependencyInfo depInfo{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
+        depInfo.imageMemoryBarrierCount = 1;
+        depInfo.pImageMemoryBarriers    = &outputBarrier;
+        vkCmdPipelineBarrier2(mainCmd, &depInfo);
+    }
+}
+
+void PostProcessComputeSystem::SetPassEnabled(ComputePassType type, bool enabled){
     for (auto& pass : _passes) {
-        // Если проход выключен — скипаем к чертям
-        if (!pass->IsEnabled()) { continue; }
-
-        // Фигачим пасс
-        pass->Execute(ctx);
+        if (pass->GetType() == type) {
+            pass->SetEnabled(enabled);
+            return;
+        }
     }
 }
