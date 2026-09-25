@@ -28,6 +28,10 @@ void CONTROLLER::update_time(Movement& _movement, Delta& _delta){
 }
 
 void CONTROLLER::made_move(Movement& _movement, Camera& _camera, Delta& _delta){
+    static bool itsFirst = false;
+    if (!itsFirst){
+        _camera.isCameraActive = true;
+    }
     if (_camera.isCameraActive) {
         float sensitivity = 0.05f;
         _camera.yaw   -= _camera.mouseDeltaX * sensitivity;
@@ -83,6 +87,10 @@ void CONTROLLER::made_move(Movement& _movement, Camera& _camera, Delta& _delta){
         }
         if (keyboardState[SDL_SCANCODE_Q]) {
             CONTROLLER::DecreaseSpeed(_movement.speed);
+        }
+        if (!itsFirst){
+            _camera.isCameraActive = false;
+            itsFirst = true;
         }
     }
 }

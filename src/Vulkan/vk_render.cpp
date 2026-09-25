@@ -497,7 +497,6 @@ void RenderSystem::UpdateSkyBoxTexture(GPUTexture& newTex, TextureManager& textu
 
             if (skyboxPass) {
                 skyboxPass->SetPanoramicTexture(newTex);
-                skyboxPass->SetSkyboxType(SkyBoxType::Panoramic);
 
                 //textureManager.UpdateIBLDescriptorSets();
 
