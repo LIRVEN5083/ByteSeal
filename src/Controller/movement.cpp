@@ -29,6 +29,28 @@ void CONTROLLER::update_time(Movement& _movement, Delta& _delta){
 
 void CONTROLLER::made_move(Movement& _movement, Camera& _camera, Delta& _delta){
     if (_camera.isCameraActive) {
+        float sensitivity = 0.05f;
+        _camera.yaw   -= _camera.mouseDeltaX * sensitivity;
+        _camera.pitch += _camera.mouseDeltaY * sensitivity;
+
+        if (_camera.pitch > 89.0f)  _camera.pitch = 89.0f;
+        if (_camera.pitch < -89.0f) _camera.pitch = -89.0f;
+
+        _camera.mouseDeltaX = 0.0f;
+        _camera.mouseDeltaY = 0.0f;
+
+        _camera.front.x = cos(glm::radians(_camera.yaw)) * cos(glm::radians(_camera.pitch));
+        _camera.front.y = sin(glm::radians(_camera.yaw)) * cos(glm::radians(_camera.pitch));
+        _camera.front.z = sin(glm::radians(_camera.pitch));
+        _camera.front = glm::normalize(_camera.front);
+
+        _camera.Wfront.x = cos(glm::radians(_camera.yaw));
+        _camera.Wfront.y = sin(glm::radians(_camera.yaw));
+        _camera.Wfront.z = 0.0f;
+
+        glm::vec3 up = {0.0f, 0.0f, 1.0f};
+        _camera.right = glm::normalize(glm::cross(_camera.Wfront, up));
+
         //std::cout<<"X: "<< _movement.valueX <<"\t"<<"Y: "<<_movement.valueY<<"\t"<<"Z: "<<_movement.valueZ<<"\n";
         int numkeys;
         const bool* keyboardState = SDL_GetKeyboardState(&numkeys);

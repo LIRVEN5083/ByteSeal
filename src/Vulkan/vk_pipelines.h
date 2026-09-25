@@ -48,6 +48,7 @@ public:
     VkPipelineDepthStencilStateCreateInfo _depthStencil;
     VkPipelineRenderingCreateInfo _renderInfo;
     VkFormat _colorAttachmentformat;
+    std::vector<VkFormat> _colorAttachmentFormats;
 
     // Базовый конструктор инициируем пустыми полями
     PipelineBuilder(){ clear(); }
@@ -75,6 +76,8 @@ public:
     void disable_blending();
 
     void set_color_attachment_format(VkFormat format);
+
+    void set_color_attachment_formats_multi(const std::vector<VkFormat>& formats);
 
     void set_depth_format(VkFormat format);
 
@@ -113,8 +116,6 @@ struct PipelineCreateInfo {
     RenderPassType passType;
     // Enum class
     PipelineOpacity opacity;
-    // MSAA
-    bool useMSAA{ false };
 
     // Shaders
     std::string vertexShaderPath;
@@ -141,13 +142,13 @@ struct RealPipeline {
 
     VkFormat colorFormat{ VK_FORMAT_UNDEFINED };
     VkFormat depthFormat{ VK_FORMAT_UNDEFINED };
-    VkSampleCountFlagBits maxSamples{ VK_SAMPLE_COUNT_1_BIT };
+
     bool isCompute = false;
 };
 
 class PipelineManager{
 public:
-    PipelineManager(VkDevice device) : _device(device){}
+    PipelineManager(VkDevice device, bool Debug) : _device(device), _debugAftermath(Debug){};
 
     void InitCommonLayout(VkDescriptorSetLayout globalSetLayout, VkDescriptorSetLayout bindlessSetLayout);
 
@@ -155,12 +156,12 @@ public:
 
     RealPipeline* CreatePipelineFromMemory(const PipelineCreateInfo& info, const std::vector<uint32_t>& compCode);
 
-    RealPipeline* CreatePipeline(const PipelineCreateInfo& info, VkFormat colorFormat, VkFormat depthFormat, VkSampleCountFlagBits maxSamples);
+    RealPipeline* CreatePipeline(const PipelineCreateInfo& info, VkFormat colorFormat, VkFormat depthFormat);
 
     RealPipeline* CreatePipelineFromMemory(const PipelineCreateInfo& info,
                                            const std::vector<uint32_t>& vertCode,
                                            const std::vector<uint32_t>& fragCode,
-                                           VkFormat colorFormat, VkFormat depthFormat, VkSampleCountFlagBits maxSamples);
+                                           VkFormat colorFormat, VkFormat depthFormat);
 
     RealPipeline* GetPipeline(RenderPassType passType, PipelineOpacity opacity);
 
@@ -179,6 +180,7 @@ public:
 
 private:
     VkDevice _device;
+    bool _debugAftermath;
     VkPipelineLayout _commonLayout{VK_NULL_HANDLE};
     VkPipelineLayout _shadowLayout{VK_NULL_HANDLE};
 

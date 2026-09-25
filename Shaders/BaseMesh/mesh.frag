@@ -1,6 +1,7 @@
 #version 460
 #extension GL_EXT_nonuniform_qualifier : require
 #extension GL_EXT_buffer_reference : require
+#extension GL_ARB_gpu_shader_int64 : require
 
 layout (location = 0) in vec4 inColor;
 layout (location = 1) in vec2 inUV;
@@ -8,12 +9,22 @@ layout (location = 2) in vec3 inNormal;
 layout (location = 3) in vec3 inWorldPos;
 layout (location = 4) in vec4 inTangent;
 
-layout (location = 0) out vec4 outFragColor;
+layout (location = 5) in vec4 inCurrentPos;
+layout (location = 6) in vec4 inPrevPos;
+layout (location = 7) in vec4 inScreenPosNonJittered;
+
+layout (location = 0) out vec4 outFragColor; // _drawImage
+layout (location = 1) out vec2 outVelocity;  // Векторы движения пикселя (_velocityImage)
+layout (location = 2) out vec4 outNormal;    // Закодированные нормали экрана (_normalImage)
 
 layout(set = 0, binding = 0) uniform SceneData {
 	mat4 view;
 	mat4 proj;
 	mat4 viewproj;
+
+	// Для TAA
+	mat4 viewProjNonJittered; 		// Текущая чистая камера
+	mat4 prevViewProjJittered;      // Прошлая камера
 
 	// Направленный источник света
 	vec4 ambientColor;
@@ -26,25 +37,24 @@ layout(set = 0, binding = 0) uniform SceneData {
 } scene;
 
 layout(set = 1, binding = 0) uniform sampler2D globalTextures[];
-
-// Для каскадов
 layout(set = 1, binding = 1) uniform sampler2DArray globalTextureArray;
-
 layout(set = 1, binding = 3, rgba16f) uniform readonly imageCube iblStorageMaps[];
 
 struct Vertex {
+
 	vec3 position; float uv_x;
 	vec3 normal;   float uv_y;
 	vec4 color;
 	vec4 tangent;
 };
+
 layout(buffer_reference, std430) readonly buffer VertexBuffer {
 	Vertex vertices[];
 };
 
-layout( push_constant ) uniform constants
-{
-	mat4 worldMatrix;
+layout( push_constant ) uniform constants{
+
+	uint64_t matrixAddress;
 	VertexBuffer vertexBuffer;
 
 	uint colorTextureID;
@@ -52,10 +62,8 @@ layout( push_constant ) uniform constants
 	uint normalTextureID;
 	uint occlusionTextureID;
 
-	vec2 padding;
-
 	vec4 baseColorFactor;
-	vec4 materialFactors;
+	vec4 materialFactors; // x: roughness, y: metallic, z: emissive, w: padding
 } PushConstants;
 
 const float PI = 3.14159265359;
@@ -155,12 +163,21 @@ void main()
 {
 	// Получение Альбедо
 	uint texID = nonuniformEXT(PushConstants.colorTextureID);
-	vec4 texColor = texture(globalTextures[texID], inUV);
+
+	vec2 cleanNDC = inScreenPosNonJittered.xy / inScreenPosNonJittered.w;
+    vec2 cleanScreenUV = cleanNDC * 0.5 + 0.5;
+
+	vec2 dx = dFdx(inUV) * (dFdx(cleanScreenUV).x != 0.0 ? dFdx(inUV) / dFdx(cleanScreenUV).x : vec2(1.0));
+
+	vec2 texDx = dFdx(inUV);
+    vec2 texDy = dFdy(inUV);
+
+	vec4 texColor = textureGrad(globalTextures[texID], inUV, texDx, texDy);
 	vec4 finalAlbedo = inColor * texColor * PushConstants.baseColorFactor;
 
-	if (finalAlbedo.a < 0.01f) {
-		discard;
-	}
+    if (finalAlbedo.a < 0.01f) {
+        discard;
+    }
 
 	// Переводим альбедо из sRGB в Linear Space
 	vec3 albedo = pow(finalAlbedo.rgb, vec3(2.2));
@@ -186,8 +203,8 @@ void main()
 		metallic  = mrSample.b * metallicFactor;
 	}
 
-// Защита от артефактов (слишком зеркальные поверхности могут ломать PBR блики)
-roughness = max(roughness, 0.05f);
+	// Защита от артефактов (слишком зеркальные поверхности могут ломать PBR блики)
+	roughness = max(roughness, 0.05f);
 
 	// --ИНТЕГРАЦИЯ КАРТ НОРМАЛЕЙ--
 	vec3 normal_vertex = normalize(inNormal);
@@ -374,12 +391,6 @@ roughness = max(roughness, 0.05f);
 	// Финальный цвет (Свет + Тени)
 	vec3 color = iblAmbient + finalDirectLight;
 
-	// Шобы цвета подфиксить
-	float exposure = 0.85; 
-	color *= exposure;
-	color = ACESFilm(color);
-	color = pow(color, vec3(1.0 / 2.2));
-
 	// --GLASS--
 	float finalAlpha = finalAlbedo.a;
 
@@ -393,5 +404,28 @@ roughness = max(roughness, 0.05f);
 		finalAlpha = clamp(finalAlpha, 0.0f, 0.95f);
 	}
 
+	//  --Векторы движения и нормали--
+	float safeWCurrent = max(abs(inCurrentPos.w), 0.0001);
+	float safeWPrev    = max(abs(inPrevPos.w), 0.0001);
+
+	vec2 currentNDC = inCurrentPos.xy / safeWCurrent;
+	vec2 prevNDC    = inPrevPos.xy / safeWPrev;
+
+	// Считаем чистую скорость пикселя на экране
+	vec2 ndcVelocity = currentNDC - prevNDC;
+	
+	// Переводим в UV
+	vec2 uvVelocity = vec2(ndcVelocity.x, ndcVelocity.y) * 0.5;
+
+	float maxVelocityLength = 0.1;
+	if (length(uvVelocity) > maxVelocityLength) {
+		uvVelocity = normalize(uvVelocity) * maxVelocityLength;
+	}
+
+	outVelocity = uvVelocity;
+
+	outNormal = vec4(N * 0.5 + 0.5, 1.0);
+	//-----------------------------------------------------------------------------
+	//vec2 debugVelocity = ndcVelocity * 250.0 + 0.5;
 	outFragColor = vec4(color, finalAlpha);
 }

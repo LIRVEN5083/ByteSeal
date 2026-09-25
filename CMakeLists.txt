@@ -52,6 +52,7 @@ add_executable(${PROJECT_NAME}
         src/Vulkan/vk_render.cpp
         src/Vulkan/vk_compute.cpp
         src/Utils/Light.cpp
+        src/Utils/NVidiaNsightAftermath.cpp
 
     src/external/vk-bootstrap/src/VkBootstrap.h
     src/external/vk-bootstrap/src/VkBootstrap.cpp
@@ -193,4 +194,37 @@ if(MSVC)
 elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU")
     # Если сборка идет через чистый Clang или GCC
     target_compile_options(${PROJECT_NAME} PRIVATE "-finput-charset=utf-8" "-fexec-charset=utf-8")
+endif()
+
+# Интеграция Nvidia Nsight Aftermath SDK
+if(WIN32)
+    set(NSIGHT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/external/Nsight/WIN32")
+
+    set(NSIGHT_LIB "${NSIGHT_DIR}/lib/x64/GFSDK_Aftermath_Lib.x64.lib")
+    set(NSIGHT_DLL "${NSIGHT_DIR}/lib/x64/GFSDK_Aftermath_Lib.x64.dll")
+
+    target_include_directories(${PROJECT_NAME} PUBLIC "${NSIGHT_DIR}/include")
+    target_link_libraries(${PROJECT_NAME} "${NSIGHT_LIB}")
+
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${NSIGHT_DLL}"
+        $<TARGET_FILE_DIR:${PROJECT_NAME}>
+    )
+
+elseif(UNIX AND NOT APPLE)
+    set(NSIGHT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/external/Nsight/UNIX")
+
+    set(NSIGHT_LIB "${NSIGHT_DIR}/lib/x64/libGFSDK_Aftermath_Lib.x64.so") 
+
+    target_include_directories(${PROJECT_NAME} PUBLIC "${NSIGHT_DIR}/include")
+    target_link_libraries(${PROJECT_NAME} "${NSIGHT_LIB}")
+    
+    set_target_properties(${PROJECT_NAME} PROPERTIES LINK_FLAGS "-Wl,-rpath,'$ORIGIN'")
+
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${NSIGHT_LIB}"
+        $<TARGET_FILE_DIR:${PROJECT_NAME}>
+    )
 endif()

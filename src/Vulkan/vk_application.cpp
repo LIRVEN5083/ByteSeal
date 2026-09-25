@@ -13,6 +13,7 @@ void VK_APPLICATION::VulkanApplication::cleanup(){
         _frames[i]._deletionQueue.flush();
     }
 
+    _transformManager.cleanup();
     _lightManager->cleanup();
     _pipelineManager->cleanup();
     _activeScene->DestroyAllEntites();
@@ -50,7 +51,6 @@ void VK_APPLICATION::VulkanApplication::cleanup(){
 void VK_APPLICATION::VulkanApplication::run(){
     init_commands();
     init_descriptors();
-    _maxSamples = vkinit::max_samples(_init);
     init_scene();
     init_render();
 
@@ -78,18 +78,8 @@ void VK_APPLICATION::VulkanApplication::run(){
             }
             if (e.type == SDL_EVENT_MOUSE_MOTION) {
                 if (_camera.isCameraActive){
-                    float xoffset = e.motion.xrel;
-                    float yoffset = -e.motion.yrel; // Инвертируем Y
-
-                    float sensitivity = 0.05f;
-                    xoffset *= sensitivity;
-                    yoffset *= sensitivity;
-
-                    _camera.yaw   -= xoffset;
-                    _camera.pitch += yoffset;
-
-                    if (_camera.pitch > 89.0f)  _camera.pitch = 89.0f;
-                    if (_camera.pitch < -89.0f) _camera.pitch = -89.0f;
+                    _camera.mouseDeltaX += e.motion.xrel;
+                    _camera.mouseDeltaY += -e.motion.yrel; // Инвертируем Y
                 }
             }
 
@@ -123,10 +113,10 @@ void VK_APPLICATION::VulkanApplication::run(){
         }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         _gui.update_imgui(_init, _delta, _camera, _modelManager, _activeScene,  sceneData,
-            *_pipelineManager, _renderSystem, _textureManager,  _computeSystem);
+            *_pipelineManager, _renderSystem, _textureManager,  _computeSystem, _transformManager);
         CONTROLLER::update_time(_movement, _delta);
-        renderLoop();
         CONTROLLER::made_move(_movement, _camera, _delta);
+        renderLoop();
     }
 }
 
@@ -176,9 +166,11 @@ void VK_APPLICATION::VulkanApplication::renderLoop(){
     VkCommandBufferBeginInfo cmdBeginInfo = vkinit::command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
     VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
 
-    vkutil::transition_image(cmd, _init._msaaColorImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-    vkutil::transition_image(cmd, _init._msaaDepthImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL); // Наша 4х глубина
-    vkutil::transition_image(cmd, _init._drawImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL); // Наш 1х resolve-таргет
+    vkutil::transition_image(cmd, _init._drawImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    vkutil::transition_image(cmd, _init._depthImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+
+    vkutil::transition_image(cmd, _init._velocityImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    vkutil::transition_image(cmd, _init._normalImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
     VkDescriptorSet bindlessSet = _textureManager.GetTextureSet();
 
@@ -190,14 +182,18 @@ void VK_APPLICATION::VulkanApplication::renderLoop(){
 
     // Сборка сцены
     glm::vec3 cameraPos = { _movement.valueX, _movement.valueY, _movement.valueZ };
-    _activeScene->CullingAndSubmit(_renderSystem, *_pipelineManager, cameraPos, sceneData.viewproj);
+    _activeScene->CullingAndSubmit(_renderSystem, *_pipelineManager, _transformManager, cameraPos,
+        sceneData.viewproj);
 
     // Отрисовка RenderObject
     _renderSystem.PrepareFrame();
     VkSemaphore waitCompute = _computeSystem.GetComputeSemaphore();
     _renderSystem.Draw(cmd, _drawExtent, globalDescriptor, bindlessSet, *_pipelineManager, *_lightManager);
+    // ПОСТ ЭФФЕКТЫ!!!
+    _postProcessSystem.Execute(cmd, bindlessSet, *_pipelineManager, _frameNumber);
     // Рисуем интерфейс
     _gui.draw_imgui(_init, cmd, _drawExtent);
+
 
     vkutil::transition_image(cmd, _init._drawImage.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
     // Переводим текущую картинку Swapchain в режим приемника копирования
@@ -226,7 +222,6 @@ void VK_APPLICATION::VulkanApplication::renderLoop(){
 
     // Если нихуя нету - то нихуя не ждём
     if (computeSubmitted) {
-        VkSemaphore waitCompute = _computeSystem.GetComputeSemaphore();
         if (waitCompute != VK_NULL_HANDLE) {
             waitInfos.push_back(vkinit::semaphore_submit_info(
                 VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT_KHR,
@@ -276,7 +271,7 @@ void VK_APPLICATION::VulkanApplication::renderLoop(){
 }
 
 void VK_APPLICATION::VulkanApplication::resize_swapchain(){
-    vkDeviceWaitIdle(_init._device);
+   vkDeviceWaitIdle(_init._device);
 
     int w, h;
     SDL_GetWindowSizeInPixels(_init._window, &w, &h);
@@ -309,85 +304,153 @@ void VK_APPLICATION::VulkanApplication::resize_swapchain(){
     rimg_allocinfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
     rimg_allocinfo.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-    // Обычный плоский цвет
     _init._drawImage.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
     _init._drawImage.imageExtent = drawImageExtent;
-    VkImageUsageFlags drawImageUsages = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    VkImageUsageFlags drawImageUsages = VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+                                        VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+                                        VK_IMAGE_USAGE_STORAGE_BIT |
+                                        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
     VkImageCreateInfo rimg_info = vkinit::image_create_info(_init._drawImage.imageFormat, drawImageUsages, drawImageExtent);
     rimg_info.samples = VK_SAMPLE_COUNT_1_BIT;
     vmaCreateImage(_init._allocator, &rimg_info, &rimg_allocinfo, &_init._drawImage.image, &_init._drawImage.allocation, nullptr);
     VkImageViewCreateInfo rview_info = vkinit::imageview_create_info(_init._drawImage.imageFormat, _init._drawImage.image, VK_IMAGE_ASPECT_COLOR_BIT);
     VK_CHECK(vkCreateImageView(_init._device, &rview_info, nullptr, &_init._drawImage.imageView));
-    // Холст MSAA
-    _init._msaaColorImage.imageFormat = _init._drawImage.imageFormat;
-    _init._msaaColorImage.imageExtent = drawImageExtent;
-    VkImageUsageFlags msaaColorUsages = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
-    VkImageCreateInfo msaa_img_info = vkinit::image_create_info(_init._msaaColorImage.imageFormat, msaaColorUsages, drawImageExtent);
-    msaa_img_info.samples = _maxSamples;
-    vmaCreateImage(_init._allocator, &msaa_img_info, &rimg_allocinfo, &_init._msaaColorImage.image, &_init._msaaColorImage.allocation, nullptr);
-    VkImageViewCreateInfo msaa_view_info = vkinit::imageview_create_info(_init._msaaColorImage.imageFormat, _init._msaaColorImage.image, VK_IMAGE_ASPECT_COLOR_BIT);
-    VK_CHECK(vkCreateImageView(_init._device, &msaa_view_info, nullptr, &_init._msaaColorImage.imageView));
-    // Буфер глубины MSAA
-    _init._msaaDepthImage.imageFormat = VK_FORMAT_D32_SFLOAT;
-    _init._msaaDepthImage.imageExtent = drawImageExtent;
-    VkImageUsageFlags depthImageUsages = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
-    VkImageCreateInfo dimg_info = vkinit::image_create_info(_init._msaaDepthImage.imageFormat, depthImageUsages, drawImageExtent);
-    dimg_info.samples = _maxSamples;
 
-    // Аллокация строго в переменные _msaaDepthImage
-    vmaCreateImage(_init._allocator, &dimg_info, &rimg_allocinfo, &_init._msaaDepthImage.image, &_init._msaaDepthImage.allocation, nullptr);
-    VkImageViewCreateInfo dview_info = vkinit::imageview_create_info(_init._msaaDepthImage.imageFormat, _init._msaaDepthImage.image, VK_IMAGE_ASPECT_DEPTH_BIT);
-    VK_CHECK(vkCreateImageView(_init._device, &dview_info, nullptr, &_init._msaaDepthImage.imageView));
+    _init._depthImage.imageFormat = VK_FORMAT_D32_SFLOAT;
+    _init._depthImage.imageExtent = drawImageExtent;
+
+    VkImageUsageFlags depthImageUsages = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
+                                         VK_IMAGE_USAGE_SAMPLED_BIT |
+                                         VK_IMAGE_USAGE_STORAGE_BIT;
+
+    VkImageCreateInfo dimg_info = vkinit::image_create_info(_init._depthImage.imageFormat, depthImageUsages, drawImageExtent);
+    dimg_info.samples = VK_SAMPLE_COUNT_1_BIT;
+
+    vmaCreateImage(_init._allocator, &dimg_info, &rimg_allocinfo, &_init._depthImage.image, &_init._depthImage.allocation, nullptr);
+    VkImageViewCreateInfo dview_info = vkinit::imageview_create_info(_init._depthImage.imageFormat, _init._depthImage.image, VK_IMAGE_ASPECT_DEPTH_BIT);
+    VK_CHECK(vkCreateImageView(_init._device, &dview_info, nullptr, &_init._depthImage.imageView));
+
+    _init._velocityImage.imageFormat = VK_FORMAT_R16G16_SFLOAT;
+    _init._velocityImage.imageExtent = drawImageExtent;
+
+    VkImageUsageFlags velocityUsages = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+                                       VK_IMAGE_USAGE_STORAGE_BIT |
+                                       VK_IMAGE_USAGE_SAMPLED_BIT;
+
+    VkImageCreateInfo vimg_info = vkinit::image_create_info(_init._velocityImage.imageFormat, velocityUsages, drawImageExtent);
+    vimg_info.samples = VK_SAMPLE_COUNT_1_BIT;
+
+    vmaCreateImage(_init._allocator, &vimg_info, &rimg_allocinfo, &_init._velocityImage.image, &_init._velocityImage.allocation, nullptr);
+    VkImageViewCreateInfo vview_info = vkinit::imageview_create_info(_init._velocityImage.imageFormat, _init._velocityImage.image, VK_IMAGE_ASPECT_COLOR_BIT);
+    VK_CHECK(vkCreateImageView(_init._device, &vview_info, nullptr, &_init._velocityImage.imageView));
+
+    _init._normalImage.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
+    _init._normalImage.imageExtent = drawImageExtent;
+
+    VkImageUsageFlags normalUsages = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+                                     VK_IMAGE_USAGE_STORAGE_BIT |
+                                     VK_IMAGE_USAGE_SAMPLED_BIT;
+
+    VkImageCreateInfo nimg_info = vkinit::image_create_info(_init._normalImage.imageFormat, normalUsages, drawImageExtent);
+    nimg_info.samples = VK_SAMPLE_COUNT_1_BIT;
+
+    vmaCreateImage(_init._allocator, &nimg_info, &rimg_allocinfo, &_init._normalImage.image, &_init._normalImage.allocation, nullptr);
+    VkImageViewCreateInfo nview_info = vkinit::imageview_create_info(_init._normalImage.imageFormat, _init._normalImage.image, VK_IMAGE_ASPECT_COLOR_BIT);
+    VK_CHECK(vkCreateImageView(_init._device, &nview_info, nullptr, &_init._normalImage.imageView));
+
+    VkImageUsageFlags historyUsages{};
+    historyUsages |= VK_IMAGE_USAGE_SAMPLED_BIT;
+    historyUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
+    historyUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+
+    for (int i = 0; i < 2; i++) {
+        _init._historyImages[i].imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
+        _init._historyImages[i].imageExtent = drawImageExtent;
+
+        VkImageCreateInfo hist_info = vkinit::image_create_info(
+            _init._historyImages[i].imageFormat,
+            historyUsages,
+            drawImageExtent
+        );
+        hist_info.samples = VK_SAMPLE_COUNT_1_BIT;
+
+        VK_CHECK(vmaCreateImage(
+            _init._allocator,
+            &hist_info,
+            &rimg_allocinfo,
+            &_init._historyImages[i].image,
+            &_init._historyImages[i].allocation,
+            nullptr
+        ));
+
+        VkImageViewCreateInfo hview_info = vkinit::imageview_create_info(
+            _init._historyImages[i].imageFormat,
+            _init._historyImages[i].image,
+            VK_IMAGE_ASPECT_COLOR_BIT
+        );
+        VK_CHECK(vkCreateImageView(_init._device, &hview_info, nullptr, &_init._historyImages[i].imageView));
+    }
 
     ImGui_ImplVulkan_SetMinImageCount(_init._swapchainImageViews.size());
+
+    // Прописываем новые, только что созданные VkImageView в наш Bindless Set 1, binding = 4
+    _textureManager.UpdatePostProcessDescriptorSets();
 
     resize_requested = false;
 }
 
 
 void VK_APPLICATION::VulkanApplication::destroy_swapchain(){
-    fmt::print("Destroy swapchain\n");
-
     if (_init._allocator != VK_NULL_HANDLE) {
         if (_init._drawImage.imageView != VK_NULL_HANDLE) {
             vkDestroyImageView(_init._device, _init._drawImage.imageView, nullptr);
             _init._drawImage.imageView = VK_NULL_HANDLE;
         }
-        /*
+
         if (_init._depthImage.imageView != VK_NULL_HANDLE) {
             vkDestroyImageView(_init._device, _init._depthImage.imageView, nullptr);
             _init._depthImage.imageView = VK_NULL_HANDLE;
-        }
-        */
-        if (_init._msaaColorImage.imageView != VK_NULL_HANDLE) {
-            vkDestroyImageView(_init._device, _init._msaaColorImage.imageView, nullptr);
-            _init._msaaColorImage.imageView = VK_NULL_HANDLE;
-        }
-        if (_init._msaaDepthImage.imageView != VK_NULL_HANDLE) {
-            vkDestroyImageView(_init._device, _init._msaaDepthImage.imageView, nullptr);
-            _init._msaaDepthImage.imageView = VK_NULL_HANDLE;
         }
         if (_init._drawImage.image != VK_NULL_HANDLE) {
             vmaDestroyImage(_init._allocator, _init._drawImage.image, _init._drawImage.allocation);
             _init._drawImage.image = VK_NULL_HANDLE;
             _init._drawImage.allocation = VK_NULL_HANDLE;
         }
-        /*
+
         if (_init._depthImage.image != VK_NULL_HANDLE) {
             vmaDestroyImage(_init._allocator, _init._depthImage.image, _init._depthImage.allocation);
             _init._depthImage.image = VK_NULL_HANDLE;
             _init._depthImage.allocation = VK_NULL_HANDLE;
         }
-        */
-        if (_init._msaaColorImage.image != VK_NULL_HANDLE) {
-            vmaDestroyImage(_init._allocator, _init._msaaColorImage.image, _init._msaaColorImage.allocation);
-            _init._msaaColorImage.image = VK_NULL_HANDLE;
-            _init._msaaColorImage.allocation = VK_NULL_HANDLE;
+        if (_init._velocityImage.imageView != VK_NULL_HANDLE) {
+            vkDestroyImageView(_init._device, _init._velocityImage.imageView, nullptr);
+            _init._velocityImage.imageView = VK_NULL_HANDLE;
         }
-        if (_init._msaaDepthImage.image != VK_NULL_HANDLE) {
-            vmaDestroyImage(_init._allocator, _init._msaaDepthImage.image, _init._msaaDepthImage.allocation);
-            _init._msaaDepthImage.image = VK_NULL_HANDLE;
-            _init._msaaDepthImage.allocation = VK_NULL_HANDLE;
+        if (_init._velocityImage.image != VK_NULL_HANDLE) {
+            vmaDestroyImage(_init._allocator, _init._velocityImage.image, _init._velocityImage.allocation);
+            _init._velocityImage.image = VK_NULL_HANDLE;
+            _init._velocityImage.allocation = VK_NULL_HANDLE;
+        }
+        if (_init._normalImage.imageView != VK_NULL_HANDLE) {
+            vkDestroyImageView(_init._device, _init._normalImage.imageView, nullptr);
+            _init._normalImage.imageView = VK_NULL_HANDLE;
+        }
+        if (_init._normalImage.image != VK_NULL_HANDLE) {
+            vmaDestroyImage(_init._allocator, _init._normalImage.image, _init._normalImage.allocation);
+            _init._normalImage.image = VK_NULL_HANDLE;
+            _init._normalImage.allocation = VK_NULL_HANDLE;
+        }
+        for (int i = 0; i < 2; i++){
+            if (_init._historyImages[i].imageView != VK_NULL_HANDLE) {
+                vkDestroyImageView(_init._device, _init._historyImages[i].imageView, nullptr);
+                _init._historyImages[i].imageView = VK_NULL_HANDLE;
+            }
+            if (_init._historyImages[i].image != VK_NULL_HANDLE) {
+                vmaDestroyImage(_init._allocator, _init._historyImages[i].image, _init._historyImages[i].allocation);
+                _init._historyImages[i].image = VK_NULL_HANDLE;
+                _init._historyImages[i].allocation = VK_NULL_HANDLE;
+            }
         }
     }
 
@@ -444,7 +507,7 @@ void VK_APPLICATION::VulkanApplication::init_descriptors(){
 }
 
 void VK_APPLICATION::VulkanApplication::init_render(){
-    _pipelineManager = std::make_unique<PipelineManager>(_init._device);
+    _pipelineManager = std::make_unique<PipelineManager>(_init._device, _init._useAftermath);
 
     VkDescriptorSetLayout textureLayout = _textureManager.GetTextureLayout();
 
@@ -456,8 +519,8 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     _computeSystem.init();
     _pipelineManager->InitCommonLayout(_gpuSceneDataDescriptorLayout, textureLayout);
     // Форматы для Dynamic Rendering берем из вашей MSAA картинки, как в старом коде
-    VkFormat colorFormat = _init._msaaColorImage.imageFormat;
-    VkFormat depthFormat = _init._msaaDepthImage.imageFormat;
+    VkFormat colorFormat = _init._drawImage.imageFormat;
+    VkFormat depthFormat = _init._depthImage.imageFormat;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Конвеер для базовых моделей (непрозрачных)
@@ -465,11 +528,10 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     baseMeshInfo.name = "BaseMesh";
     baseMeshInfo.passType = RenderPassType::Forward;
     baseMeshInfo.opacity = PipelineOpacity::Opaque;
-    baseMeshInfo.useMSAA = true; // Так как в старом коде было _maxSamples
     baseMeshInfo.vertexShaderPath = "../Shaders/BaseMesh/mesh.vert";
     baseMeshInfo.fragmentShaderPath = "../Shaders/BaseMesh/mesh.frag";
 
-    RealPipeline* basePipeline = _pipelineManager->CreatePipeline(baseMeshInfo, colorFormat, depthFormat, _maxSamples);
+    RealPipeline* basePipeline = _pipelineManager->CreatePipeline(baseMeshInfo, colorFormat, depthFormat);
     if (basePipeline) {
         fmt::print("[PipelineManager] Pipeline 'BaseMesh' successfully loaded and built.\n");
     }
@@ -480,11 +542,10 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     transparentMeshInfo.name = "TransparentMesh";
     transparentMeshInfo.passType = RenderPassType::Forward;
     transparentMeshInfo.opacity = PipelineOpacity::Transparent;
-    transparentMeshInfo.useMSAA = true;
     transparentMeshInfo.vertexShaderPath = "../Shaders/BaseMesh/mesh.vert";
     transparentMeshInfo.fragmentShaderPath = "../Shaders/BaseMesh/mesh.frag";
 
-    RealPipeline* transPipeline = _pipelineManager->CreatePipeline(transparentMeshInfo, colorFormat, depthFormat, _maxSamples);
+    RealPipeline* transPipeline = _pipelineManager->CreatePipeline(transparentMeshInfo, colorFormat, depthFormat);
     if (transPipeline) {
         fmt::print("[PipelineManager] Pipeline 'TransparentMesh' successfully loaded and built.\n");
     }
@@ -494,11 +555,10 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     alphaTestedMeshInfo.name = "AlphaTestedMesh";
     alphaTestedMeshInfo.passType = RenderPassType::Forward;
     alphaTestedMeshInfo.opacity = PipelineOpacity::AlphaTested;
-    alphaTestedMeshInfo.useMSAA = true;
     alphaTestedMeshInfo.vertexShaderPath = "../Shaders/BaseMesh/mesh.vert";
     alphaTestedMeshInfo.fragmentShaderPath = "../Shaders/BaseMesh/mesh.frag";
 
-    RealPipeline* alphaPipeline = _pipelineManager->CreatePipeline(alphaTestedMeshInfo, colorFormat, depthFormat, _maxSamples);
+    RealPipeline* alphaPipeline = _pipelineManager->CreatePipeline(alphaTestedMeshInfo, colorFormat, depthFormat);
     if (alphaPipeline) {
         fmt::print("[PipelineManager] Pipeline 'AlphaTestedMesh' successfully loaded and built.\n");
     }
@@ -508,11 +568,10 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     gridInfo.name = "Grid";
     gridInfo.passType = RenderPassType::Forward;
     gridInfo.opacity = PipelineOpacity::Transparent; // Включает AlphaBlend, отключает запись в глубину
-    gridInfo.useMSAA = true; // Использовал set_multisampling_alpha(_maxSamples)
     gridInfo.vertexShaderPath = "../Shaders/InfGrid/grid.vert";
     gridInfo.fragmentShaderPath = "../Shaders/InfGrid/grid.frag";
 
-    RealPipeline* gridPipeline = _pipelineManager->CreatePipeline(gridInfo, colorFormat, depthFormat, _maxSamples);
+    RealPipeline* gridPipeline = _pipelineManager->CreatePipeline(gridInfo, colorFormat, depthFormat);
     if (gridPipeline) {
         fmt::print("[PipelineManager] Pipeline 'Grid' successfully loaded and built.\n");
     }
@@ -523,13 +582,12 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     shadowInfo.name = "Shadow";
     shadowInfo.passType = RenderPassType::ShadowCSM;
     shadowInfo.opacity = PipelineOpacity::Opaque;
-    shadowInfo.useMSAA = false;
     shadowInfo.vertexShaderPath = "../Shaders/SCM/shadow.vert";
     shadowInfo.fragmentShaderPath = "";
 
     VkFormat shadowDepthFormat = VK_FORMAT_D32_SFLOAT;
 
-    RealPipeline* shadowPipeline = _pipelineManager->CreatePipeline(shadowInfo, VK_FORMAT_UNDEFINED, shadowDepthFormat, VK_SAMPLE_COUNT_1_BIT);
+    RealPipeline* shadowPipeline = _pipelineManager->CreatePipeline(shadowInfo, VK_FORMAT_UNDEFINED, shadowDepthFormat);
     if (shadowPipeline) {
         fmt::print("[PipelineManager] Pipeline 'ShadowCSM' successfully loaded and built for Layered Rendering.\n");
     }
@@ -540,11 +598,10 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     skyboxProcInfo.name = "SkyBox_proc";
     skyboxProcInfo.passType = RenderPassType::Skybox;
     skyboxProcInfo.opacity = PipelineOpacity::Opaque;
-    skyboxProcInfo.useMSAA = true;
     skyboxProcInfo.vertexShaderPath = "../Shaders/SkyBox_proc/SkyBox.vert";
     skyboxProcInfo.fragmentShaderPath = "../Shaders/SkyBox_proc/SkyBox.frag";
 
-    RealPipeline* skybox_procPipeline = _pipelineManager->CreatePipeline(skyboxProcInfo, colorFormat, depthFormat, _maxSamples);
+    RealPipeline* skybox_procPipeline = _pipelineManager->CreatePipeline(skyboxProcInfo, colorFormat, depthFormat);
     if (skybox_procPipeline) {
         fmt::print("[PipelineManager] Pipeline 'SkyBox_proc' successfully loaded and built.\n");
     }
@@ -555,11 +612,10 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     skyboxInfo.name = "SkyBox";
     skyboxInfo.passType = RenderPassType::Skybox;
     skyboxInfo.opacity = PipelineOpacity::Opaque;
-    skyboxInfo.useMSAA = true;
     skyboxInfo.vertexShaderPath = "../Shaders/SkyBox/SkyBox.vert";
     skyboxInfo.fragmentShaderPath = "../Shaders/SkyBox/SkyBox.frag";
 
-    RealPipeline* skyboxPipeline = _pipelineManager->CreatePipeline(skyboxInfo, colorFormat, depthFormat, _maxSamples);
+    RealPipeline* skyboxPipeline = _pipelineManager->CreatePipeline(skyboxInfo, colorFormat, depthFormat);
     if (skyboxPipeline) {
         fmt::print("[PipelineManager] Pipeline 'SkyBox' successfully loaded and built.\n");
     }
@@ -609,7 +665,40 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     if (iblBrdfLUTPipeline) {
         fmt::print("[PipelineManager] Compute Pipeline 'IBL_BrdfLUT' successfully loaded and built.\n");
     }
+    //TODO: Post-processing
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Конвеер для ColorCorrection
+    PipelineCreateInfo colorCorrectionInfo{};
+    colorCorrectionInfo.name = "ColorCorrection";
+    colorCorrectionInfo.passType = RenderPassType::Compute;
+    colorCorrectionInfo.computeShaderPath = "../Shaders/ColorCorrection/Color.comp";
 
+    RealPipeline* colorCorrectionPipeline = _pipelineManager->CreateComputePipeline(colorCorrectionInfo);
+    if (colorCorrectionPipeline) {
+        fmt::print("[PipelineManager] Compute Pipeline 'ColorCorrection' successfully loaded and built.\n");
+    }
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Конвеер для Tonmap
+    PipelineCreateInfo tonMapInfo{};
+    tonMapInfo.name = "Tonemap";
+    tonMapInfo.passType = RenderPassType::Compute;
+    tonMapInfo.computeShaderPath = "../Shaders/Tonemap/Ton.comp";
+
+    RealPipeline* tonMapPipeline = _pipelineManager->CreateComputePipeline(tonMapInfo);
+    if (tonMapPipeline) {
+        fmt::print("[PipelineManager] Compute Pipeline 'Tonemap' successfully loaded and built.\n");
+    }
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Конвеер для TAA
+    PipelineCreateInfo TAAInfo{};
+    TAAInfo.name = "TAA";
+    TAAInfo.passType = RenderPassType::Compute;
+    TAAInfo.computeShaderPath = "../Shaders/TAA/taa.comp";
+
+    RealPipeline* TAAPipeline = _pipelineManager->CreateComputePipeline(TAAInfo);
+    if (TAAPipeline){
+        fmt::print("[PipelineManager] Compute Pipeline 'TAA' successfully loaded and built.\n");
+    }
 
     // Проходы рендера
     RenderPass* SCM_RP = _renderSystem.AddPass(std::make_unique<ShadowCSMRenderPass>(_init), *_pipelineManager);
@@ -617,7 +706,6 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     RenderPass* SkyBox_RP = _renderSystem.AddPass(std::make_unique<SkyBoxRenderPass>(_init), *_pipelineManager);
     RenderPass* Grid_RP = _renderSystem.AddPass(std::make_unique<GridRenderPass>(_init), *_pipelineManager);
 
-    // FIXME:: ЖИРНЮЩИЙ КОСТЫЛЬ который мне лень фиксить (Я передаю просто так два раза pipelineManager)
     const IBL_TEXTURES* iblResources = _textureManager.GetIBLTextures();
     auto* skyboxPass = dynamic_cast<SkyBoxRenderPass*>(SkyBox_RP);
     GPUTexture hdrPanorama = skyboxPass->GetPanoramicTexture();
@@ -627,15 +715,20 @@ void VK_APPLICATION::VulkanApplication::init_render(){
         hdrPanorama,
         *_pipelineManager
     );
+
     _computeSystem.AddPass(std::move(iblPass));
+    _postProcessSystem.AddPass(std::make_unique<TAAComputePass>(_init, TAAInfo.name));
+    _postProcessSystem.AddPass(std::make_unique<ColorCorrectionComputePass>(_init, colorCorrectionInfo.name));
+    _postProcessSystem.AddPass(std::make_unique<TonemapComputePass>(_init, tonMapInfo.name));
 
-    /* МОЖНА ТЕПЕРЬ ОТКЛЮЧАТЬ ПРОХОДЫ! МУХЕХЕХЕХЕ
-    _renderSystem.SetPassEnabled(RenderPassType::Skybox, true);
-    _renderSystem.SetPassEnabled(RenderPassType::Grid, false);
-    _renderSystem.SetPassEnabled(RenderPassType::ShadowCSM, false);
-    */
+    //_postProcessSystem.SetPassEnabled(ComputePassType::TAA, false);
 
-    //_renderSystem.ToggleSkyBox();
+    std::string path = "../Data/Panoramic/Sky.hdr";
+    auto loadedTextureOpt = SkyBoxUpload(path, _init, _textureManager);
+
+    if (loadedTextureOpt.has_value()){
+        _renderSystem.UpdateSkyBoxTexture(loadedTextureOpt.value(), _textureManager, _computeSystem);
+    }
 }
 
 void VK_APPLICATION::VulkanApplication::init_commands(){
@@ -653,10 +746,12 @@ void VK_APPLICATION::VulkanApplication::init_commands(){
 void VK_APPLICATION::VulkanApplication::init_scene(){
     _meshManager.init(_init);
     _textureManager.init(_init);
-    _activeScene = std::make_unique<Scene>(_modelManager);
+    _textureManager.UpdatePostProcessDescriptorSets();
+    _activeScene = std::make_unique<Scene>(_modelManager, _transformManager);
     CSMConfig csmConfig{};
     _lightManager = std::make_unique<LightManager>(_init._device, _textureManager, csmConfig);
     _lightManager->init();
+    _transformManager.init(_init._device, _init._allocator);
     sceneData.sunlightDirection = glm::vec4(getLightDirByHour(12.0f), 3.0f);
     sceneData.sunlightColor = glm::vec4(1.0f, 0.98f, 0.92f, 1.0f);
     sceneData.ambientColor = glm::vec4(0.3f, 0.42f, 0.58f, 1.0f);
@@ -666,46 +761,10 @@ VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& 
     // Z-up
     glm::vec3 up = {0.0f, 0.0f, 1.0f};
 
-    // For camera-movement
-    _camera.front.x = cos(glm::radians(_camera.yaw)) * cos(glm::radians(_camera.pitch));
-    _camera.front.y = sin(glm::radians(_camera.yaw)) * cos(glm::radians(_camera.pitch));
-    _camera.front.z = sin(glm::radians(_camera.pitch));
-    _camera.front = glm::normalize(_camera.front);
-
-    _camera.Wfront.x = cos(glm::radians(_camera.yaw));
-    _camera.Wfront.y = sin(glm::radians(_camera.yaw));
-    _camera.Wfront.z = 0;
-
-    _camera.right = glm::normalize(glm::cross(_camera.Wfront, up));
-
     //For camera
     glm::vec3 eye = { _movement.valueX, _movement.valueY, _movement.valueZ };
     glm::vec3 target = eye + _camera.front;
     sceneData.view = glm::lookAt(eye, target, up);
-
-
-    /*
-    glm::vec3 lightDir;
-    const glm::vec3 START_LIGHT_DIR = glm::normalize(glm::vec3(0.15f, 0.2f, 0.95f));
-    const float rotationSpeed = 0.5f;
-
-    auto now = std::chrono::high_resolution_clock::now();
-    float totalTime = std::chrono::duration<float>(now - _delta.startTime).count();
-
-    float totalAngle = rotationSpeed * totalTime;
-
-    lightDir = glm::rotateY(START_LIGHT_DIR, totalAngle);
-    lightDir = glm::normalize(lightDir);
-    lightDir = START_LIGHT_DIR;
-    float sunPower = 8.5f; // Интенсивность для PBR
-
-    sceneData.sunlightDirection = glm::vec4( lightDir, sunPower);
-
-
-    sceneData.sunlightColor = glm::vec4(1.0f, 0.98f, 0.92f, 1.0f);
-
-    sceneData.ambientColor = glm::vec4(0.3f, 0.42f, 0.58f, 1.0f);
-    */
 
     float aspect = (float)_init._windowExtent.width / (float)_init._windowExtent.height;
     float fov = glm::radians(70.0f);
@@ -716,7 +775,7 @@ VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& 
     sceneData.proj[1][1] *= -1.0f;
 
     // proj * view
-    sceneData.viewproj = sceneData.proj * sceneData.view;
+    _TAA.Update(sceneData, _frameNumber);
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // КАСКАДЫ ТЕНЕЙ
     _lightManager->UpdateCascades(sceneData.view, fov, aspect, cNear, cFar, sceneData.sunlightDirection);

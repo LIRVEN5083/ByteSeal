@@ -4,7 +4,7 @@
 #include "stb_image.h"
 
 void TextureManager::init(VK_INIT_ENGINE::_inited_engine& _init){
-    VmaPoolCreateInfo poolCreateInfo {};
+     VmaPoolCreateInfo poolCreateInfo {};
 
     _device = _init._device;
     _allocator = _init._allocator;
@@ -18,28 +18,28 @@ void TextureManager::init(VK_INIT_ENGINE::_inited_engine& _init){
 
     bindings[1].binding = 1;
     bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    bindings[1].descriptorCount = MAX_BINDLESS_TEXTURES;
+    bindings[1].descriptorCount = 10;
     bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
 
     bindings[2].binding = 2;
     bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    bindings[2].descriptorCount = MAX_BINDLESS_TEXTURES;
+    bindings[2].descriptorCount = 10;
     bindings[2].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
 
     bindings[3].binding = 3;
     bindings[3].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-    bindings[3].descriptorCount = MAX_BINDLESS_TEXTURES;
+    bindings[3].descriptorCount = 10;
     bindings[3].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
 
-    // Настраиваем флаги отдельно ДЛЯ КАЖДОГО биндинга
+    bindings[4].binding = 4;
+    bindings[4].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    bindings[4].descriptorCount = 10;
+    bindings[4].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
+
     VkDescriptorBindingFlags bindlessFlags = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
-                                             VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
-    std::vector<VkDescriptorBindingFlags> flagsArray = {
-        bindlessFlags,
-        bindlessFlags,
-        bindlessFlags,
-        bindlessFlags
-    };
+                                         VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
+    std::vector<VkDescriptorBindingFlags> flagsArray(BINDING_COUNT, bindlessFlags);
+
 
     VkDescriptorSetLayoutBindingFlagsCreateInfo extInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO };
     extInfo.bindingCount = static_cast<uint32_t>(bindings.size());
@@ -54,9 +54,10 @@ void TextureManager::init(VK_INIT_ENGINE::_inited_engine& _init){
     vkCreateDescriptorSetLayout(_device, &layoutInfo, nullptr, &_textureLayout);
 
     std::vector<VkDescriptorPoolSize> poolSizes = {
-        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, MAX_BINDLESS_TEXTURES * 3 },
-        { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, MAX_BINDLESS_TEXTURES }
+        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, MAX_BINDLESS_TEXTURES + 20 },
+        { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 20 }
     };
+
     VkDescriptorPoolCreateInfo poolInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
     poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
     poolInfo.maxSets = 1;
@@ -123,6 +124,14 @@ void TextureManager::init(VK_INIT_ENGINE::_inited_engine& _init){
     samplerInfo.unnormalizedCoordinates = VK_FALSE;
 
     vkCreateSampler(_device, &samplerInfo, nullptr, &_defaultSampler);
+
+    _frameImages._drawImage = &_init._drawImage;
+    _frameImages._depthImage = &_init._depthImage;
+    _frameImages._velocityImage = &_init._velocityImage;
+    _frameImages._normalImage = &_init._normalImage;
+    for (int i = 0; i < 2; i++){
+        _frameImages._historyImages[i] = &_init._historyImages[i];
+    }
 
     create_default_white_texture(_init);
     create_ibl_textures(_init);
@@ -206,6 +215,51 @@ GPUTexture TextureManager::AllocateTexture(
     }
 
     return texture;
+}
+
+void TextureManager::UpdatePostProcessDescriptorSets(){
+    std::vector<VkDescriptorImageInfo> imageInfos(6);
+
+    // Draw
+    imageInfos[0].imageView = _frameImages._drawImage->imageView;
+    imageInfos[0].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+    imageInfos[0].sampler = VK_NULL_HANDLE;
+
+    // Depth
+    imageInfos[1].imageView = _frameImages._depthImage->imageView;
+    imageInfos[1].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+    imageInfos[1].sampler = VK_NULL_HANDLE;
+
+    // Velocity
+    imageInfos[2].imageView = _frameImages._velocityImage->imageView;
+    imageInfos[2].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+    imageInfos[2].sampler = VK_NULL_HANDLE;
+
+    // Normal
+    imageInfos[3].imageView = _frameImages._normalImage->imageView;
+    imageInfos[3].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+    imageInfos[3].sampler = VK_NULL_HANDLE;
+
+    // History
+    imageInfos[4].imageView = _frameImages._historyImages[0]->imageView;
+    imageInfos[4].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+    imageInfos[4].sampler = VK_NULL_HANDLE;
+    imageInfos[5].imageView = _frameImages._historyImages[1]->imageView;
+    imageInfos[5].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+    imageInfos[5].sampler = VK_NULL_HANDLE;
+
+    // Одна общая структура записи для всего нашего массива в binding = 4
+    VkWriteDescriptorSet postProcessWrite{ VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+    postProcessWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    postProcessWrite.dstSet = _textureSet;
+    postProcessWrite.dstBinding = 4;
+    postProcessWrite.dstArrayElement = 0;
+    postProcessWrite.descriptorCount = 6;
+    postProcessWrite.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    postProcessWrite.pImageInfo = imageInfos.data();
+
+    // Финально отправляем это дерьмо на GPU
+    vkUpdateDescriptorSets(_device, 1, &postProcessWrite, 0, nullptr);
 }
 
 void TextureManager::UpdateIBLDescriptorSets(){
@@ -411,7 +465,7 @@ void TextureManager::create_default_white_texture(VK_INIT_ENGINE::_inited_engine
     // Очищаем временный буфер
     vmaDestroyBuffer(_init._allocator, stagingBuffer.buffer, stagingBuffer.allocation);
 
-    std::cout << "TextureManager: Default white texture generated under Bindless ID = 0\n";
+    std::cout << "[TextureManager] Default white texture generated under Bindless ID = 0\n";
 }
 
 void TextureManager::create_ibl_textures(VK_INIT_ENGINE::_inited_engine& _init) {
@@ -603,7 +657,7 @@ void TextureManager::create_ibl_textures(VK_INIT_ENGINE::_inited_engine& _init) 
 
     _nextIndices[targetBinding] = totalDescriptors;
 
-    std::cout << "TextureManager: Bound " << totalDescriptors << " single-level storage views to binding 3.\n";
+    std::cout << "[TextureManager] Bound " << totalDescriptors << " single-level storage views to binding 3.\n";
 }
 
 VkSampler TextureManager::CreateSampler(const SamplerOptions& params){
@@ -650,11 +704,30 @@ void Node::AddChild(std::shared_ptr<Node> child){
     children.push_back(child);
 }
 
-void Node::UpdateMatrices(const glm::mat4& parentMatrix){
+void Node::UpdateMatrices(const glm::mat4& parentMatrix, const glm::mat4& prevParentMatrix){
+    prevWorldTransform = worldTransform;
+
     worldTransform = parentMatrix * localTransform;
 
     for (auto& child : children) {
-        child->UpdateMatrices(worldTransform);
+        child->UpdateMatrices(worldTransform, prevWorldTransform);
+    }
+}
+
+void Model::Update(TransformBufferManager& transformManager, const glm::mat4& modelRootMatrix,
+    const glm::mat4& prevModelRootMatrix){
+    if (!bIsValid || !rootNode) return;
+
+    rootNode->UpdateMatrices(modelRootMatrix, prevModelRootMatrix);
+
+    for (auto& meshNode : meshNodes) {
+        if (meshNode->hasTransformSlot) {
+            transformManager.UpdateTransform(
+                meshNode->transformSlot,
+                meshNode->worldTransform,
+                meshNode->prevWorldTransform
+            );
+        }
     }
 }
 
@@ -671,6 +744,13 @@ void Model::destroy(VK_INIT_ENGINE::_inited_engine& _init, MeshManager& meshMana
     }
 
     Meshes.clear();
+
+    for (auto& meshNode : meshNodes) {
+        meshNode->hasTransformSlot = false;
+        meshNode->matrixGPUAddress = 0;
+        meshNode->transformSlot = 0;
+    }
+
     meshNodes.clear();
     rootNode.reset();
 }
@@ -1493,7 +1573,7 @@ Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init,
         return loadedModel;
     }
 
-    // Создаем ИСКУССТВЕННЫЙ временный корень для проведения операции запекания
+    // Создаем ИСКУСТВЕННЫЙ временный корень для проведения операции запекания
     auto bakeRoot = std::make_shared<Node>();
 
     size_t singleRootIdx = defaultScene.nodeIndices[0];
@@ -1535,7 +1615,7 @@ Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init,
     // Накладываем исправления на наш временный корень bakeRoot
     bakeRoot->localTransform = gltfToZUp * normalizationMatrix;
 
-    bakeRoot->UpdateMatrices(glm::mat4(1.0f));
+    bakeRoot->UpdateMatrices(glm::mat4(1.0f), glm::mat4(1.0f));
 
     glm::vec3 finalMin(std::numeric_limits<float>::max());
     glm::vec3 finalMax(-std::numeric_limits<float>::max());
@@ -1579,7 +1659,7 @@ Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init,
     }
 
     // Финальный локальный апдейт модели в чистом Z-Up пространстве движка
-    loadedModel.rootNode->UpdateMatrices(glm::mat4(1.0f));
+    loadedModel.rootNode->UpdateMatrices(glm::mat4(1.0f), glm::mat4(1.0f));
 
 
     loadedModel.bIsValid = true;

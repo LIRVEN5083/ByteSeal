@@ -2,6 +2,61 @@
 #include "vk_render.h"
 
 
+void TransformBufferManager::init(VkDevice device, VmaAllocator allocator, uint32_t maxObjects){
+    m_Device = device;
+    m_Allocator = allocator;
+    m_MaxObjects = maxObjects;
+
+    VkDeviceSize bufferSize = sizeof(GPUTransformMatrices) * m_MaxObjects;
+
+    VkBufferCreateInfo bufferInfo = {};
+    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufferInfo.size = bufferSize;
+    bufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    VmaAllocationCreateInfo allocInfo = {};
+    allocInfo.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
+    allocInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+    VmaAllocationInfo resultAllocInfo;
+    vmaCreateBuffer(m_Allocator, &bufferInfo, &allocInfo, &m_Buffer, &m_Allocation, &resultAllocInfo);
+
+    m_MappedData = resultAllocInfo.pMappedData;
+
+    VkBufferDeviceAddressInfo addressInfo = {};
+    addressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+    addressInfo.buffer = m_Buffer;
+    m_BaseDeviceAddress = vkGetBufferDeviceAddress(m_Device, &addressInfo);
+}
+
+uint32_t TransformBufferManager::AllocateTransformSlot(VkDeviceAddress& outAddress, uint32_t count) {
+    if (m_CurrentAllocatedObjects + count > m_MaxObjects) {
+        assert(false && "Transform buffer overflow!");
+    }
+    uint32_t slot = m_CurrentAllocatedObjects;
+    m_CurrentAllocatedObjects += count;
+    // Очень важная вещь
+    // до этого он брал ДЛЯ всех нодов неправильные матрицы к примеру есть модель на 10 нодов и на 50,
+    // загружаем на 10 все четко и классно, ставим модель на 50 и первые её 10 нод будут нодами модели по 10 нод, а не свои
+    outAddress = m_BaseDeviceAddress + (slot * sizeof(GPUTransformMatrices));
+    return slot;
+}
+
+void TransformBufferManager::UpdateTransform(uint32_t slot, const glm::mat4& currentModel, const glm::mat4& prevModel){
+    GPUTransformMatrices* matricesArray = static_cast<GPUTransformMatrices*>(m_MappedData);
+    matricesArray[slot].currentModel = currentModel;
+    matricesArray[slot].prevModel = prevModel;
+
+    vmaFlushAllocation(m_Allocator, m_Allocation, slot * sizeof(GPUTransformMatrices), sizeof(GPUTransformMatrices));
+}
+
+void TransformBufferManager::cleanup(){
+    if (m_Buffer != VK_NULL_HANDLE) {
+        vmaDestroyBuffer(m_Allocator, m_Buffer, m_Allocation);
+    }
+}
+
 bool FrustumPlane::IsAABBInFront(const glm::vec3& min, const glm::vec3& max) const{
     // Находим ближайшую к плоскости точку AABB (p-vertex)
     glm::vec3 p = min;
@@ -99,9 +154,16 @@ GameEntity* Scene::CreateEntity(const std::string& name, uint32_t modelAssetId){
     entity.id = newId;
     entity.name = name;
     entity.modelAssetId = modelAssetId;
+    entity.prevModelMatrix = entity.GetLocalMatrix();
+
+    Model& model = _modelManager.GetModel(modelAssetId);
+    uint32_t nodeCount = model.bIsValid ? static_cast<uint32_t>(model.meshNodes.size()) : 1;
+    if (nodeCount == 0) nodeCount = 1;
+
+    entity.transformSlot = _transformManager.AllocateTransformSlot(entity.matrixGPUAddress, nodeCount);
+    entity.hasTransformSlot = true;
 
     _idToIndex[newId] = _entities.size();
-
     _entities.push_back(entity);
 
     return &_entities.back();
@@ -177,12 +239,14 @@ void Scene::DestroyEntitiesByModel(uint32_t modelAssetId){
 }
 
 void Scene::CullingAndSubmit(RenderSystem& renderSystem, PipelineManager& pipelineManager,
-    const glm::vec3& cameraPosition, const glm::mat4& viewProjectionMatrix){
+    TransformBufferManager& transformManager,
+    const glm::vec3& cameraPosition,
+    const glm::mat4& currentViewProjJittered){
      if (_entities.empty()) return;
 
-    CameraFrustum frustum = CreateFrustumFromMatrix(viewProjectionMatrix);
+    CameraFrustum frustum = CreateFrustumFromMatrix(currentViewProjJittered);
 
-    for (const auto& entity : _entities)
+    for (auto& entity : _entities)
     {
         if (!entity.bIsVisible) continue;
         if (!_modelManager.has_model(entity.modelAssetId)) continue;
@@ -197,14 +261,37 @@ void Scene::CullingAndSubmit(RenderSystem& renderSystem, PipelineManager& pipeli
         if (!model.bIsValid || !model.rootNode) continue;
 
         glm::mat4 entityWorldMatrix = entity.GetLocalMatrix();
-        model.rootNode->UpdateMatrices(entityWorldMatrix);
+        glm::mat4 entityPrevWorldMatrix = entity.GetPrevLocalMatrix();
+
+        model.rootNode->UpdateMatrices(entityWorldMatrix, entityPrevWorldMatrix);
+
+        if (entity.hasTransformSlot) {
+            for (size_t i = 0; i < model.meshNodes.size(); ++i) {
+                uint32_t nodeSlot = entity.transformSlot + static_cast<uint32_t>(i);
+                // Берем чистую локальную матрицу из ассета
+                glm::mat4 nodeLocal = model.meshNodes[i]->localTransform;
+                glm::mat4 nodeCurrentWorld = entityWorldMatrix * nodeLocal;
+                glm::mat4 nodePrevWorld = entityPrevWorldMatrix * nodeLocal;
+
+                transformManager.UpdateTransform(nodeSlot, nodeCurrentWorld, nodePrevWorld);
+            }
+        }
 
         // Считаем мировую позицию самого объекта для сортировки прозрачности
         glm::vec3 entityWorldPos = glm::vec3(entityWorldMatrix[3].x, entityWorldMatrix[3].y, entityWorldMatrix[3].z);
         float distanceToCamera = glm::distance(entityWorldPos, cameraPosition);
 
+        uint32_t nodeIndex = 0;
         for (const auto& meshNode : model.meshNodes) {
-            if (!meshNode->mesh) continue;
+            if (!meshNode->mesh) {
+                nodeIndex++;
+                continue;
+            }
+
+            // Короче в чем прикол, до этого был mat4 render_matrix и мы его спокойно отправляли относительно саб меша из RAM
+            // НО ТЕПЕРЬ, мы отправляем адресс на VRAM и получается так что фактических данных у нас нету,
+            // то-есть теперь нужно вычеслять адресс в видеопамяти со смещением что-бы шейдер при чтении применял правильную позицию для всех саб-мешей
+            VkDeviceAddress meshNodeGPUAddress = entity.matrixGPUAddress + (nodeIndex * sizeof(GPUTransformMatrices));
             for (const auto& surface : meshNode->mesh->surfaces) {
                 if (!surface.material) continue;
 
@@ -242,7 +329,7 @@ void Scene::CullingAndSubmit(RenderSystem& renderSystem, PipelineManager& pipeli
                 }
 
                 RenderObject ro;
-                ro.render_matrix = meshNode->worldTransform;
+                ro.matrixBufferAddress = meshNodeGPUAddress;
                 ro.indexBuffer = meshNode->mesh->meshBuffers.indexBuffer.buffer;
                 ro.vertexBufferAddress = meshNode->mesh->meshBuffers.vertexBufferAddress;
                 ro.indexCount = surface.count;
@@ -284,8 +371,9 @@ void Scene::CullingAndSubmit(RenderSystem& renderSystem, PipelineManager& pipeli
                 ro.sortKey = key;
                 renderSystem.Submit(ro);
             }
-
+            nodeIndex++;
         }
+        entity.prevModelMatrix = entityWorldMatrix;
     }
 }
 
@@ -566,6 +654,41 @@ SkyCoefficients LightManager::ComputeHosekWilkieParams(float turbidity, const gl
     coeffs.skyZ = glm::vec4(finalZ, 1.0f);
 
     return coeffs;
+}
+
+void TAA::Update(GPUSceneData& sceneData, int engineFrameNumber) {
+    uint32_t jitterIndex = static_cast<uint32_t>(engineFrameNumber % 16);
+    glm::vec2 jitter = m_jitterSamples[jitterIndex];
+
+    float jitterX = (jitter.x * 1.0f) / static_cast<float>(_init._swapchainExtent.width);
+    float jitterY = (-jitter.y * 1.0f) / static_cast<float>(_init._swapchainExtent.height);
+
+    sceneData.viewProjNonJittered = sceneData.proj * sceneData.view;
+
+    sceneData.prevViewProjJittered = m_prevViewProjJittered;
+
+    m_prevViewProjNonJittered = sceneData.viewProjNonJittered;
+
+    glm::mat4 jitteredProj = sceneData.proj;
+    jitteredProj[3][0] += jitterX;
+    jitteredProj[3][1] += jitterY;
+
+    sceneData.viewproj = jitteredProj * sceneData.view;
+
+    m_prevViewProjJittered = sceneData.viewproj;
+}
+
+
+float TAA::CalculateHalton(int index, int base){
+    float result = 0.0f;
+    float f = 1.0f / static_cast<float>(base);
+    int i = index;
+    while (i > 0) {
+        result += f * static_cast<float>(i % base);
+        i = std::floor(static_cast<float>(i) / static_cast<float>(base));
+        f = f / static_cast<float>(base);
+    }
+    return result;
 }
 
 

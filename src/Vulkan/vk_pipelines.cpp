@@ -141,20 +141,49 @@ VkPipeline PipelineBuilder::build_pipeline(VkDevice device){
     VkPipelineViewportStateCreateInfo viewportState = {};
     viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
     viewportState.pNext = nullptr;
-
     viewportState.viewportCount = 1;
     viewportState.scissorCount = 1;
 
-    // setup dummy color blending. We arent using transparent objects yet
-    // the blending is just "no blend", but we do write to the color attachment
+    std::vector<VkPipelineColorBlendAttachmentState> blendAttachments;
+
     VkPipelineColorBlendStateCreateInfo colorBlending = {};
     colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
     colorBlending.pNext = nullptr;
-
     colorBlending.logicOpEnable = VK_FALSE;
     colorBlending.logicOp = VK_LOGIC_OP_COPY;
-    colorBlending.attachmentCount = 1;
-    colorBlending.pAttachments = &_colorBlendAttachment;
+
+    if (!_colorAttachmentFormats.empty()) {
+        _renderInfo.colorAttachmentCount = static_cast<uint32_t>(_colorAttachmentFormats.size());
+        _renderInfo.pColorAttachmentFormats = _colorAttachmentFormats.data();
+
+        blendAttachments.push_back(_colorBlendAttachment);
+
+        VkPipelineColorBlendAttachmentState noBlendAttachment = {};
+        noBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                                           VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+        noBlendAttachment.blendEnable = VK_FALSE; // Скорость НЕЛЬЗЯ блендить
+
+        for (size_t i = 1; i < _colorAttachmentFormats.size(); ++i) {
+            blendAttachments.push_back(noBlendAttachment);
+        }
+
+        colorBlending.attachmentCount = static_cast<uint32_t>(blendAttachments.size());
+        colorBlending.pAttachments = blendAttachments.data();
+    }
+    else {
+        _renderInfo.colorAttachmentCount = (_colorAttachmentformat == VK_FORMAT_UNDEFINED) ? 0 : 1;
+        _renderInfo.pColorAttachmentFormats = &_colorAttachmentformat;
+
+        colorBlending.attachmentCount = _renderInfo.colorAttachmentCount;
+        colorBlending.pAttachments = &_colorBlendAttachment;
+    }
+
+    if (_shaderStages.size() == 1) {
+        colorBlending.attachmentCount = 0;
+        colorBlending.pAttachments = nullptr;
+        _renderInfo.colorAttachmentCount = 0;
+        _renderInfo.pColorAttachmentFormats = nullptr;
+    }
 
     // completely clear VertexInputStateCreateInfo, as we have no need for it
     VkPipelineVertexInputStateCreateInfo _vertexInputInfo = { .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
@@ -165,14 +194,6 @@ VkPipeline PipelineBuilder::build_pipeline(VkDevice device){
     VkGraphicsPipelineCreateInfo pipelineInfo = { .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
     // connect the renderInfo to the pNext extension mechanism
     pipelineInfo.pNext = &_renderInfo;
-
-    if (_shaderStages.size() == 1) {
-        colorBlending.attachmentCount = 0;
-        colorBlending.pAttachments = nullptr;
-    } else {
-        colorBlending.attachmentCount = 1;
-        colorBlending.pAttachments = &_colorBlendAttachment;
-    }
 
     pipelineInfo.stageCount = (uint32_t)_shaderStages.size();
     pipelineInfo.pStages = _shaderStages.data();
@@ -291,6 +312,10 @@ void PipelineBuilder::set_color_attachment_format(VkFormat format){
     }
 }
 
+void PipelineBuilder::set_color_attachment_formats_multi(const std::vector<VkFormat>& formats){
+    _colorAttachmentFormats = formats;
+}
+
 void PipelineBuilder::set_depth_format(VkFormat format){
     _renderInfo.depthAttachmentFormat = format;
 }
@@ -392,7 +417,7 @@ RealPipeline* PipelineManager::CreateComputePipeline(const PipelineCreateInfo& i
         return nullptr;
     }
 
-    std::vector<uint32_t> compCode = UTILS::CompileGLSLToSPIRV(info.computeShaderPath);
+    std::vector<uint32_t> compCode = UTILS::CompileGLSLToSPIRV(info.computeShaderPath, _debugAftermath);
     if (compCode.empty()) {
         fmt::print(stderr, "[PipelineManager ERROR] Compute shader compilation failed for {}\n", info.name);
         return nullptr;
@@ -458,9 +483,9 @@ RealPipeline* PipelineManager::CreatePipelineFromMemory(const PipelineCreateInfo
 }
 
 RealPipeline* PipelineManager::CreatePipeline(const PipelineCreateInfo& info, VkFormat colorFormat,
-                                              VkFormat depthFormat, VkSampleCountFlagBits maxSamples){
+                                              VkFormat depthFormat){
 
-    std::vector<uint32_t> vertCode = UTILS::CompileGLSLToSPIRV(info.vertexShaderPath);
+    std::vector<uint32_t> vertCode = UTILS::CompileGLSLToSPIRV(info.vertexShaderPath, _debugAftermath);
     if (vertCode.empty()) {
         fmt::print(stderr, "[PipelineManager ERROR] Vertex shader compilation failed for {}\n", info.name);
         return nullptr;
@@ -469,19 +494,19 @@ RealPipeline* PipelineManager::CreatePipeline(const PipelineCreateInfo& info, Vk
     // Компилируем фрагментный шейдер ТОЛЬКО если путь к нему не пустой
     std::vector<uint32_t> fragCode;
     if (!info.fragmentShaderPath.empty()) {
-        fragCode = UTILS::CompileGLSLToSPIRV(info.fragmentShaderPath);
+        fragCode = UTILS::CompileGLSLToSPIRV(info.fragmentShaderPath, _debugAftermath);
         if (fragCode.empty()) {
             fmt::print(stderr, "[PipelineManager ERROR] Fragment shader compilation failed for {}\n", info.name);
             return nullptr;
         }
     }
 
-    return CreatePipelineFromMemory(info, vertCode, fragCode, colorFormat, depthFormat, maxSamples);
+    return CreatePipelineFromMemory(info, vertCode, fragCode, colorFormat, depthFormat);
 }
 
 RealPipeline* PipelineManager::CreatePipelineFromMemory(const PipelineCreateInfo& info,
     const std::vector<uint32_t>& vertCode, const std::vector<uint32_t>& fragCode, VkFormat colorFormat,
-    VkFormat depthFormat, VkSampleCountFlagBits maxSamples){
+    VkFormat depthFormat){
 
     if (_pipelinesByName.find(info.name) != _pipelinesByName.end()) {
         return &_pipelinesByName[info.name];
@@ -525,15 +550,27 @@ RealPipeline* PipelineManager::CreatePipelineFromMemory(const PipelineCreateInfo
     pipelineBuilder.set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
 
     // Определяем сэмплы для MSAA
-    VkSampleCountFlagBits samplesToUse = info.useMSAA ? maxSamples : VK_SAMPLE_COUNT_1_BIT;
+    VkSampleCountFlagBits samplesToUse = VK_SAMPLE_COUNT_1_BIT;
+
+    std::vector<VkFormat> forwardFormats = {
+        VK_FORMAT_R16G16B16A16_SFLOAT,
+        VK_FORMAT_R16G16_SFLOAT,
+        VK_FORMAT_R16G16B16A16_SFLOAT
+    };
+
+    pipelineBuilder.set_depth_format(depthFormat);
 
     if (info.passType == RenderPassType::ShadowCSM){
+        pipelineBuilder.set_color_attachment_format(VK_FORMAT_UNDEFINED);
+
         pipelineBuilder.set_polygon_mode(VK_POLYGON_MODE_FILL);
         pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
         pipelineBuilder.set_multisampling(VK_SAMPLE_COUNT_1_BIT); // Тени всегда 1 сепмл
         pipelineBuilder.enable_depthtest(VK_TRUE, VK_COMPARE_OP_GREATER_OR_EQUAL);
     }
     else if (info.passType == RenderPassType::Skybox){
+        pipelineBuilder.set_color_attachment_formats_multi(forwardFormats);
+
         pipelineBuilder.set_polygon_mode(VK_POLYGON_MODE_FILL);
 
         pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
@@ -544,6 +581,8 @@ RealPipeline* PipelineManager::CreatePipelineFromMemory(const PipelineCreateInfo
         pipelineBuilder.enable_depthtest(VK_FALSE, VK_COMPARE_OP_GREATER_OR_EQUAL);
     }
     else{
+        pipelineBuilder.set_color_attachment_formats_multi(forwardFormats);
+
         pipelineBuilder.set_polygon_mode(VK_POLYGON_MODE_FILL);
         pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
 
@@ -566,10 +605,6 @@ RealPipeline* PipelineManager::CreatePipelineFromMemory(const PipelineCreateInfo
             pipelineBuilder.enable_depthtest(VK_TRUE, VK_COMPARE_OP_GREATER_OR_EQUAL);   // Reversed-Z, запись вкл
         }
     }
-
-    // Прокидываем форматы динамического рендеринга
-    pipelineBuilder.set_color_attachment_format(colorFormat);
-    pipelineBuilder.set_depth_format(depthFormat);
 
     VkPipeline newPipeline = pipelineBuilder.build_pipeline(_device);
 
@@ -599,7 +634,6 @@ RealPipeline* PipelineManager::CreatePipelineFromMemory(const PipelineCreateInfo
     pipelineData.fragmentShaderPath = info.fragmentShaderPath;
     pipelineData.colorFormat        = colorFormat;
     pipelineData.depthFormat        = depthFormat;
-    pipelineData.maxSamples         = maxSamples;
     _pipelinesByName[info.name] = pipelineData;
 
     RealPipeline* insertedPtr = &_pipelinesByName[info.name];
@@ -671,7 +705,7 @@ bool PipelineManager:: ReloadAllPipelines(){
     for (const auto& [name, realPipeline] : _pipelinesByName) {
         // Если конвеер вычсилительный то хуячим вот сюда
         if (realPipeline.isCompute) {
-            auto compCode = UTILS::CompileGLSLToSPIRV(realPipeline.computeShaderPath);
+            auto compCode = UTILS::CompileGLSLToSPIRV(realPipeline.computeShaderPath, _debugAftermath);
             if (compCode.empty()) {
                 std::cerr << "[PipelineManager] Hot-reload aborted due to Compute shader compiler errors in " << name << ".\n";
                 return false;
@@ -680,7 +714,7 @@ bool PipelineManager:: ReloadAllPipelines(){
             continue;
         }
         // Вершинный шейдер компилируем всегда
-        auto vertCode = UTILS::CompileGLSLToSPIRV(realPipeline.vertexShaderPath);
+        auto vertCode = UTILS::CompileGLSLToSPIRV(realPipeline.vertexShaderPath, _debugAftermath);
         if (vertCode.empty()) {
             std::cerr << "[PipelineManager] Hot-reload aborted due to Vertex shader compiler errors in " << name << ".\n";
             return false;
@@ -690,7 +724,7 @@ bool PipelineManager:: ReloadAllPipelines(){
         // Фрагментный шейдер компилируем ТОЛЬКО если путь к нему существует
         std::vector<uint32_t> fragCode;
         if (!realPipeline.fragmentShaderPath.empty()) {
-            fragCode = UTILS::CompileGLSLToSPIRV(realPipeline.fragmentShaderPath);
+            fragCode = UTILS::CompileGLSLToSPIRV(realPipeline.fragmentShaderPath, _debugAftermath);
             if (fragCode.empty()) {
                 std::cerr << "[PipelineManager] Hot-reload aborted due to Fragment shader compiler errors in " << name << ".\n";
                 return false;
@@ -710,7 +744,6 @@ bool PipelineManager:: ReloadAllPipelines(){
         std::string compPath;
         VkFormat colorFormat;
         VkFormat depthFormat;
-        VkSampleCountFlagBits maxSamples;
 
         // Прикол такой что в бинарное дерево при перезагрузке конвееры загружаются случайно, а не в старом порядке
         // из-за этого случайные айди конвееров ломают отрисовку в CullingAndSubmit
@@ -734,7 +767,6 @@ bool PipelineManager:: ReloadAllPipelines(){
             realPipeline.computeShaderPath,
             realPipeline.colorFormat,
             realPipeline.depthFormat,
-            realPipeline.maxSamples,
             realPipeline.id,
             realPipeline.isCompute,
             newVertCodes[name],
@@ -761,7 +793,6 @@ bool PipelineManager:: ReloadAllPipelines(){
         info.name = pipeline.name;
         info.passType = pipeline.passType;
         info.opacity = pipeline.opacity;
-        info.useMSAA = (pipeline.maxSamples > VK_SAMPLE_COUNT_1_BIT);
         info.vertexShaderPath = pipeline.vertPath;
         info.fragmentShaderPath = pipeline.fragPath;
         info.computeShaderPath = pipeline.compPath;
@@ -779,8 +810,8 @@ bool PipelineManager:: ReloadAllPipelines(){
                 pipeline.vertCode,
                 pipeline.fragCode,
                 pipeline.colorFormat,
-                pipeline.depthFormat,
-                pipeline.maxSamples);
+                pipeline.depthFormat
+                );
         }
 
         if (rebuilt) {

@@ -132,6 +132,7 @@ namespace VK_INIT_ENGINE {
         VkDevice _device;
         VkSurfaceKHR _surface;
 
+        bool _useAftermath;
 
         VkQueue _graphicsQueue;
         uint32_t _graphicsQueueFamily;
@@ -149,14 +150,16 @@ namespace VK_INIT_ENGINE {
         std::vector<VkImageView> _swapchainImageViews; // Инструкция к каждому кадру (Сырой картинки из swapChainImages)
         VkExtent2D _swapchainExtent;
 
-        // Холсты для MSAA
-        AllocatedImage _msaaColorImage;
-        AllocatedImage _msaaDepthImage;
-
         // Холст цветной куда шейдеры выводят изображение
         AllocatedImage _drawImage;
         // Буфер глубины
         AllocatedImage _depthImage;
+        // Буфер движения
+        AllocatedImage _velocityImage;
+        // Буфер нормалей
+        AllocatedImage _normalImage;
+        // Буфер истории кадров
+        AllocatedImage _historyImages[2];
 
         // Набор для передачи данных в шейдер (Для загрузки glTF)
         // for immediate_submit
@@ -176,15 +179,20 @@ namespace VK_INIT_ENGINE {
 
 enum class RenderPassType : uint8_t {
     Forward,        // Base render
-    Grid,
+    Grid,           // Editor grid
     ShadowCSM,      // SCM
     Skybox,         // Sky
-    PostProcess,     // Post-effects
-    Compute
+    Compute,
+    Post_procces
 };
 
 enum class ComputePassType : uint8_t{
-    IBL
+    IBL,
+    TonMapping,
+    ColorCorrection,
+    TAA,
+    GTAO,
+    BLOOM
 };
 
 enum class PipelineOpacity{

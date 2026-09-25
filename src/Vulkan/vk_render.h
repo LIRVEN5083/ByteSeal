@@ -8,7 +8,10 @@ class TextureManager;
 
 struct RenderObject{
     VkBuffer indexBuffer;
+
+    VkDeviceAddress matrixBufferAddress;
     VkDeviceAddress vertexBufferAddress;
+
     uint32_t indexCount;
     uint32_t firstIndex;
 
@@ -22,8 +25,6 @@ struct RenderObject{
 
     glm::vec4 baseColorFactor;
     glm::vec4 materialFactors;
-
-    glm::mat4 render_matrix;
 
     PipelineOpacity opacity;
 
@@ -121,9 +122,9 @@ public:
 private:
     RealPipeline* _shadowPipeline{ nullptr };
 };
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // ПРОХОД для SkyBox
-
 enum class SkyBoxType : uint32_t{
     Panoramic = 0,
     Cubemap = 1,
@@ -174,8 +175,6 @@ public:
     void RefreshPasses(PipelineManager& pipelineManager);
 
     void SetPassEnabled(RenderPassType type, bool enabled);
-
-    void ExecuteMSAAResolve(VkCommandBuffer cmd, VkExtent2D drawExtent);
 
     void UpdateSkyBoxTexture(GPUTexture& newTex, TextureManager& textureManager, ComputeRenderSystem& computeSystem);
 

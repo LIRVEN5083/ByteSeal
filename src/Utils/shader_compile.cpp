@@ -3,7 +3,7 @@
 #include <sstream>
 #include <iostream>
 
-std::vector<uint32_t> UTILS::CompileGLSLToSPIRV(const std::string& pathGLSL){
+std::vector<uint32_t> UTILS::CompileGLSLToSPIRV(const std::string& pathGLSL, bool debugMode){
     std::ifstream file(pathGLSL);
     if (!file.is_open()) {
         std::cerr << "[SHADER COMPILER ERROR]: Could not open GLSL file: " << pathGLSL << "\n";
@@ -29,9 +29,21 @@ std::vector<uint32_t> UTILS::CompileGLSLToSPIRV(const std::string& pathGLSL){
 
     shaderc::Compiler compiler;
     shaderc::CompileOptions options;
-    options.SetOptimizationLevel(shaderc_optimization_level_performance);
+
     options.SetTargetEnvironment(shaderc_target_env_vulkan, shaderc_env_version_vulkan_1_2);
     options.SetTargetSpirv(shaderc_spirv_version_1_5);
+
+    if (debugMode) {
+        // Включаем генерацию дебаг-информации (аналог флага -g)
+        options.SetGenerateDebugInfo();
+
+        // Отключаем оптимизацию, иначе компилятор сожмет код и Aftermath потеряет строки
+        options.SetOptimizationLevel(shaderc_optimization_level_zero);
+    } else {
+        // Обычный релизный билд с упором на скорость
+        options.SetOptimizationLevel(shaderc_optimization_level_performance);
+    }
+
 
     shaderc::SpvCompilationResult compilationResult = compiler.CompileGlslToSpv(
         sourceCode, shaderKind, pathGLSL.c_str(), options

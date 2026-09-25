@@ -2,7 +2,81 @@
 #include "vk_pipelines.h"
 #include "vk_glTF_loading.h"
 
-void IBLProcessorComputePass::Init(PipelineManager& pipelineManager){}
+void ColorCorrectionComputePass::Execute(const ComputeContext& ctx){
+    RealPipeline* activePipeline = ctx.pipelineManager->GetPipelineByName( _pipelineName);
+    if (!activePipeline) return;
+
+    vkCmdBindPipeline(ctx.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, activePipeline->pipeline);
+    vkCmdBindDescriptorSets(ctx.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, activePipeline->layout, 1, 1, &ctx.bindlessSet, 0, nullptr);
+
+    ColorCorrectionPushConstants push{};
+    push.exposure   = _settings.exposure;
+    push.saturation = _settings.saturation;
+    push.contrast   = _settings.contrast;
+    push.colorTint  = glm::vec4(_settings.colorTint[0], _settings.colorTint[1], _settings.colorTint[2], 1.0f);
+
+    vkCmdPushConstants(ctx.cmd, activePipeline->layout,
+                       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT,
+                       0, sizeof(ColorCorrectionPushConstants), &push);
+
+    uint32_t groupCountX = (_init._windowExtent.width + 15) / 16;
+    uint32_t groupCountY = (_init._windowExtent.height + 15) / 16;
+
+    vkCmdDispatch(ctx.cmd, groupCountX, groupCountY, 1);
+}
+
+void TonemapComputePass::Execute(const ComputeContext& ctx){
+    RealPipeline* activePipeline = ctx.pipelineManager->GetPipelineByName(_pipelineName);
+    if (!activePipeline) return;
+
+    vkCmdBindPipeline(ctx.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, activePipeline->pipeline);
+
+    vkCmdBindDescriptorSets(ctx.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, activePipeline->layout,
+                            1, 1, &ctx.bindlessSet, 0, nullptr);
+
+    TonemapPushConstants push{};
+    push.tonemapOp = static_cast<uint32_t>(_settings.tonemapOp);
+    push.gamma     = _settings.gamma;
+    push.screenWidth  = static_cast<float>(_init._windowExtent.width);
+    push.screenHeight = static_cast<float>(_init._windowExtent.height);
+
+    vkCmdPushConstants(ctx.cmd, activePipeline->layout,
+                       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(TonemapPushConstants), &push);
+
+    uint32_t groupCountX = (_init._windowExtent.width + 15) / 16;
+    uint32_t groupCountY = (_init._windowExtent.height + 15) / 16;
+
+    vkCmdDispatch(ctx.cmd, groupCountX, groupCountY, 1);
+}
+
+void TAAComputePass::Execute(const ComputeContext& ctx){
+     RealPipeline* activePipeline = ctx.pipelineManager->GetPipelineByName(_pipelineName);
+    if (!activePipeline) return;
+
+    vkCmdBindPipeline(ctx.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, activePipeline->pipeline);
+    vkCmdBindDescriptorSets(ctx.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, activePipeline->layout,
+                            1, 1, &ctx.bindlessSet, 0, nullptr);
+
+    struct TAAPushConstants {
+        uint32_t frameIndex;
+        float screenWidth;
+        float screenHeight;
+        float padding;
+    } push;
+
+    push.frameIndex   = static_cast<uint32_t>(ctx.frameNumber % 2);
+    push.screenWidth  = static_cast<float>(_init._windowExtent.width);
+    push.screenHeight = static_cast<float>(_init._windowExtent.height);
+
+    vkCmdPushConstants(ctx.cmd, activePipeline->layout,
+                       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT,
+                       0, sizeof(TAAPushConstants), &push);
+
+    uint32_t groupCountX = (_init._windowExtent.width + 15) / 16;
+    uint32_t groupCountY = (_init._windowExtent.height + 15) / 16;
+
+    vkCmdDispatch(ctx.cmd, groupCountX, groupCountY, 1);
+}
 
 void IBLProcessorComputePass::Execute(const ComputeContext& ctx){
     VkCommandBuffer cmd = ctx.cmd;
@@ -171,7 +245,6 @@ void ComputeRenderSystem::cleanup(){
 }
 
 ComputePass* ComputeRenderSystem::AddPass(std::unique_ptr<ComputePass> pass){
-    pass->Init(_pipelineManager);
     _computePasses.push_back(std::move(pass));
     return _computePasses.back().get();
 }
@@ -247,4 +320,107 @@ void ComputeRenderSystem::RefreshIBL(GPUTexture newPanorama){
         }
     }
     fmt::print("[ComputeSystem Error] IBLProcessorComputePass not found for recalculation!\n");
+}
+
+ComputePass* PostProcessComputeSystem::AddPass(std::unique_ptr<ComputePass> pass){
+    if (!pass) return nullptr;
+
+    ComputePass* rawPassPtr = pass.get();
+
+    _passes.push_back(std::move(pass));
+
+    return rawPassPtr;
+}
+
+void PostProcessComputeSystem::Execute(VkCommandBuffer mainCmd, VkDescriptorSet bindlessSet, PipelineManager& pipelineManager, int _frameNumber){
+    ComputeContext ctx{ mainCmd, bindlessSet, &pipelineManager, _frameNumber };
+
+    {
+        VkImageMemoryBarrier2 inputsBarriers[2] = {};
+
+        // DrawImage: COLOR_ATTACHMENT_WRITE -> COMPUTE READ/WRITE
+        inputsBarriers[0].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+        inputsBarriers[0].srcStageMask  = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR;
+        inputsBarriers[0].srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+        inputsBarriers[0].dstStageMask  = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+        inputsBarriers[0].dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT;
+        inputsBarriers[0].oldLayout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        inputsBarriers[0].newLayout     = VK_IMAGE_LAYOUT_GENERAL;
+        inputsBarriers[0].image         = _init._drawImage.image;
+        inputsBarriers[0].subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+
+        // VelocityImage: COLOR_ATTACHMENT_WRITE -> COMPUTE READ
+        inputsBarriers[1].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+        inputsBarriers[1].srcStageMask  = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR;
+        inputsBarriers[1].srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+        inputsBarriers[1].dstStageMask  = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+        inputsBarriers[1].dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
+        inputsBarriers[1].oldLayout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        inputsBarriers[1].newLayout     = VK_IMAGE_LAYOUT_GENERAL;
+        inputsBarriers[1].image         = _init._velocityImage.image;
+        inputsBarriers[1].subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+
+        VkDependencyInfo depInfo{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
+        depInfo.imageMemoryBarrierCount = 2;
+        depInfo.pImageMemoryBarriers    = inputsBarriers;
+        vkCmdPipelineBarrier2(mainCmd, &depInfo);
+    }
+
+    for (size_t i = 0; i < _passes.size(); ++i) {
+        if (!_passes.at(i)->IsEnabled()) { continue; }
+
+        _passes.at(i)->Execute(ctx);
+
+        bool isLastActive = true;
+        for (size_t j = i + 1; j < _passes.size(); ++j) {
+            if (_passes[j]->IsEnabled()) {
+                isLastActive = false;
+                break;
+            }
+        }
+
+        if (!isLastActive) {
+            VkImageMemoryBarrier2 computeToComputeBarrier{ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };
+            computeToComputeBarrier.srcStageMask        = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+            computeToComputeBarrier.srcAccessMask       = VK_ACCESS_2_SHADER_WRITE_BIT;
+            computeToComputeBarrier.dstStageMask        = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+            computeToComputeBarrier.dstAccessMask       = VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT;
+            computeToComputeBarrier.oldLayout           = VK_IMAGE_LAYOUT_GENERAL;
+            computeToComputeBarrier.newLayout           = VK_IMAGE_LAYOUT_GENERAL;
+            computeToComputeBarrier.image               = _init._drawImage.image;
+            computeToComputeBarrier.subresourceRange    = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+
+            VkDependencyInfo depInfo{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
+            depInfo.imageMemoryBarrierCount = 1;
+            depInfo.pImageMemoryBarriers    = &computeToComputeBarrier;
+            vkCmdPipelineBarrier2(mainCmd, &depInfo);
+        }
+    }
+
+    {
+        VkImageMemoryBarrier2 outputBarrier{ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };
+        outputBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+        outputBarrier.srcStageMask        = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+        outputBarrier.srcAccessMask       = VK_ACCESS_2_SHADER_WRITE_BIT;
+        outputBarrier.dstStageMask        = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR;
+        outputBarrier.dstAccessMask       = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+        outputBarrier.oldLayout           = VK_IMAGE_LAYOUT_GENERAL;
+        outputBarrier.newLayout           = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        outputBarrier.image               = _init._drawImage.image;
+        outputBarrier.subresourceRange    = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+
+        VkDependencyInfo depInfo{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
+        depInfo.imageMemoryBarrierCount = 1;
+        depInfo.pImageMemoryBarriers    = &outputBarrier;
+        vkCmdPipelineBarrier2(mainCmd, &depInfo);
+    }
+}
+
+void PostProcessComputeSystem::SetPassEnabled(ComputePassType type, bool enabled){
+    for (auto& pass : _passes) {
+        if (pass->GetType() == type) {
+            pass->SetEnabled(enabled);
+            return;
+        }
+    }
 }

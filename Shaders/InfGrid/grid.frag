@@ -1,16 +1,31 @@
 #version 460
 
 layout(location = 0) in vec3 WorldPos;
+layout (location = 1) in vec4 inCurrentPos;
+layout (location = 2) in vec4 inPrevPos;
+
 layout(location = 0) out vec4 FragColor;
+layout(location = 1) out vec2 OutVelocity;
+layout(location = 2) out vec4 OutNormal;
 
 // Добавляем UBO сцены для получения матрицы камеры
 layout(set = 0, binding = 0) uniform SceneData {
-    mat4 view;
-    mat4 proj;
-    mat4 viewproj;
-    vec4 ambientColor;
-    vec4 sunlightDirection;
-    vec4 sunlightColor;
+	mat4 view;
+	mat4 proj;
+	mat4 viewproj;
+
+	// Для TAA
+	mat4 viewProjNonJittered; 		// Текущая чистая камера
+	mat4 prevViewProjJittered;      // Прошлая камера
+
+	// Направленный источник света
+	vec4 ambientColor;
+	vec4 sunlightDirection;
+	vec4 sunlightColor;
+
+	// Тени
+	mat4 cascadeMatrices[4]; // Матрицы света для 4 каскадов
+	vec4 cascadeSplits;      // Дистанции разделения каскадов упакованы в vec4 (x, y, z, w)
 } scene;
 
 float gGridSize = 1000.0;
@@ -93,4 +108,25 @@ void main() {
     }
 
     FragColor = Color;
+
+    float safeWCurrent = max(abs(inCurrentPos.w), 0.0001);
+	float safeWPrev    = max(abs(inPrevPos.w), 0.0001);
+
+	vec2 currentNDC = inCurrentPos.xy / safeWCurrent;
+	vec2 prevNDC    = inPrevPos.xy / safeWPrev;
+
+	// Считаем чистую скорость пикселя на экране
+	vec2 ndcVelocity = currentNDC - prevNDC;
+	
+	// Переводим в UV
+	vec2 uvVelocity = vec2(ndcVelocity.x, ndcVelocity.y) * 0.5;
+
+	float maxVelocityLength = 0.1;
+	if (length(uvVelocity) > maxVelocityLength) {
+		uvVelocity = normalize(uvVelocity) * maxVelocityLength;
+	}
+
+	OutVelocity = uvVelocity;
+
+    OutNormal = vec4(0.5, 0.5, 1.0, 1.0); 
 }

@@ -39,26 +39,47 @@ void VK_INIT_ENGINE::VulkanInitEngine::init_cleanup(){
             ready_init._drawImage.image = VK_NULL_HANDLE;
             ready_init._drawImage.allocation = VK_NULL_HANDLE;
         }
-
-        // MSAA
-        if (ready_init._msaaColorImage.imageView != VK_NULL_HANDLE) {
-            vkDestroyImageView(ready_init._device, ready_init._msaaColorImage.imageView, nullptr);
-            ready_init._msaaColorImage.imageView = VK_NULL_HANDLE;
+        // Глубина
+        if (ready_init._depthImage.imageView != VK_NULL_HANDLE) {
+            vkDestroyImageView(ready_init._device, ready_init._depthImage.imageView, nullptr);
+            ready_init._depthImage.imageView = VK_NULL_HANDLE;
         }
-        if (ready_init._msaaColorImage.image != VK_NULL_HANDLE) {
-            vmaDestroyImage(ready_init._allocator, ready_init._msaaColorImage.image, ready_init._msaaColorImage.allocation);
-            ready_init._msaaColorImage.image = VK_NULL_HANDLE;
-            ready_init._msaaColorImage.allocation = VK_NULL_HANDLE;
+        if (ready_init._depthImage.image != VK_NULL_HANDLE) {
+            vmaDestroyImage(ready_init._allocator, ready_init._depthImage.image, ready_init._depthImage.allocation);
+            ready_init._depthImage.image = VK_NULL_HANDLE;
+            ready_init._depthImage.allocation = VK_NULL_HANDLE;
         }
-
-        if (ready_init._msaaDepthImage.imageView != VK_NULL_HANDLE) {
-            vkDestroyImageView(ready_init._device, ready_init._msaaDepthImage.imageView, nullptr);
-            ready_init._msaaDepthImage.imageView = VK_NULL_HANDLE;
+        // Вектор движения
+        if (ready_init._velocityImage.imageView != VK_NULL_HANDLE) {
+            vkDestroyImageView(ready_init._device, ready_init._velocityImage.imageView, nullptr);
+            ready_init._velocityImage.imageView = VK_NULL_HANDLE;
         }
-        if (ready_init._msaaDepthImage.image != VK_NULL_HANDLE) {
-            vmaDestroyImage(ready_init._allocator, ready_init._msaaDepthImage.image, ready_init._msaaDepthImage.allocation);
-            ready_init._msaaDepthImage.image = VK_NULL_HANDLE;
-            ready_init._msaaDepthImage.allocation = VK_NULL_HANDLE;
+        if (ready_init._velocityImage.image != VK_NULL_HANDLE) {
+            vmaDestroyImage(ready_init._allocator, ready_init._velocityImage.image, ready_init._velocityImage.allocation);
+            ready_init._velocityImage.image = VK_NULL_HANDLE;
+            ready_init._velocityImage.allocation = VK_NULL_HANDLE;
+        }
+        // Нормаль
+        if (ready_init._normalImage.imageView != VK_NULL_HANDLE) {
+            vkDestroyImageView(ready_init._device, ready_init._normalImage.imageView, nullptr);
+            ready_init._normalImage.imageView = VK_NULL_HANDLE;
+        }
+        if (ready_init._normalImage.image != VK_NULL_HANDLE) {
+            vmaDestroyImage(ready_init._allocator, ready_init._normalImage.image, ready_init._normalImage.allocation);
+            ready_init._normalImage.image = VK_NULL_HANDLE;
+            ready_init._normalImage.allocation = VK_NULL_HANDLE;
+        }
+        // Память кадра
+        for (int i = 0; i < 2; i++){
+            if (ready_init._historyImages[i].imageView != VK_NULL_HANDLE) {
+                vkDestroyImageView(ready_init._device, ready_init._historyImages[i].imageView, nullptr);
+                ready_init._historyImages[i].imageView = VK_NULL_HANDLE;
+            }
+            if (ready_init._historyImages[i].image != VK_NULL_HANDLE) {
+                vmaDestroyImage(ready_init._allocator, ready_init._historyImages[i].image, ready_init._historyImages[i].allocation);
+                ready_init._historyImages[i].image = VK_NULL_HANDLE;
+                ready_init._historyImages[i].allocation = VK_NULL_HANDLE;
+            }
         }
     }
 
@@ -137,9 +158,6 @@ void VK_INIT_ENGINE::VulkanInitEngine::init_swapchain(){
         1
     };
 
-    // 1. Получаем поддерживаемое видеокартой количество сэмплов для MSAA
-    VkSampleCountFlagBits msaaSamples = vkinit::max_samples(ready_init);
-
     // ==========================================
     // Обычная плоская картинка (_drawImage, 1 sample)
     // ==========================================
@@ -165,41 +183,108 @@ void VK_INIT_ENGINE::VulkanInitEngine::init_swapchain(){
     VkImageViewCreateInfo rview_info = vkinit::imageview_create_info(ready_init._drawImage.imageFormat, ready_init._drawImage.image, VK_IMAGE_ASPECT_COLOR_BIT);
     VK_CHECK(vkCreateImageView(ready_init._device, &rview_info, nullptr, &ready_init._drawImage.imageView));
 
+    // ==========================================
+    // Создание буфера глубины (_depthImage, 1 sample)
+    // ==========================================
 
-    // Новая многовыборочная цветная картинка (_msaaColorImage)
-
-    ready_init._msaaColorImage.imageFormat = ready_init._drawImage.imageFormat; // Формат совпадает с основным холстом
-    ready_init._msaaColorImage.imageExtent = drawImageExtent;
-
-    VkImageUsageFlags msaaColorUsages{};
-    msaaColorUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; // Используем как таргет для 3D сцены
-    msaaColorUsages |= VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT; // Оптимизация GPU: память может не выделяться на диске физически, она временная
-
-    VkImageCreateInfo msaa_img_info = vkinit::image_create_info(ready_init._msaaColorImage.imageFormat, msaaColorUsages, drawImageExtent);
-    msaa_img_info.samples = msaaSamples;
-
-    // Выделяем память
-    vmaCreateImage(ready_init._allocator, &msaa_img_info, &rimg_allocinfo, &ready_init._msaaColorImage.image, &ready_init._msaaColorImage.allocation, nullptr);
-
-    VkImageViewCreateInfo msaa_view_info = vkinit::imageview_create_info(ready_init._msaaColorImage.imageFormat, ready_init._msaaColorImage.image, VK_IMAGE_ASPECT_COLOR_BIT);
-    VK_CHECK(vkCreateImageView(ready_init._device, &msaa_view_info, nullptr, &ready_init._msaaColorImage.imageView));
-
-    // Новая многовыборочная глубина (_msaaDepthImage)
-
-    ready_init._msaaDepthImage.imageFormat = VK_FORMAT_D32_SFLOAT;
-    ready_init._msaaDepthImage.imageExtent = drawImageExtent;
+    ready_init._depthImage.imageFormat = VK_FORMAT_D32_SFLOAT;
+    ready_init._depthImage.imageExtent = drawImageExtent;
 
     VkImageUsageFlags depthImageUsages{};
     depthImageUsages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-    depthImageUsages |= VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
+    depthImageUsages |= VK_IMAGE_USAGE_SAMPLED_BIT;
+    depthImageUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
 
-    VkImageCreateInfo dimg_info = vkinit::image_create_info(ready_init._msaaDepthImage.imageFormat, depthImageUsages, drawImageExtent);
-    dimg_info.samples = msaaSamples;
+    VkImageCreateInfo dimg_info = vkinit::image_create_info(ready_init._depthImage.imageFormat, depthImageUsages, drawImageExtent);
+    dimg_info.samples = VK_SAMPLE_COUNT_1_BIT;
 
-    vmaCreateImage(ready_init._allocator, &dimg_info, &rimg_allocinfo, &ready_init._msaaDepthImage.image, &ready_init._msaaDepthImage.allocation, nullptr);
+    VmaAllocationCreateInfo dimg_allocinfo = {};
+    dimg_allocinfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+    dimg_allocinfo.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-    VkImageViewCreateInfo dview_info = vkinit::imageview_create_info(ready_init._msaaDepthImage.imageFormat, ready_init._msaaDepthImage.image, VK_IMAGE_ASPECT_DEPTH_BIT);
-    VK_CHECK(vkCreateImageView(ready_init._device, &dview_info, nullptr, &ready_init._msaaDepthImage.imageView));
+    vmaCreateImage(ready_init._allocator, &dimg_info, &dimg_allocinfo, &ready_init._depthImage.image, &ready_init._depthImage.allocation, nullptr);
+
+    VkImageViewCreateInfo dview_info = vkinit::imageview_create_info(ready_init._depthImage.imageFormat, ready_init._depthImage.image, VK_IMAGE_ASPECT_DEPTH_BIT);
+    VK_CHECK(vkCreateImageView(ready_init._device, &dview_info, nullptr, &ready_init._depthImage.imageView));
+
+    // ==========================================
+    // Векторы движения (_velocityImage)
+    // ==========================================
+
+    ready_init._velocityImage.imageFormat = VK_FORMAT_R16G16_SFLOAT;
+    ready_init._velocityImage.imageExtent = drawImageExtent;
+
+    VkImageUsageFlags velocityUsages{};
+    velocityUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    velocityUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
+    velocityUsages |= VK_IMAGE_USAGE_SAMPLED_BIT;
+
+    VkImageCreateInfo vimg_info = vkinit::image_create_info(ready_init._velocityImage.imageFormat, velocityUsages, drawImageExtent);
+    vimg_info.samples = VK_SAMPLE_COUNT_1_BIT;
+
+    vmaCreateImage(ready_init._allocator, &vimg_info, &rimg_allocinfo, &ready_init._velocityImage.image, &ready_init._velocityImage.allocation, nullptr);
+
+    VkImageViewCreateInfo vview_info = vkinit::imageview_create_info(ready_init._velocityImage.imageFormat, ready_init._velocityImage.image, VK_IMAGE_ASPECT_COLOR_BIT);
+    VK_CHECK(vkCreateImageView(ready_init._device, &vview_info, nullptr, &ready_init._velocityImage.imageView));
+
+
+    // ==========================================
+    // Буфер нормалей экрана (_normalImage)
+    // ==========================================
+    ready_init._normalImage.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
+    ready_init._normalImage.imageExtent = drawImageExtent;
+
+    VkImageUsageFlags normalUsages{};
+    normalUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    normalUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
+    normalUsages |= VK_IMAGE_USAGE_SAMPLED_BIT;
+
+    VkImageCreateInfo nimg_info = vkinit::image_create_info(ready_init._normalImage.imageFormat, normalUsages, drawImageExtent);
+    nimg_info.samples = VK_SAMPLE_COUNT_1_BIT;
+
+    vmaCreateImage(ready_init._allocator, &nimg_info, &rimg_allocinfo, &ready_init._normalImage.image, &ready_init._normalImage.allocation, nullptr);
+
+    VkImageViewCreateInfo nview_info = vkinit::imageview_create_info(ready_init._normalImage.imageFormat, ready_init._normalImage.image, VK_IMAGE_ASPECT_COLOR_BIT);
+    VK_CHECK(vkCreateImageView(ready_init._device, &nview_info, nullptr, &ready_init._normalImage.imageView));
+
+    // ==========================================
+    // Текстуры истории TAA (_historyImages[2])
+    // ==========================================
+
+    VkImageUsageFlags historyUsages{};
+    historyUsages |= VK_IMAGE_USAGE_SAMPLED_BIT;
+    historyUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
+    historyUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+
+    for (int i = 0; i < 2; i++) {
+        ready_init._historyImages[i].imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
+        ready_init._historyImages[i].imageExtent = drawImageExtent;
+
+        VkImageCreateInfo hist_info = vkinit::image_create_info(
+            ready_init._historyImages[i].imageFormat,
+            historyUsages,
+            drawImageExtent
+        );
+        hist_info.samples = VK_SAMPLE_COUNT_1_BIT;
+
+        // Используем rimg_allocinfo, так как они тоже GPU_ONLY и DEVICE_LOCAL
+        VK_CHECK(vmaCreateImage(
+            ready_init._allocator,
+            &hist_info,
+            &rimg_allocinfo,
+            &ready_init._historyImages[i].image,
+            &ready_init._historyImages[i].allocation,
+            nullptr
+        ));
+
+        VkImageViewCreateInfo hview_info = vkinit::imageview_create_info(
+            ready_init._historyImages[i].imageFormat,
+            ready_init._historyImages[i].image,
+            VK_IMAGE_ASPECT_COLOR_BIT
+        );
+        VK_CHECK(vkCreateImageView(ready_init._device, &hview_info, nullptr, &ready_init._historyImages[i].imageView));
+    }
+
 }
 
 void VK_INIT_ENGINE::VulkanInitEngine::init_sync_structures(){
@@ -315,8 +400,8 @@ VK_INIT_ENGINE::VulkanInitEngine::VulkanInitEngine(bool Validation_layers){
     SDL_Vulkan_CreateSurface(ready_init._window, this->ready_init._instance, nullptr, &this->ready_init._surface);
 
     VkPhysicalDeviceVulkan13Features features{ .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES };
-    features.dynamicRendering = true;
-    features.synchronization2 = true;
+    features.dynamicRendering = VK_TRUE;
+    features.synchronization2 = VK_TRUE;
     features.shaderDemoteToHelperInvocation = VK_TRUE;
 
     VkPhysicalDeviceVulkan12Features features12{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES };
@@ -327,23 +412,73 @@ VK_INIT_ENGINE::VulkanInitEngine::VulkanInitEngine(bool Validation_layers){
     features12.shaderOutputLayer = VK_TRUE;
     features12.shaderOutputViewportIndex = VK_TRUE;
     features12.descriptorBindingStorageImageUpdateAfterBind = VK_TRUE;
+    features12.shaderStorageImageArrayNonUniformIndexing = VK_TRUE;
 
     VkPhysicalDeviceFeatures baseFeatures{};
     baseFeatures.samplerAnisotropy = VK_TRUE;
     baseFeatures.geometryShader = VK_TRUE;
+    baseFeatures.shaderInt64 = VK_TRUE;
+    baseFeatures.independentBlend = VK_TRUE;
 
     vkb::PhysicalDeviceSelector selector{ vkb_inst };
-    vkb::PhysicalDevice physicalDevice = selector
-    .set_minimum_version(1, 3)
-    .set_required_features(baseFeatures)
-    .set_required_features_13(features)
-    .set_required_features_12(features12)
-    .set_surface(this->ready_init._surface)
-    .add_required_extension(VK_EXT_SHADER_VIEWPORT_INDEX_LAYER_EXTENSION_NAME)
-    .select()
-    .value();
+    selector.set_minimum_version(1, 3)
+        .set_required_features(baseFeatures)
+        .set_required_features_13(features)
+        .set_required_features_12(features12)
+        .set_surface(this->ready_init._surface)
+        .add_required_extension(VK_EXT_SHADER_VIEWPORT_INDEX_LAYER_EXTENSION_NAME);
+
+    bool use_aftermath = false;
+
+    if (Validation_layers) {
+        auto selection_res = selector.select();
+        if (selection_res) {
+            VkPhysicalDeviceProperties props;
+            vkGetPhysicalDeviceProperties(selection_res.value().physical_device, &props);
+
+            // 0x10DE — это Vendor ID компании NVIDIA
+            if (props.vendorID == 0x10DE) {
+                use_aftermath = true;
+            }
+        }
+    }
+
+    if (use_aftermath) {
+        selector.add_required_extension(VK_NV_DEVICE_DIAGNOSTICS_CONFIG_EXTENSION_NAME);
+    }
+    vkb::PhysicalDevice physicalDevice = selector.select().value();
+
+    VkDeviceDiagnosticsConfigCreateInfoNV aftermathConfig{};
+    if (use_aftermath) {
+        aftermathConfig.sType = VK_STRUCTURE_TYPE_DEVICE_DIAGNOSTICS_CONFIG_CREATE_INFO_NV;
+        aftermathConfig.pNext = nullptr;
+        aftermathConfig.flags = VK_DEVICE_DIAGNOSTICS_CONFIG_ENABLE_SHADER_DEBUG_INFO_BIT_NV |
+                                VK_DEVICE_DIAGNOSTICS_CONFIG_ENABLE_RESOURCE_TRACKING_BIT_NV |
+                                VK_DEVICE_DIAGNOSTICS_CONFIG_ENABLE_AUTOMATIC_CHECKPOINTS_BIT_NV;
+
+        // Включаем сам Aftermath SDK до создания логического устройства
+        GFSDK_Aftermath_EnableGpuCrashDumps(
+            GFSDK_Aftermath_Version_API,
+            2, // 2. watchedApis: только Vulkan. У меня не находит enum class поэтому просто 2
+            GFSDK_Aftermath_GpuCrashDumpFeatureFlags_Default, // 3. flags: дефолтные флаги краш-дампов
+            GpuCrashDumpCallback,                          // 4. коллбэк дампа
+            nullptr,                                       // 5. shaderDebugInfoCb
+            nullptr,                                       // 6. descriptionCb
+            nullptr,                                       // 7. resolveMarkerCb
+            nullptr                                        // 8. pUserData
+        );
+        std::cout << "[InitEngine] NVIDIA Graphics detected. Nsight Aftermath initialized successfully." << std::endl;
+    }
+    else if (Validation_layers) {
+        std::cout << "[Engine] Non-NVIDIA Graphics detected. Skipping Nsight Aftermath initialization." << std::endl;
+    }
 
     vkb::DeviceBuilder deviceBuilder{ physicalDevice };
+
+    if (use_aftermath) {
+        deviceBuilder.add_pNext(&aftermathConfig);
+    }
+
     vkb::Device vkbDevice = deviceBuilder.build().value();
 
     this->ready_init._device = vkbDevice.device;
@@ -385,4 +520,6 @@ VK_INIT_ENGINE::VulkanInitEngine::VulkanInitEngine(bool Validation_layers){
     init_imgui();
 
     this->ready_init._isInitialized = true;
+
+    ready_init._useAftermath = use_aftermath;
 }

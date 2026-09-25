@@ -2,16 +2,26 @@
 
 layout(location = 0) in vec3 outWorldViewDir;
 layout(location = 0) out vec4 outColor;
+layout(location = 1) out vec2 outVelocity;
+layout(location = 2) out vec4 outNormal;
 
 layout(set = 0, binding = 0) uniform SceneData {
     mat4 view;
-    mat4 proj;
-    mat4 viewproj;
-    vec4 ambientColor;
-    vec4 sunlightDirection;
-    vec4 sunlightColor;
-    mat4 cascadeMatrices[4]; // Твой чистый массив без лишних ID
-    vec4 cascadeSplits;
+	mat4 proj;
+	mat4 viewproj;
+
+	// Для TAA
+	mat4 viewProjNonJittered; // Текущая чистая камера
+	mat4 prevViewProj;        // Прошлая чистая камера
+
+	// Направленный источник света
+	vec4 ambientColor;
+	vec4 sunlightDirection;
+	vec4 sunlightColor;
+
+	// Тени
+	mat4 cascadeMatrices[4]; // Матрицы света для 4 каскадов
+	vec4 cascadeSplits;      // Дистанции разделения каскадов упакованы в vec4 (x, y, z, w)
 
     // Коэффициенты Хошека-Вилки
     vec4 skyA; vec4 skyB; vec4 skyC; vec4 skyD; vec4 skyE;
@@ -101,4 +111,6 @@ void main() {
     finalColor = pow(finalColor, vec3(1.0 / 2.2));
 
     outColor = vec4(finalColor, 1.0);
+    outVelocity = vec2(0.0);
+    outNormal = vec4(0.0);
 }

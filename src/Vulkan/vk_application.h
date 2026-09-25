@@ -55,19 +55,19 @@ namespace VK_APPLICATION {
         CONTROLLER::Camera _camera;
         CONTROLLER::Delta _delta;
 
-        VkSampleCountFlagBits _maxSamples;
-
-        // Для теста нодов
-        float angle{0.0f};
-
         std::unique_ptr<PipelineManager> _pipelineManager;
         TextureManager _textureManager;
         MeshManager _meshManager;
         ModelManager _modelManager{_init, _meshManager, _textureManager};
+        TransformBufferManager _transformManager;
+
         RenderSystem _renderSystem{_init};
         ComputeRenderSystem _computeSystem{_init, *_pipelineManager};
+        PostProcessComputeSystem _postProcessSystem{_init};
+
         std::unique_ptr<Scene> _activeScene;
         std::unique_ptr<LightManager> _lightManager;
+        TAA _TAA{_init};
         VK_GUI::GUI _gui;
 
         void renderLoop();

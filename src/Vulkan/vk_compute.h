@@ -8,6 +8,8 @@ struct IBL_TEXTURES;
 struct ComputeContext {
     VkCommandBuffer cmd;
     VkDescriptorSet bindlessSet;
+    PipelineManager* pipelineManager;
+    int frameNumber;
 };
 
 class ComputePass {
@@ -27,10 +29,79 @@ public:
     bool IsEnabled() const { return _isEnabled; }
     void Toggle() { _isEnabled = !_isEnabled;}
 
-    virtual void Init(PipelineManager& pipelineManager) = 0;
-
     virtual void Execute(const ComputeContext& ctx) = 0;
+};
 
+enum class TonemapOperator : uint32_t {
+    Linear = 0,
+    Reinhard = 1,
+    ACES = 2,
+    Filmic = 3
+};
+
+struct PostProcessSettings {
+    // Оператор тонмаппинга (дефолтом ставим имбовый кинематографический ACES)
+    TonemapOperator tonemapOp{ TonemapOperator::ACES };
+
+    // Общая экспозиция/яркость (1.0f — стандарт)
+    float exposure{ 0.5f };
+
+    // Гамма-коррекция для монитора (2.2f — стандарт для sRGB экранов)
+    float gamma{ 2.2f };
+
+    // Насыщенность цветов (0.0f — черно-белое, 1.0f — стандарт, >1.0f — сочнее)
+    float saturation{ 1.0f };
+
+    // Контрастность изображения (1.0f — стандарт)
+    float contrast{ 1.0f };
+
+    // Цветовой баланс / тинт (дефолт 1.0f по всем осям — чистый белый, без искажений)
+    float colorTint[3]{ 1.0f, 1.0f, 1.0f };
+};
+
+class ColorCorrectionComputePass : public ComputePass{
+public:
+    ColorCorrectionComputePass(VK_INIT_ENGINE::_inited_engine& init, std::string pipelineName)
+        : ComputePass(init, ComputePassType::ColorCorrection), _pipelineName(pipelineName) {}
+
+    ~ColorCorrectionComputePass() override = default;
+
+    void Execute(const ComputeContext& ctx) override;
+
+    void UpdateSettings(const PostProcessSettings& newSettings) { _settings = newSettings; }
+
+private:
+    std::string _pipelineName;
+    PostProcessSettings _settings{};
+};
+
+class TonemapComputePass : public ComputePass{
+public:
+    TonemapComputePass(VK_INIT_ENGINE::_inited_engine& init, std::string pipelineName)
+        : ComputePass(init, ComputePassType::TonMapping), _pipelineName(pipelineName) {}
+
+    ~TonemapComputePass() override = default;
+
+    void Execute(const ComputeContext& ctx) override;
+
+    void UpdateSettings(const PostProcessSettings& newSettings) { _settings = newSettings; }
+private:
+    std::string _pipelineName;
+    PostProcessSettings _settings{};
+};
+
+class TAAComputePass : public ComputePass
+{
+public:
+    TAAComputePass(VK_INIT_ENGINE::_inited_engine& init, std::string pipelineName)
+        : ComputePass(init, ComputePassType::TAA), _pipelineName(pipelineName) {}
+
+    void Execute(const ComputeContext& ctx) override;
+
+private:
+    std::string _pipelineName;
+
+    uint32_t _frameCounter{ 0 };
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -46,8 +117,6 @@ public:
           _pipelineManager(pipelineManager){}
 
     ~IBLProcessorComputePass() override = default;
-
-    void Init(PipelineManager& pipelineManager) override;
 
     void Execute(const ComputeContext& ctx) override;
 
@@ -76,7 +145,6 @@ private:
 
     bool _needsRecalculation = true;
 };
-
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 class ComputeRenderSystem {
@@ -109,4 +177,22 @@ private:
     PipelineManager& _pipelineManager;
 
     std::vector<std::unique_ptr<ComputePass>> _computePasses;
+};
+
+class PostProcessComputeSystem {
+public:
+    PostProcessComputeSystem(VK_INIT_ENGINE::_inited_engine& init)
+        : _init(init) {}
+
+    ~PostProcessComputeSystem() = default;
+
+    ComputePass* AddPass(std::unique_ptr<ComputePass> pass);
+
+    void Execute(VkCommandBuffer mainCmd, VkDescriptorSet bindlessSet, PipelineManager& pipelineManager, int _frameNumber);
+
+    void SetPassEnabled(ComputePassType type, bool enabled);
+
+private:
+    VK_INIT_ENGINE::_inited_engine& _init;
+    std::vector<std::unique_ptr<ComputePass>> _passes;
 };
