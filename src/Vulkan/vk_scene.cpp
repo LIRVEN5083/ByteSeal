@@ -248,7 +248,7 @@ void Scene::CullingAndSubmit(RenderSystem& renderSystem, PipelineManager& pipeli
 
     CameraFrustum frustum = CreateFrustumFromMatrix(currentViewProjJittered);
 
-    for (const auto& entity : _entities)
+    for (auto& entity : _entities)
     {
         if (!entity.bIsVisible) continue;
         if (!_modelManager.has_model(entity.modelAssetId)) continue;
@@ -375,6 +375,7 @@ void Scene::CullingAndSubmit(RenderSystem& renderSystem, PipelineManager& pipeli
             }
             nodeIndex++;
         }
+        entity.prevModelMatrix = entityWorldMatrix;
     }
 }
 
