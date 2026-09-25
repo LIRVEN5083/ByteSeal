@@ -78,18 +78,8 @@ void VK_APPLICATION::VulkanApplication::run(){
             }
             if (e.type == SDL_EVENT_MOUSE_MOTION) {
                 if (_camera.isCameraActive){
-                    float xoffset = e.motion.xrel;
-                    float yoffset = -e.motion.yrel; // Инвертируем Y
-
-                    float sensitivity = 0.05f;
-                    xoffset *= sensitivity;
-                    yoffset *= sensitivity;
-
-                    _camera.yaw   -= xoffset;
-                    _camera.pitch += yoffset;
-
-                    if (_camera.pitch > 89.0f)  _camera.pitch = 89.0f;
-                    if (_camera.pitch < -89.0f) _camera.pitch = -89.0f;
+                    _camera.mouseDeltaX += e.motion.xrel;
+                    _camera.mouseDeltaY += -e.motion.yrel; // Инвертируем Y
                 }
             }
 
@@ -125,8 +115,8 @@ void VK_APPLICATION::VulkanApplication::run(){
         _gui.update_imgui(_init, _delta, _camera, _modelManager, _activeScene,  sceneData,
             *_pipelineManager, _renderSystem, _textureManager,  _computeSystem, _transformManager);
         CONTROLLER::update_time(_movement, _delta);
-        renderLoop();
         CONTROLLER::made_move(_movement, _camera, _delta);
+        renderLoop();
     }
 }
 
@@ -193,7 +183,7 @@ void VK_APPLICATION::VulkanApplication::renderLoop(){
     // Сборка сцены
     glm::vec3 cameraPos = { _movement.valueX, _movement.valueY, _movement.valueZ };
     _activeScene->CullingAndSubmit(_renderSystem, *_pipelineManager, _transformManager, cameraPos,
-        sceneData.viewproj, sceneData.viewProjNonJittered, sceneData.prevViewProj);
+        sceneData.viewproj);
 
     // Отрисовка RenderObject
     _renderSystem.PrepareFrame();
@@ -770,18 +760,6 @@ void VK_APPLICATION::VulkanApplication::init_scene(){
 VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& currentFrame){
     // Z-up
     glm::vec3 up = {0.0f, 0.0f, 1.0f};
-
-    // For camera-movement
-    _camera.front.x = cos(glm::radians(_camera.yaw)) * cos(glm::radians(_camera.pitch));
-    _camera.front.y = sin(glm::radians(_camera.yaw)) * cos(glm::radians(_camera.pitch));
-    _camera.front.z = sin(glm::radians(_camera.pitch));
-    _camera.front = glm::normalize(_camera.front);
-
-    _camera.Wfront.x = cos(glm::radians(_camera.yaw));
-    _camera.Wfront.y = sin(glm::radians(_camera.yaw));
-    _camera.Wfront.z = 0;
-
-    _camera.right = glm::normalize(glm::cross(_camera.Wfront, up));
 
     //For camera
     glm::vec3 eye = { _movement.valueX, _movement.valueY, _movement.valueZ };

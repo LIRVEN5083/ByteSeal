@@ -85,7 +85,7 @@ struct GPUSceneData {
     glm::mat4 proj;
     glm::mat4 viewproj{1.0f};
     glm::mat4 viewProjNonJittered{1.0f}; // Текущий кадр БЕЗ джиттера
-    glm::mat4 prevViewProj{1.0f};        // Предыдущий кадр БЕЗ джиттера
+    glm::mat4 prevViewProjJittered{1.0f};        // Предыдущий кадр с джиттера
 
     glm::vec4 ambientColor;
     glm::vec4 sunlightDirection; // w for sun power

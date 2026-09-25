@@ -9,8 +9,9 @@ layout (location = 2) in vec3 inNormal;
 layout (location = 3) in vec3 inWorldPos;
 layout (location = 4) in vec4 inTangent;
 
-layout (location = 5) noperspective in vec2 inCurrentPos; // Было vec4
-layout (location = 6) noperspective in vec2 inPrevPos;    // Было vec4
+layout (location = 5) in vec4 inCurrentPos;
+layout (location = 6) in vec4 inPrevPos;
+layout (location = 7) in vec4 inScreenPosNonJittered;
 
 layout (location = 0) out vec4 outFragColor; // _drawImage
 layout (location = 1) out vec2 outVelocity;  // Векторы движения пикселя (_velocityImage)
@@ -22,8 +23,8 @@ layout(set = 0, binding = 0) uniform SceneData {
 	mat4 viewproj;
 
 	// Для TAA
-	mat4 viewProjNonJittered; // Текущая чистая камера
-	mat4 prevViewProj;        // Прошлая чистая камера
+	mat4 viewProjNonJittered; 		// Текущая чистая камера
+	mat4 prevViewProjJittered;      // Прошлая камера
 
 	// Направленный источник света
 	vec4 ambientColor;
@@ -162,12 +163,21 @@ void main()
 {
 	// Получение Альбедо
 	uint texID = nonuniformEXT(PushConstants.colorTextureID);
-	vec4 texColor = texture(globalTextures[texID], inUV);
+
+	vec2 cleanNDC = inScreenPosNonJittered.xy / inScreenPosNonJittered.w;
+    vec2 cleanScreenUV = cleanNDC * 0.5 + 0.5;
+
+	vec2 dx = dFdx(inUV) * (dFdx(cleanScreenUV).x != 0.0 ? dFdx(inUV) / dFdx(cleanScreenUV).x : vec2(1.0));
+
+	vec2 texDx = dFdx(inUV);
+    vec2 texDy = dFdy(inUV);
+
+	vec4 texColor = textureGrad(globalTextures[texID], inUV, texDx, texDy);
 	vec4 finalAlbedo = inColor * texColor * PushConstants.baseColorFactor;
 
-	if (finalAlbedo.a < 0.01f) {
-		discard;
-	}
+    if (finalAlbedo.a < 0.01f) {
+        discard;
+    }
 
 	// Переводим альбедо из sRGB в Linear Space
 	vec3 albedo = pow(finalAlbedo.rgb, vec3(2.2));
@@ -395,9 +405,24 @@ void main()
 	}
 
 	//  --Векторы движения и нормали--
-	vec2 ndcVelocity = inCurrentPos - inPrevPos;
+	float safeWCurrent = max(abs(inCurrentPos.w), 0.0001);
+	float safeWPrev    = max(abs(inPrevPos.w), 0.0001);
 
-	outVelocity = ndcVelocity * 0.5; 
+	vec2 currentNDC = inCurrentPos.xy / safeWCurrent;
+	vec2 prevNDC    = inPrevPos.xy / safeWPrev;
+
+	// Считаем чистую скорость пикселя на экране
+	vec2 ndcVelocity = currentNDC - prevNDC;
+	
+	// Переводим в UV
+	vec2 uvVelocity = vec2(ndcVelocity.x, ndcVelocity.y) * 0.5;
+
+	float maxVelocityLength = 0.1;
+	if (length(uvVelocity) > maxVelocityLength) {
+		uvVelocity = normalize(uvVelocity) * maxVelocityLength;
+	}
+
+	outVelocity = uvVelocity;
 
 	outNormal = vec4(N * 0.5 + 0.5, 1.0);
 	//-----------------------------------------------------------------------------

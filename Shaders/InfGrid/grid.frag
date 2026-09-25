@@ -1,8 +1,8 @@
 #version 460
 
 layout(location = 0) in vec3 WorldPos;
-layout(location = 1) noperspective in vec2 inCurrentPos;
-layout(location = 2) noperspective in vec2 inPrevPos;
+layout (location = 1) in vec4 inCurrentPos;
+layout (location = 2) in vec4 inPrevPos;
 
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec2 OutVelocity;
@@ -15,8 +15,8 @@ layout(set = 0, binding = 0) uniform SceneData {
 	mat4 viewproj;
 
 	// Для TAA
-	mat4 viewProjNonJittered; // Текущая чистая камера
-	mat4 prevViewProj;        // Прошлая чистая камера
+	mat4 viewProjNonJittered; 		// Текущая чистая камера
+	mat4 prevViewProjJittered;      // Прошлая камера
 
 	// Направленный источник света
 	vec4 ambientColor;
@@ -109,8 +109,24 @@ void main() {
 
     FragColor = Color;
 
-    vec2 ndcVelocity = inCurrentPos - inPrevPos;
-    OutVelocity = ndcVelocity * 0.5;
+    float safeWCurrent = max(abs(inCurrentPos.w), 0.0001);
+	float safeWPrev    = max(abs(inPrevPos.w), 0.0001);
+
+	vec2 currentNDC = inCurrentPos.xy / safeWCurrent;
+	vec2 prevNDC    = inPrevPos.xy / safeWPrev;
+
+	// Считаем чистую скорость пикселя на экране
+	vec2 ndcVelocity = currentNDC - prevNDC;
+	
+	// Переводим в UV
+	vec2 uvVelocity = vec2(ndcVelocity.x, ndcVelocity.y) * 0.5;
+
+	float maxVelocityLength = 0.1;
+	if (length(uvVelocity) > maxVelocityLength) {
+		uvVelocity = normalize(uvVelocity) * maxVelocityLength;
+	}
+
+	OutVelocity = uvVelocity;
 
     OutNormal = vec4(0.5, 0.5, 1.0, 1.0); 
 }

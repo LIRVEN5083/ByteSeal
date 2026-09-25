@@ -141,9 +141,7 @@ public:
     void CullingAndSubmit(RenderSystem& renderSystem, PipelineManager& pipelineManager,
     TransformBufferManager& transformManager,
     const glm::vec3& cameraPosition,
-    const glm::mat4& currentViewProjJittered,  // Матрица С дрожанием (для куллинга)
-    const glm::mat4& currentViewProjNonJittered, // Текущая БЕЗ дрожания (для TAA)
-    const glm::mat4& prevViewProjNonJittered);  // Прошлая БЕЗ дрожания (для TAA)
+    const glm::mat4& currentViewProjJittered);
 
     RaycastHit Raycast(const Ray& ray);
 
@@ -239,4 +237,5 @@ private:
     uint32_t m_frameIndex;
     std::vector<glm::vec2> m_jitterSamples;
     alignas(16) glm::mat4 m_prevViewProjNonJittered = glm::mat4(1.0f);
+    alignas(16) glm::mat4 m_prevViewProjJittered = glm::mat4(1.0f);
 };

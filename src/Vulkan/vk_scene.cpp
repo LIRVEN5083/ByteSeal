@@ -241,9 +241,7 @@ void Scene::DestroyEntitiesByModel(uint32_t modelAssetId){
 void Scene::CullingAndSubmit(RenderSystem& renderSystem, PipelineManager& pipelineManager,
     TransformBufferManager& transformManager,
     const glm::vec3& cameraPosition,
-    const glm::mat4& currentViewProjJittered,  // Матрица С дрожанием (для куллинга)
-    const glm::mat4& currentViewProjNonJittered, // Текущая БЕЗ дрожания (для TAA)
-    const glm::mat4& prevViewProjNonJittered){  // Прошлая БЕЗ дрожания (для TAA)
+    const glm::mat4& currentViewProjJittered){
      if (_entities.empty()) return;
 
     CameraFrustum frustum = CreateFrustumFromMatrix(currentViewProjJittered);
@@ -659,25 +657,27 @@ SkyCoefficients LightManager::ComputeHosekWilkieParams(float turbidity, const gl
 }
 
 void TAA::Update(GPUSceneData& sceneData, int engineFrameNumber) {
-    sceneData.prevViewProj = m_prevViewProjNonJittered;
-
-    sceneData.viewproj = sceneData.proj * sceneData.view;
-    sceneData.viewProjNonJittered = sceneData.viewproj;
-
-    m_prevViewProjNonJittered = sceneData.viewProjNonJittered;
-
     uint32_t jitterIndex = static_cast<uint32_t>(engineFrameNumber % 16);
     glm::vec2 jitter = m_jitterSamples[jitterIndex];
 
-    float jitterX = (jitter.x * 2.0f) / static_cast<float>(_init._swapchainExtent.width);
-    float jitterY = (-jitter.y * 2.0f) / static_cast<float>(_init._swapchainExtent.height);
+    float jitterX = (jitter.x * 1.0f) / static_cast<float>(_init._swapchainExtent.width);
+    float jitterY = (-jitter.y * 1.0f) / static_cast<float>(_init._swapchainExtent.height);
+
+    sceneData.viewProjNonJittered = sceneData.proj * sceneData.view;
+
+    sceneData.prevViewProjJittered = m_prevViewProjJittered;
+
+    m_prevViewProjNonJittered = sceneData.viewProjNonJittered;
 
     glm::mat4 jitteredProj = sceneData.proj;
     jitteredProj[3][0] += jitterX;
     jitteredProj[3][1] += jitterY;
 
     sceneData.viewproj = jitteredProj * sceneData.view;
+
+    m_prevViewProjJittered = sceneData.viewproj;
 }
+
 
 float TAA::CalculateHalton(int index, int base){
     float result = 0.0f;

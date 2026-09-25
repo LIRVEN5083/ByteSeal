@@ -8,8 +8,9 @@ layout (location = 2) out vec3 outNormal;
 layout (location = 3) out vec3 outWorldPos;
 layout (location = 4) out vec4 outTangent;
 
-layout (location = 5) noperspective out vec2 outCurrentPos; // Было vec4
-layout (location = 6) noperspective out vec2 outPrevPos;    // Было vec4
+layout (location = 5) out vec4 outCurrentPos; 
+layout (location = 6) out vec4 outPrevPos;
+layout (location = 7) out vec4 outScreenPosNonJittered;
 
 layout(set = 0, binding = 0) uniform SceneData {
 	mat4 view;
@@ -17,8 +18,8 @@ layout(set = 0, binding = 0) uniform SceneData {
 	mat4 viewproj;
 
 	// Для TAA
-	mat4 viewProjNonJittered; // Текущая чистая камера
-	mat4 prevViewProj;        // Прошлая чистая камера
+	mat4 viewProjNonJittered; 		// Текущая чистая камера
+	mat4 prevViewProjJittered;      // Прошлая камера
 
 	// Направленный источник света
 	vec4 ambientColor;
@@ -78,11 +79,13 @@ void main()
 	outWorldPos = worldPos.xyz;
 	gl_Position = scene.viewproj * worldPos;
 	
-	vec4 clipCurrent = scene.viewProjNonJittered * worldPos;
-    vec4 clipPrev = scene.prevViewProj * prevWorldPos;
+	outScreenPosNonJittered = scene.viewProjNonJittered * worldPos;
 
-    outCurrentPos = clipCurrent.xy / clipCurrent.w;
-    outPrevPos = clipPrev.xy / clipPrev.w;
+	vec4 clipCurrent = scene.viewproj * worldPos;
+	vec4 clipPrev = scene.prevViewProjJittered * prevWorldPos;
+
+	outCurrentPos = clipCurrent;
+	outPrevPos = clipPrev;
 	//////////////////////////////////
 	
 	mat3 modelMat3 = mat3(currentModelMatrix);
@@ -102,5 +105,6 @@ void main()
 
 	// Для альбедо текстур
 	outUV = vec2(v.uv_x, v.uv_y);
+
 	outColor = v.color;
 }

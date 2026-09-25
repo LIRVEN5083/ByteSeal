@@ -51,16 +51,34 @@ vec4 sampleImageBilinear(uint imageIdx, vec2 uv) {
     return mix(mix(t00, t10, f.x), mix(t01, t11, f.x), f.y);
 }
 
+vec3 ToneMap(vec3 color) {
+    return log(max(vec3(0.0001), color + vec3(1.0)));
+}
+
+vec3 ToneMapInvert(vec3 color) {
+    return max(vec3(0.0), exp(color) - vec3(1.0));
+}
+
+// функция проверки на битый пиксель
+bool isCorrupted(vec3 c) {
+    return isnan(c.x) || isnan(c.y) || isnan(c.z) || isinf(c.x) || isinf(c.y) || isinf(c.z);
+}
+
 void main() {
     ivec2 texelCoord = ivec2(gl_GlobalInvocationID.xy);
     ivec2 screenSize = ivec2(pc.screenWidth, pc.screenHeight);
     if (texelCoord.x >= screenSize.x || texelCoord.y >= screenSize.y) { return; } 
     vec2 invScreenSize = 1.0 / vec2(screenSize);
     vec2 uv = (vec2(texelCoord) + 0.5) * invScreenSize;
+    
     vec4 currentRGB = imageLoad(globalScreenImages[nonuniformEXT(CURRENT_COLOR_IDX)], texelCoord);
+    
+    if (isCorrupted(currentRGB.rgb)) { currentRGB.rgb = vec3(0.0); }
+
     vec2 velocity = imageLoad(globalScreenImages[nonuniformEXT(VELOCITY_IDX)], texelCoord).xy;
     vec2 uvVelocity = vec2(velocity.x, velocity.y);
     vec2 historyUV = uv - uvVelocity;
+    
     vec3 m1 = vec3(0.0); vec3 m2 = vec3(0.0);
 
     float weight = 0.0; 
@@ -68,21 +86,46 @@ void main() {
         for(int y = -1; y <= 1; ++y) { 
             ivec2 neighborCoord = clamp(texelCoord + ivec2(x, y), ivec2(0), screenSize - 1);
             vec3 neighborRGB = imageLoad(globalScreenImages[nonuniformEXT(CURRENT_COLOR_IDX)], neighborCoord).rgb;
-            vec3 neighborYCoCg = RGBtoYCoCg(neighborRGB); m1 += neighborYCoCg; m2 += neighborYCoCg * neighborYCoCg; weight += 1.0; 
+            
+            if (isCorrupted(neighborRGB)) { neighborRGB = currentRGB.rgb; }
+            
+            vec3 compressedRGB = ToneMap(neighborRGB);
+            vec3 neighborYCoCg = RGBtoYCoCg(compressedRGB); 
+            
+            m1 += neighborYCoCg; 
+            m2 += neighborYCoCg * neighborYCoCg; 
+            weight += 1.0; 
         } 
     } 
 
     vec3 mu = m1 / weight;
-    vec3 sigma = sqrt(max(vec3(0.0), (m2 / weight) - (mu * mu)));
-    float gamma = 1.5; vec3 colorMin = mu - gamma * sigma;
+    
+    vec3 sigma = sqrt(max(vec3(0.00001), (m2 / weight) - (mu * mu)));
+    
+    float gamma = 1.5; 
+    vec3 colorMin = mu - gamma * sigma;
     vec3 colorMax = mu + gamma * sigma; 
+    
     uint currentHistoryIdx = (pc.frameIndex % 2 == 0) ? HISTORY_0_IDX : HISTORY_1_IDX;
     uint writeHistoryIdx = (pc.frameIndex % 2 == 0) ? HISTORY_1_IDX : HISTORY_0_IDX;
-    vec4 historyRGB = sampleImageBilinear(currentHistoryIdx, historyUV); vec3 historyYCoCg = RGBtoYCoCg(historyRGB.rgb);
+    
+    vec4 historyRGB = sampleImageBilinear(currentHistoryIdx, historyUV); 
+    if (isCorrupted(historyRGB.rgb)) { historyRGB.rgb = currentRGB.rgb; }
+
+    vec3 compressedHistory = ToneMap(historyRGB.rgb);
+    vec3 historyYCoCg = RGBtoYCoCg(compressedHistory);
+    
     historyYCoCg = clamp(historyYCoCg, colorMin, colorMax);
     vec3 clearedHistoryRGB = YCoCgtoRGB(historyYCoCg);
-    float feedback = 0.95; if (historyUV.x < 0.0 || historyUV.x > 1.0 || historyUV.y < 0.0 || historyUV.y > 1.0) { feedback = 0.0; } 
+
+    clearedHistoryRGB = ToneMapInvert(clearedHistoryRGB);
+    
+    float feedback = 0.95; 
+    if (historyUV.x < 0.0 || historyUV.x > 1.0 || historyUV.y < 0.0 || historyUV.y > 1.0) { feedback = 0.0; } 
+    
     vec3 resolvedRGB = mix(currentRGB.rgb, clearedHistoryRGB, feedback); 
+    
+    if (isCorrupted(resolvedRGB)) { resolvedRGB = currentRGB.rgb; }
     
     imageStore(globalScreenImages[nonuniformEXT(writeHistoryIdx)], texelCoord, vec4(resolvedRGB, currentRGB.a));
     imageStore(globalScreenImages[nonuniformEXT(CURRENT_COLOR_IDX)], texelCoord, vec4(resolvedRGB, currentRGB.a));
