@@ -83,8 +83,10 @@ void VK_APPLICATION::VulkanApplication::run(){
                 }
             }
 
-
             if (e.type == SDL_EVENT_KEY_DOWN) {
+                if (e.key.key == SDLK_G){
+                    showInterface = !showInterface;
+                }
                 if (e.key.key == SDLK_ESCAPE) {
                     bool isRealative = SDL_GetWindowRelativeMouseMode(_init._window);
 
@@ -192,7 +194,9 @@ void VK_APPLICATION::VulkanApplication::renderLoop(){
     // ПОСТ ЭФФЕКТЫ!!!
     _postProcessSystem.Execute(cmd, bindlessSet, *_pipelineManager, _frameNumber);
     // Рисуем интерфейс
-    _gui.draw_imgui(_init, cmd, _drawExtent);
+    if (showInterface){
+        _gui.draw_imgui(_init, cmd, _drawExtent);
+    }
 
 
     vkutil::transition_image(cmd, _init._drawImage.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);

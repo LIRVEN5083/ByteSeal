@@ -42,6 +42,8 @@ namespace VK_APPLICATION {
         VK_INIT_ENGINE::_inited_engine& _init;
         FrameData _frames[FRAME_OVERLAP];
 
+        bool showInterface = true;
+
         bool resize_requested = false;
         VkExtent2D _drawExtent;
         float renderScale = 1.0f;
