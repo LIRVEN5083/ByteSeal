@@ -446,10 +446,10 @@ void LightManager::UpdateCascades(const glm::mat4& viewMatrix, float fovY, float
     float cascadeSplits[SHADOW_CASCADES_COUNT];
 
     // Захардкоженные каскадки
-    cascadeSplits[0] = 4.0f;
-    cascadeSplits[1] = 15.0f;
-    cascadeSplits[2] = 40.0f;
-    cascadeSplits[3] = 100.0f;
+    cascadeSplits[0] = 50.0f;
+    cascadeSplits[1] = 100.0f;
+    cascadeSplits[2] = 250.0f;
+    cascadeSplits[3] = 500.0f;
 
     float lastSplitDist = cameraNear;
 
