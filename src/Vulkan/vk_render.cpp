@@ -521,15 +521,9 @@ void RenderSystem::UpdateSkyBoxTexture(GPUTexture& newTex, TextureManager& textu
 }
 
 void RenderSystem::ToggleSkyBox(){
-    // Дебаг-принт, чтобы понять, вызывается ли метод вообще
-    fmt::print("[Debug]: ToggleSkyBox called. Total passes: {}\n", _renderPasses.size());
-
     for (auto& pass : _renderPasses) {
         if (pass->GetType() == RenderPassType::Skybox) {
             auto* skyboxPass = static_cast<SkyBoxRenderPass*>(pass.get());
-
-            // Выведем тип ДО изменения
-            fmt::print("[Debug]: Found SkyBox pass. Current internal type before toggle: {}\n", (int)skyboxPass->GetSkyboxType());
 
             if (skyboxPass->GetSkyboxType() == SkyBoxType::Panoramic) {
                 skyboxPass->SetSkyboxType(SkyBoxType::Procedural);
@@ -539,9 +533,7 @@ void RenderSystem::ToggleSkyBox(){
                 fmt::print("[RenderSystem]: Skybox switched to Panoramic (HDR).\n");
             }
 
-            // Выведем тип ПОСЛЕ изменения
-            fmt::print("[Debug]: Current internal type after toggle: {}\n", (int)skyboxPass->GetSkyboxType());
-            return; // Заменяем break на return для надежности
+            return;
         }
     }
     fmt::print("[Warning]: SkyBox render pass NOT found in _renderPasses!\n");
