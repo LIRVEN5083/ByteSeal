@@ -52,7 +52,6 @@ namespace VK_APPLICATION {
         VkDescriptorSetLayout _gpuSceneDataDescriptorLayout;
         VkDescriptorPool _sceneDescriptorPool;
 
-
         CONTROLLER::Movement _movement;
         CONTROLLER::Camera _camera;
         CONTROLLER::Delta _delta;

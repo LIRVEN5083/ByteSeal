@@ -463,12 +463,17 @@ void RenderSystem::Draw(VkCommandBuffer cmd, VkExtent2D drawExtent, VkDescriptor
         &lightManager
     };
 
+    static const std::vector<RenderObject> emptyQueue;
+
     // Последовательно выполняем все зарегистрированные пассы
     for (auto& pass : _renderPasses) {
-        // Если проход выключен то скип
-        if (!pass->IsEnabled()){continue;}
+        if (!pass) continue;
 
-        pass->Execute(ctx, _mainDrawQueue);
+        if (!pass->IsEnabled()) {
+            pass->Execute(ctx, emptyQueue);
+        } else {
+            pass->Execute(ctx, _mainDrawQueue);
+        }
     }
 }
 

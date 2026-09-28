@@ -1,5 +1,16 @@
 #pragma once
 
+#include "magic_enum/magic_enum.hpp"
+#include "magic_enum/magic_enum_all.hpp"
+#include "magic_enum/magic_enum_containers.hpp"
+#include "magic_enum/magic_enum_flags.hpp"
+#include "magic_enum/magic_enum_format.hpp"
+#include "magic_enum/magic_enum_fuse.hpp"
+#include "magic_enum/magic_enum_iostream.hpp"
+#include "magic_enum/magic_enum_switch.hpp"
+#include "magic_enum/magic_enum_utility.hpp"
+
+#include "vk_compute.h"
 #include "vk_initializers.h"
 #include "vk_glTF_loading.h"
 #include "vk_scene.h"
@@ -25,7 +36,7 @@ namespace VK_GUI{
         void draw_imgui(VK_INIT_ENGINE::_inited_engine& _init, VkCommandBuffer cmd, VkExtent2D _drawExtent);
         void update_imgui(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER::Delta& _delta, CONTROLLER::Camera _camera, ModelManager& _modelManager,
             std::unique_ptr<Scene>& _scene, GPUSceneData& sceneData, PipelineManager& pipelineManager, RenderSystem& _renderSystem, TextureManager& _textureManager,
-            ComputeRenderSystem& _computeSystem, TransformBufferManager& transformManager);
+            ComputeRenderSystem& _computeSystem, TransformBufferManager& transformManager, PostProcessComputeSystem& _postProcessSystem);
     private:
         void draw_inspector_window(VK_INIT_ENGINE::_inited_engine& _init, std::unique_ptr<Scene>& _scene, GPUSceneData& sceneData, CONTROLLER::Camera _camera, ModelManager& modelManager);
         void draw_settings();
@@ -41,6 +52,7 @@ namespace VK_GUI{
         void gizmo_mode();
         void draw_click(VK_INIT_ENGINE::_inited_engine& _init, std::unique_ptr<Scene>& _scene, GPUSceneData& sceneData, CONTROLLER::Camera _camera);
         void draw_main_menu_bar(CONTROLLER::Delta& _delta);
+        void draw_pass_window(RenderSystem& _renderSystem, ComputeRenderSystem& _computeSystem, PostProcessComputeSystem& _postProcessSystem);
 
         // TODO:: Для model manager и инспектора
         // -1 ну типо то что инспектор пуст
@@ -75,5 +87,9 @@ namespace VK_GUI{
 
         // TODO:: Для Settings
         static inline bool showSettings = false;
+
+        // TODO:: Для Pass
+        static inline bool showPassWindow = false;
+
     };
 }

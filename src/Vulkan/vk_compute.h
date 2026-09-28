@@ -165,6 +165,8 @@ public:
     void SetPassEnabled(ComputePassType type, bool enabled);
 
     void RefreshIBL(GPUTexture newPanorama);
+
+    std::vector<std::unique_ptr<ComputePass>>& GetPasses() { return _computePasses; }
 private:
     VK_INIT_ENGINE::_inited_engine& _init;
     VkQueue _computeQueue = VK_NULL_HANDLE;
@@ -191,6 +193,8 @@ public:
     void Execute(VkCommandBuffer mainCmd, VkDescriptorSet bindlessSet, PipelineManager& pipelineManager, int _frameNumber);
 
     void SetPassEnabled(ComputePassType type, bool enabled);
+
+    std::vector<std::unique_ptr<ComputePass>>& GetPasses() { return _passes; }
 
 private:
     VK_INIT_ENGINE::_inited_engine& _init;
