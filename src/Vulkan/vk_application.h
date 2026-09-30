@@ -63,7 +63,7 @@ namespace VK_APPLICATION {
         TransformBufferManager _transformManager;
 
         RenderSystem _renderSystem{_init};
-        ComputeRenderSystem _computeSystem{_init, *_pipelineManager};
+        std::unique_ptr<ComputeRenderSystem> _computeSystem;
         PostProcessComputeSystem _postProcessSystem{_init};
 
         std::unique_ptr<Scene> _activeScene;

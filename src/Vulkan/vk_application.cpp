@@ -20,7 +20,7 @@ void VK_APPLICATION::VulkanApplication::cleanup(){
     _modelManager.cleanup();
     _meshManager.DestroyAllocationData();
     _textureManager.DestroyAllocationData();
-    _computeSystem.cleanup();
+    _computeSystem->cleanup();
 
     for (int i = 0; i < FRAME_OVERLAP; i++) {
         vkinit::destroy_buffer(_frames[i].gpuSceneDataBuffer, _init._allocator);
@@ -115,7 +115,7 @@ void VK_APPLICATION::VulkanApplication::run(){
         }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         _gui.update_imgui(_init, _delta, _camera, _modelManager, _activeScene,  sceneData,
-            *_pipelineManager, _renderSystem, _textureManager,  _computeSystem, _transformManager, _postProcessSystem);
+            *_pipelineManager, _renderSystem, _textureManager,  *_computeSystem, _transformManager, _postProcessSystem);
         CONTROLLER::update_time(_movement, _delta);
         CONTROLLER::made_move(_movement, _camera, _delta);
         renderLoop();
@@ -177,7 +177,7 @@ void VK_APPLICATION::VulkanApplication::renderLoop(){
     VkDescriptorSet bindlessSet = _textureManager.GetTextureSet();
 
     // Начинаем паралельно делать вычисления
-    bool computeSubmitted = _computeSystem.Dispatch(bindlessSet);
+    bool computeSubmitted = _computeSystem->Dispatch(bindlessSet);
 
     // ПОДГОТОВКА ОЧЕРЕДИ
     _renderSystem.ClearQueue();
@@ -189,7 +189,7 @@ void VK_APPLICATION::VulkanApplication::renderLoop(){
 
     // Отрисовка RenderObject
     _renderSystem.PrepareFrame();
-    VkSemaphore waitCompute = _computeSystem.GetComputeSemaphore();
+    VkSemaphore waitCompute = _computeSystem->GetComputeSemaphore();
     _renderSystem.Draw(cmd, _drawExtent, globalDescriptor, bindlessSet, *_pipelineManager, *_lightManager);
     // ПОСТ ЭФФЕКТЫ!!!
     _postProcessSystem.Execute(cmd, bindlessSet, *_pipelineManager, _frameNumber);
@@ -520,7 +520,8 @@ void VK_APPLICATION::VulkanApplication::init_render(){
         std::abort();
     }
 
-    _computeSystem.init();
+    _computeSystem = std::make_unique<ComputeRenderSystem>(_init, *_pipelineManager);
+    _computeSystem->init();
     _pipelineManager->InitCommonLayout(_gpuSceneDataDescriptorLayout, textureLayout);
     // Форматы для Dynamic Rendering берем из вашей MSAA картинки, как в старом коде
     VkFormat colorFormat = _init._drawImage.imageFormat;
@@ -720,7 +721,7 @@ void VK_APPLICATION::VulkanApplication::init_render(){
         *_pipelineManager
     );
 
-    _computeSystem.AddPass(std::move(iblPass));
+    _computeSystem->AddPass(std::move(iblPass));
     _postProcessSystem.AddPass(std::make_unique<TAAComputePass>(_init, TAAInfo.name));
     _postProcessSystem.AddPass(std::make_unique<ColorCorrectionComputePass>(_init, colorCorrectionInfo.name));
     _postProcessSystem.AddPass(std::make_unique<TonemapComputePass>(_init, tonMapInfo.name));
@@ -729,7 +730,7 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     auto loadedTextureOpt = SkyBoxUpload(path, _init, _textureManager);
 
     if (loadedTextureOpt.has_value()){
-        _renderSystem.UpdateSkyBoxTexture(loadedTextureOpt.value(), _textureManager, _computeSystem);
+        _renderSystem.UpdateSkyBoxTexture(loadedTextureOpt.value(), _textureManager, *_computeSystem);
     }
 }
 
