@@ -420,6 +420,103 @@ VK_INIT_ENGINE::VulkanInitEngine::VulkanInitEngine(bool Validation_layers){
     baseFeatures.shaderInt64 = VK_TRUE;
     baseFeatures.independentBlend = VK_TRUE;
 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+     // Привирка видеокарточик на апартную паддержкУ движка
+    fmt::print("\n[Engine]: Physical Device Diagnostics\n");
+    vkb::PhysicalDeviceSelector debug_selector{ vkb_inst };
+
+    // В vk-bootstrap список всех видеокарт запрашивается через select_devices()
+    auto all_devices_res = debug_selector.set_surface(this->ready_init._surface).select_devices();
+
+    if (all_devices_res) {
+        for (const auto& vkb_device : all_devices_res.value()) {
+            VkPhysicalDevice dev = vkb_device.physical_device;
+            VkPhysicalDeviceProperties props;
+            vkGetPhysicalDeviceProperties(dev, &props);
+
+            fmt::print("Checking device: {} (Vendor ID: 0x{:X})\n", props.deviceName, props.vendorID);
+            bool device_is_valid = true;
+
+            // Vulkan base features 1.0
+            VkPhysicalDeviceFeatures availBase;
+            vkGetPhysicalDeviceFeatures(dev, &availBase);
+
+            #define EVAL_BASE(feat) \
+                if (baseFeatures.feat) { \
+                    if (availBase.feat) { fmt::print("  [ OK ] Base Feature: {}\n", #feat); } \
+                    else { fmt::print(stderr, "  [MISSING] Base Feature: {}\n", #feat); device_is_valid = false; } \
+                }
+            EVAL_BASE(samplerAnisotropy);
+            EVAL_BASE(geometryShader);
+            EVAL_BASE(shaderInt64);
+            EVAL_BASE(independentBlend);
+            #undef EVAL_BASE
+
+            // Preparing pNext chain for Vulkan 1.2 and 1.3 features query
+            VkPhysicalDeviceVulkan12Features avail12{ .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES };
+            VkPhysicalDeviceVulkan13Features avail13{ .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES, .pNext = &avail12 };
+            VkPhysicalDeviceFeatures2 feat2{ .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, .pNext = &avail13 };
+            vkGetPhysicalDeviceFeatures2(dev, &feat2);
+
+            // Vulkan features 1.2
+            #define EVAL_12(feat) \
+                if (features12.feat) { \
+                    if (avail12.feat) { fmt::print("  [ OK ] Vulkan 1.2 Feature: {}\n", #feat); } \
+                    else { fmt::print(stderr, "  [MISSING] Vulkan 1.2 Feature: {}\n", #feat); device_is_valid = false; } \
+                }
+            EVAL_12(descriptorBindingSampledImageUpdateAfterBind);
+            EVAL_12(descriptorBindingPartiallyBound);
+            EVAL_12(runtimeDescriptorArray);
+            EVAL_12(bufferDeviceAddress);
+            EVAL_12(shaderOutputLayer);
+            EVAL_12(shaderOutputViewportIndex);
+            EVAL_12(descriptorBindingStorageImageUpdateAfterBind);
+            EVAL_12(shaderStorageImageArrayNonUniformIndexing);
+            #undef EVAL_12
+
+            // Vulkan features 1.3
+            #define EVAL_13(feat) \
+                if (features.feat) { \
+                    if (avail13.feat) { fmt::print("  [ OK ] Vulkan 1.3 Feature: {}\n", #feat); } \
+                    else { fmt::print(stderr, "  [MISSING] Vulkan 1.3 Feature: {}\n", #feat); device_is_valid = false; } \
+                }
+            EVAL_13(dynamicRendering);
+            EVAL_13(synchronization2);
+            EVAL_13(shaderDemoteToHelperInvocation);
+            #undef EVAL_13
+
+            // Checking VK_EXT_shader_viewport_index_layer extension support
+            uint32_t extCount = 0;
+            vkEnumerateDeviceExtensionProperties(dev, nullptr, &extCount, nullptr);
+            std::vector<VkExtensionProperties> availableExts(extCount);
+            vkEnumerateDeviceExtensionProperties(dev, nullptr, &extCount, availableExts.data());
+
+            bool has_viewport_ext = false;
+            for (const auto& ext : availableExts) {
+                if (std::string(ext.extensionName) == VK_EXT_SHADER_VIEWPORT_INDEX_LAYER_EXTENSION_NAME) {
+                    has_viewport_ext = true;
+                    break;
+                }
+            }
+            if (has_viewport_ext) {
+                fmt::print("  [ OK ] Extension: {}\n", VK_EXT_SHADER_VIEWPORT_INDEX_LAYER_EXTENSION_NAME);
+            } else {
+                fmt::print(stderr, "  [MISSING] Extension: {}\n", VK_EXT_SHADER_VIEWPORT_INDEX_LAYER_EXTENSION_NAME);
+                device_is_valid = false;
+            }
+
+            if (device_is_valid) {
+                fmt::print("-> STATUS: Device is fully [COMPATIBLE] with the engine requirements.\n\n");
+            } else {
+                fmt::print(stderr, "-> STATUS: Device is [INCOMPATIBLE] due to missing required features.\n\n");
+            }
+        }
+    } else {
+        fmt::print(stderr, "[CRITICAL ENGINE ERROR]: vk-bootstrap failed to enumerate devices: {}\n", all_devices_res.error().message());
+    }
+    fmt::print("\n\n");
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
     vkb::PhysicalDeviceSelector selector{ vkb_inst };
     selector.set_minimum_version(1, 3)
         .set_required_features(baseFeatures)

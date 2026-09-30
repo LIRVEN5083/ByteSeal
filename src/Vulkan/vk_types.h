@@ -183,7 +183,7 @@ enum class RenderPassType : uint8_t {
     ShadowCSM,      // SCM
     Skybox,         // Sky
     Compute,
-    Post_procces
+    Post_procces,
 };
 
 enum class ComputePassType : uint8_t{
@@ -192,7 +192,25 @@ enum class ComputePassType : uint8_t{
     ColorCorrection,
     TAA,
     GTAO,
-    BLOOM
+    BLOOM,
+};
+
+static constexpr std::string_view RENDER_PASS_NAMES[] = {
+    "Forward (Base render)", // Соответствует RenderPassType::Forward (0)
+    "Grid (Editor grid)",    // Соответствует RenderPassType::Grid (1)
+    "ShadowCSM (SCM)",       // Соответствует RenderPassType::ShadowCSM (2)
+    "Skybox (Sky)",          // Соответствует RenderPassType::Skybox (3)
+    "Compute",               // Соответствует RenderPassType::Compute (4)
+    "Post_process"           // Соответствует RenderPassType::Post_procces (5)
+};
+
+static constexpr std::string_view COMPUTE_PASS_NAMES[] = {
+    "IBL",
+    "TonMapping",
+    "ColorCorrection",
+    "TAA",
+    "GTAO",
+    "BLOOM"
 };
 
 enum class PipelineOpacity{

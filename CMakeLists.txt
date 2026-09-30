@@ -115,6 +115,8 @@ target_include_directories(${PROJECT_NAME} PUBLIC
 
      ${CMAKE_CURRENT_SOURCE_DIR}/src/external/nfd-extended/src/include
 
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/external/magic_enum/include
+
      ${Vulkan_INCLUDE_DIRS}
 )
 

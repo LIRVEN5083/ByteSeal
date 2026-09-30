@@ -656,8 +656,6 @@ void TextureManager::create_ibl_textures(VK_INIT_ENGINE::_inited_engine& _init) 
     vkUpdateDescriptorSets(_device, 1, &iblWrite, 0, nullptr);
 
     _nextIndices[targetBinding] = totalDescriptors;
-
-    std::cout << "[TextureManager] Bound " << totalDescriptors << " single-level storage views to binding 3.\n";
 }
 
 VkSampler TextureManager::CreateSampler(const SamplerOptions& params){

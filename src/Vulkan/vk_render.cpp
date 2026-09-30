@@ -55,6 +55,12 @@ void ForwardRenderPass::Execute(const RenderContext& ctx, const std::vector<Rend
     renderInfo.pDepthAttachment = &depthAttachment;
     renderInfo.pStencilAttachment = nullptr;
 
+    if (!IsEnabled()) {
+        vkCmdBeginRendering(ctx.cmd, &renderInfo);
+        vkCmdEndRendering(ctx.cmd);
+        return;
+    }
+
     vkCmdBeginRendering(ctx.cmd, &renderInfo);
 
     VkViewport viewport = { 0.0f, 0.0f, (float)ctx.drawExtent.width, (float)ctx.drawExtent.height, 1.0f, 0.0f };
@@ -147,7 +153,7 @@ void GridRenderPass::Init(PipelineManager& pipelineManager){
 }
 
 void GridRenderPass::Execute(const RenderContext& ctx, const std::vector<RenderObject>& queue){
-    if (!_gridPipeline) return;
+    if (!IsEnabled() || !_gridPipeline) return;
 
     VkClearValue clearVelocity;
     clearVelocity.color = { { 0.0f, 0.0f, 0.0f, 0.0f } };
@@ -217,7 +223,7 @@ void ShadowCSMRenderPass::Init(PipelineManager& pipelineManager){
 }
 
 void ShadowCSMRenderPass::Execute(const RenderContext& ctx, const std::vector<RenderObject>& queue){
-     if (queue.empty() || !_shadowPipeline || !ctx.lightManager) return;
+     if (!_shadowPipeline || !ctx.lightManager) return;
 
     VkImageMemoryBarrier2 depthBarrier{};
     depthBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
@@ -231,7 +237,7 @@ void ShadowCSMRenderPass::Execute(const RenderContext& ctx, const std::vector<Re
     depthBarrier.image = ctx.lightManager->GetShadowImage();
     depthBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
     depthBarrier.subresourceRange.levelCount = 1;
-    depthBarrier.subresourceRange.layerCount = 4; // Ваши 4 каскада
+    depthBarrier.subresourceRange.layerCount = 4; // 4 каскада
 
     VkDependencyInfo depInfo{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
     depInfo.imageMemoryBarrierCount = 1;
@@ -266,38 +272,40 @@ void ShadowCSMRenderPass::Execute(const RenderContext& ctx, const std::vector<Re
 
     vkCmdBeginRendering(ctx.cmd, &renderInfo);
 
-    VkViewport viewport = { 0.0f, 0.0f, (float)resolution, (float)resolution, 0.0f, 1.0f };
-    vkCmdSetViewport(ctx.cmd, 0, 1, &viewport);
+    if (IsEnabled() && !queue.empty()){
+        VkViewport viewport = { 0.0f, 0.0f, (float)resolution, (float)resolution, 0.0f, 1.0f };
+        vkCmdSetViewport(ctx.cmd, 0, 1, &viewport);
 
-    VkRect2D scissor = { {0, 0}, shadowExtent };
-    vkCmdSetScissor(ctx.cmd, 0, 1, &scissor);
+        VkRect2D scissor = { {0, 0}, shadowExtent };
+        vkCmdSetScissor(ctx.cmd, 0, 1, &scissor);
 
-    vkCmdBindPipeline(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _shadowPipeline->pipeline);
+        vkCmdBindPipeline(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _shadowPipeline->pipeline);
 
-    vkCmdBindDescriptorSets(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _shadowPipeline->layout, 0, 1, &ctx.globalDescriptor, 0, nullptr);
+        vkCmdBindDescriptorSets(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _shadowPipeline->layout, 0, 1, &ctx.globalDescriptor, 0, nullptr);
 
-    VkBuffer currentIndexBuffer = VK_NULL_HANDLE;
+        VkBuffer currentIndexBuffer = VK_NULL_HANDLE;
 
-    for (const auto& object : queue) {
-        if (object.pipeline == VK_NULL_HANDLE) continue;
+        for (const auto& object : queue) {
+            if (object.pipeline == VK_NULL_HANDLE) continue;
 
-        if (object.indexBuffer != VK_NULL_HANDLE) {
-            if (object.indexBuffer != currentIndexBuffer) {
-                vkCmdBindIndexBuffer(ctx.cmd, object.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
-                currentIndexBuffer = object.indexBuffer;
+            if (object.indexBuffer != VK_NULL_HANDLE) {
+                if (object.indexBuffer != currentIndexBuffer) {
+                    vkCmdBindIndexBuffer(ctx.cmd, object.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+                    currentIndexBuffer = object.indexBuffer;
+                }
             }
-        }
 
-        GPUShadowPushConstants push_constants;
-        push_constants.matrixBuffer = object.matrixBufferAddress;
-        push_constants.vertexBuffer = object.vertexBufferAddress;
+            GPUShadowPushConstants push_constants;
+            push_constants.matrixBuffer = object.matrixBufferAddress;
+            push_constants.vertexBuffer = object.vertexBufferAddress;
 
-        vkCmdPushConstants(ctx.cmd, _shadowPipeline->layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUShadowPushConstants), &push_constants);
+            vkCmdPushConstants(ctx.cmd, _shadowPipeline->layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUShadowPushConstants), &push_constants);
 
-        if (object.indexBuffer != VK_NULL_HANDLE) {
-            vkCmdDrawIndexed(ctx.cmd, object.indexCount, SHADOW_CASCADES_COUNT, object.firstIndex, 0, 0);
-        } else {
-            vkCmdDraw(ctx.cmd, object.indexCount, SHADOW_CASCADES_COUNT, 0, 0);
+            if (object.indexBuffer != VK_NULL_HANDLE) {
+                vkCmdDrawIndexed(ctx.cmd, object.indexCount, SHADOW_CASCADES_COUNT, object.firstIndex, 0, 0);
+            } else {
+                vkCmdDraw(ctx.cmd, object.indexCount, SHADOW_CASCADES_COUNT, 0, 0);
+            }
         }
     }
 
@@ -322,6 +330,7 @@ void SkyBoxRenderPass::Init(PipelineManager& pipelineManager){
 }
 
 void SkyBoxRenderPass::Execute(const RenderContext& ctx, const std::vector<RenderObject>& queue){
+    if (!IsEnabled()) return;
     RealPipeline* activePipeline = nullptr;
 
     bool isPanoramaLoaded = (_panoramicTexture.image.image != VK_NULL_HANDLE);
@@ -465,11 +474,11 @@ void RenderSystem::Draw(VkCommandBuffer cmd, VkExtent2D drawExtent, VkDescriptor
 
     // Последовательно выполняем все зарегистрированные пассы
     for (auto& pass : _renderPasses) {
-        // Если проход выключен то скип
-        if (!pass->IsEnabled()){continue;}
+        if (!pass) continue;
 
         pass->Execute(ctx, _mainDrawQueue);
     }
+    _mainDrawQueue.clear();
 }
 
 void RenderSystem::RefreshPasses(PipelineManager& pipelineManager){
@@ -512,15 +521,9 @@ void RenderSystem::UpdateSkyBoxTexture(GPUTexture& newTex, TextureManager& textu
 }
 
 void RenderSystem::ToggleSkyBox(){
-    // Дебаг-принт, чтобы понять, вызывается ли метод вообще
-    fmt::print("[Debug]: ToggleSkyBox called. Total passes: {}\n", _renderPasses.size());
-
     for (auto& pass : _renderPasses) {
         if (pass->GetType() == RenderPassType::Skybox) {
             auto* skyboxPass = static_cast<SkyBoxRenderPass*>(pass.get());
-
-            // Выведем тип ДО изменения
-            fmt::print("[Debug]: Found SkyBox pass. Current internal type before toggle: {}\n", (int)skyboxPass->GetSkyboxType());
 
             if (skyboxPass->GetSkyboxType() == SkyBoxType::Panoramic) {
                 skyboxPass->SetSkyboxType(SkyBoxType::Procedural);
@@ -530,9 +533,7 @@ void RenderSystem::ToggleSkyBox(){
                 fmt::print("[RenderSystem]: Skybox switched to Panoramic (HDR).\n");
             }
 
-            // Выведем тип ПОСЛЕ изменения
-            fmt::print("[Debug]: Current internal type after toggle: {}\n", (int)skyboxPass->GetSkyboxType());
-            return; // Заменяем break на return для надежности
+            return;
         }
     }
     fmt::print("[Warning]: SkyBox render pass NOT found in _renderPasses!\n");

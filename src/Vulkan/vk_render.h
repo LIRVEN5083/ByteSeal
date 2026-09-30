@@ -182,6 +182,8 @@ public:
 
     // Очистка очереди
     void ClearQueue() { _mainDrawQueue.clear(); }
+
+    std::vector<std::unique_ptr<RenderPass>>& GetPasses() {return _renderPasses;}
 private:
     VK_INIT_ENGINE::_inited_engine& _init;
     std::vector<RenderObject> _mainDrawQueue;

@@ -96,8 +96,8 @@ void VK_GUI::apply_theme(){
 }
 
 void VK_GUI::GUI::draw_model_list_overlay(VK_INIT_ENGINE::_inited_engine& _init, ModelManager& _modelManager,
-    std::unique_ptr<Scene>& _scene, GPUSceneData& sceneData, PipelineManager& pipelineManager, RenderSystem& _renderSystem,
-    TransformBufferManager& transformManager){
+                                          std::unique_ptr<Scene>& _scene, GPUSceneData& sceneData, PipelineManager& pipelineManager, RenderSystem& _renderSystem,
+                                          TransformBufferManager& transformManager){
 
     windowWidth = 320.0f;                           // Фиксированная ширина для обоих окон
 
@@ -734,11 +734,8 @@ void VK_GUI::GUI::gizmo_mode(){
 }
 
 void VK_GUI::GUI::draw_click(VK_INIT_ENGINE::_inited_engine& _init, std::unique_ptr<Scene>& _scene, GPUSceneData& sceneData, CONTROLLER::Camera _camera) {
-
-    // Проверяем, что мышка не над UI, гизма не активна и камера не в режиме полета
     if (!ImGui::GetIO().WantCaptureMouse && !ImGuizmo::IsOver() && !_camera.isCameraActive) {
 
-        // --- ВАРИАНТ 1: ЛЕВЫЙ КЛИК (Простое выделение объекта для Инспектора) ---
         if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
             ImVec2 mousePos = ImGui::GetMousePos();
             float screenWidth  = static_cast<float>(_init._windowExtent.width);
@@ -755,7 +752,6 @@ void VK_GUI::GUI::draw_click(VK_INIT_ENGINE::_inited_engine& _init, std::unique_
             }
         }
 
-        // --- ВАРИАНТ 2: ПРАВЫЙ КЛИК (Выделение + Вызов контекстного меню) ---
         if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
             ImVec2 mousePos = ImGui::GetMousePos();
             float screenWidth  = static_cast<float>(_init._windowExtent.width);
@@ -775,7 +771,6 @@ void VK_GUI::GUI::draw_click(VK_INIT_ENGINE::_inited_engine& _init, std::unique_
     }
 
     // --- ОТРИСОВКА КОНТЕКСТНОГО МЕНЮ ---
-    // Устанавливаем позицию всплывающего окна там, где был правый клик
     ImGui::SetNextWindowPos(mouseClickPos, ImGuiCond_Appearing);
 
     if (ImGui::BeginPopup("ModelContextMenu")) {
@@ -814,6 +809,9 @@ void VK_GUI::GUI::draw_main_menu_bar(CONTROLLER::Delta& _delta){
             if (ImGui::MenuItem("SkyBox")){
                 showSkyBoxWindow = true;
             }
+            if (ImGui::MenuItem("Pass")){
+                showPassWindow = true;
+            }
             ImGui::EndMenu();
         }
 
@@ -837,6 +835,64 @@ void VK_GUI::GUI::draw_main_menu_bar(CONTROLLER::Delta& _delta){
     }
 }
 
+void VK_GUI::GUI::draw_pass_window(RenderSystem& _renderSystem, ComputeRenderSystem& _computeSystem,
+    PostProcessComputeSystem& _postProcessSystem){
+    if (!showPassWindow) { return; }
+
+    ImGui::SetNextWindowSize(ImVec2(300, 250), ImGuiCond_FirstUseEver);
+
+    if (ImGui::Begin("Pass", &showPassWindow)){
+        ImGui::TextDisabled("--- Render Passes ---");
+        ImGui::PushID("render_passes");
+        for (auto& pass : _renderSystem.GetPasses()) {
+            if (!pass) continue;
+
+            auto typeIndex = static_cast<size_t>(pass->GetType());
+            const char* name = RENDER_PASS_NAMES[typeIndex].data();
+
+            bool isEnabled = pass->IsEnabled();
+            if (ImGui::Checkbox(name, &isEnabled)) {
+                _renderSystem.SetPassEnabled(pass->GetType(), isEnabled);
+            }
+        }
+        ImGui::PopID();
+
+        ImGui::Separator();
+
+        ImGui::TextDisabled("--- Compute Passes ---");
+        ImGui::PushID("compute_passes");
+        for (auto& pass : _computeSystem.GetPasses()) {
+            if (!pass) continue;
+
+            auto typeIndex = static_cast<size_t>(pass->GetType());
+            const char* name = COMPUTE_PASS_NAMES[typeIndex].data();
+
+            bool isEnabled = pass->IsEnabled();
+            if (ImGui::Checkbox(name, &isEnabled)) {
+                _computeSystem.SetPassEnabled(pass->GetType(), isEnabled);
+            }
+        }
+        ImGui::PopID();
+
+        ImGui::Separator();
+        ImGui::TextDisabled("--- Post Process Passes ---");
+        ImGui::PushID("post_passes");
+        for (auto& pass : _postProcessSystem.GetPasses()) {
+            if (!pass) continue;
+
+            auto typeIndex = static_cast<size_t>(pass->GetType());
+            const char* name = COMPUTE_PASS_NAMES[typeIndex].data();
+
+            bool isEnabled = pass->IsEnabled();
+            if (ImGui::Checkbox(name, &isEnabled)) {
+                _postProcessSystem.SetPassEnabled(pass->GetType(), isEnabled);
+            }
+        }
+        ImGui::PopID();
+    }
+    ImGui::End();
+}
+
 void VK_GUI::GUI::draw_imgui(VK_INIT_ENGINE::_inited_engine& _init, VkCommandBuffer cmd, VkExtent2D _drawExtent){
     VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(_init._drawImage.imageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
@@ -852,7 +908,7 @@ void VK_GUI::GUI::draw_imgui(VK_INIT_ENGINE::_inited_engine& _init, VkCommandBuf
 
 void VK_GUI::GUI::update_imgui(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER::Delta& _delta, CONTROLLER::Camera _camera, ModelManager& _modelManager,
         std::unique_ptr<Scene>& _scene, GPUSceneData& sceneData, PipelineManager& pipelineManager, RenderSystem& _renderSystem, TextureManager& _textureManager,
-        ComputeRenderSystem& _computeSystem, TransformBufferManager& transformManager){
+        ComputeRenderSystem& _computeSystem, TransformBufferManager& transformManager, PostProcessComputeSystem& _postProcessSystem){
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplSDL3_NewFrame();
     ImGui::NewFrame();
@@ -871,6 +927,8 @@ void VK_GUI::GUI::update_imgui(VK_INIT_ENGINE::_inited_engine& _init, CONTROLLER
     draw_view_navigation_widget(sceneData, _camera);
 
     draw_skybox_window(_renderSystem, sceneData, _init, _textureManager, _computeSystem);
+
+    draw_pass_window(_renderSystem, _computeSystem, _postProcessSystem);
 
     draw_settings();
 
