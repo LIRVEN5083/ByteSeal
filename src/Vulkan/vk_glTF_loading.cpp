@@ -1359,7 +1359,7 @@ Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init,
     Model loadedModel;
     loadedModel.lifetime = lifetime;
     loadedModel.bIsValid = true;
-    std::cout << "Loading GLTF: " << filePath << std::endl;
+    std::cout << "\nLoading GLTF: " << filePath << std::endl;
     std::cout<< "Model type: ";
     if (lifetime == ModelLifetime::Dynamic){
         std::cout<<"Dynamic\n";

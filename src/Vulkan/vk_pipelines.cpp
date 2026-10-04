@@ -696,7 +696,7 @@ void PipelineManager::DestroyAllPipelines(){
 }
 
 bool PipelineManager:: ReloadAllPipelines(){
-    std::cout << "[PipelineManager] Initiating full runtime pipeline rebuild\n";
+    std::cout << "\n[PipelineManager] Initiating full runtime pipeline rebuild\n";
 
     std::unordered_map<std::string, std::vector<uint32_t>> newVertCodes;
     std::unordered_map<std::string, std::vector<uint32_t>> newFragCodes;

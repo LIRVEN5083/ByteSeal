@@ -104,6 +104,21 @@ private:
     uint32_t _frameCounter{ 0 };
 };
 
+struct FXAASettings {
+    // Порог для пропуска областей без контраста (0.05 - 0.083 для высокой производительности)
+    float qualitySubpix{ 0.75f };
+    // Минимальный порог детекции краев (0.125 - 0.166)
+    float qualityEdgeThreshold{ 0.166f };
+    // Порог отсечения темноты (0.0833 - 0.0625)
+    float qualityEdgeThresholdMin{ 0.0625f };
+    float padding; // Выравнивание для Push Constants
+};
+
+struct CASSettings {
+    float sharpness{ 0.5f };
+};
+
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // ПРОХОД ДЛЯ ЕБУЧЕГО IBL
 class IBLProcessorComputePass : public ComputePass {

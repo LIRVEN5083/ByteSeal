@@ -191,6 +191,8 @@ enum class ComputePassType : uint8_t{
     TonMapping,
     ColorCorrection,
     TAA,
+    FXAA,
+    CASS,
     GTAO,
     BLOOM,
 };

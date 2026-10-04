@@ -624,7 +624,7 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     if (skyboxPipeline) {
         fmt::print("[PipelineManager] Pipeline 'SkyBox' successfully loaded and built.\n");
     }
-                            // TODO: --ВЫЧЕСЛИТЕЛЬНЫЕ КОНВЕЕРЫ И ШЕЙДЕРЫ!--
+                            // TODO: ВЫЧЕСЛИТЕЛЬНЫЕ КОНВЕЕРЫ И ШЕЙДЕРЫ!
     //TODO: IBL
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Конвеер для ETC (На входе .hdr понарама)
@@ -676,7 +676,7 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     PipelineCreateInfo colorCorrectionInfo{};
     colorCorrectionInfo.name = "ColorCorrection";
     colorCorrectionInfo.passType = RenderPassType::Compute;
-    colorCorrectionInfo.computeShaderPath = "../Shaders/ColorCorrection/Color.comp";
+    colorCorrectionInfo.computeShaderPath = "../Shaders/Post-effects/ColorCorrection/Color.comp";
 
     RealPipeline* colorCorrectionPipeline = _pipelineManager->CreateComputePipeline(colorCorrectionInfo);
     if (colorCorrectionPipeline) {
@@ -687,7 +687,7 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     PipelineCreateInfo tonMapInfo{};
     tonMapInfo.name = "Tonemap";
     tonMapInfo.passType = RenderPassType::Compute;
-    tonMapInfo.computeShaderPath = "../Shaders/Tonemap/Ton.comp";
+    tonMapInfo.computeShaderPath = "../Shaders/Post-effects/Tonemap/Ton.comp";
 
     RealPipeline* tonMapPipeline = _pipelineManager->CreateComputePipeline(tonMapInfo);
     if (tonMapPipeline) {
@@ -698,11 +698,35 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     PipelineCreateInfo TAAInfo{};
     TAAInfo.name = "TAA";
     TAAInfo.passType = RenderPassType::Compute;
-    TAAInfo.computeShaderPath = "../Shaders/TAA/taa.comp";
+    TAAInfo.computeShaderPath = "../Shaders/Post-effects/TAA/taa.comp";
 
     RealPipeline* TAAPipeline = _pipelineManager->CreateComputePipeline(TAAInfo);
     if (TAAPipeline){
         fmt::print("[PipelineManager] Compute Pipeline 'TAA' successfully loaded and built.\n");
+    }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Конвеер для FXAA
+    PipelineCreateInfo FXAAInfo{};
+    FXAAInfo.name = "FXAA";
+    FXAAInfo.passType = RenderPassType::Compute;
+    FXAAInfo.computeShaderPath = "../Shaders/Post-effects/FXAA/fxaa.comp";
+
+    RealPipeline* FXAAPipeline = _pipelineManager->CreateComputePipeline(FXAAInfo);
+    if (FXAAPipeline){
+        fmt::print("[PipelineManager] Compute Pipeline 'FXAA' successfully loaded and built.\n");
+    }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Конвеер для CAS
+    PipelineCreateInfo CASInfo{};
+    CASInfo.name = "CAS";
+    CASInfo.passType = RenderPassType::Compute;
+    CASInfo.computeShaderPath = "../Shaders/Post-effects/CAS/cas.comp";
+
+    RealPipeline* CASPipeline = _pipelineManager->CreateComputePipeline(CASInfo);
+    if (CASPipeline){
+        fmt::print("[PipelineManager] Compute Pipeline 'CAS' successfully loaded and built.\n");
     }
 
     // Проходы рендера
