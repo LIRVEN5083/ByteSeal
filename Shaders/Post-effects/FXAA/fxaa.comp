@@ -1,5 +1,104 @@
 #version 460
+#extension GL_EXT_nonuniform_qualifier : require
 
-void main(){
+layout(local_size_x = 16, local_size_y = 16) in;
 
+// Bindless массив картинок
+layout(set = 1, binding = 4, rgba16f) uniform image2D globalScreenImages[];
+
+const uint CURRENT_COLOR_IDX = 0;
+const uint DEPTH_IDX = 1;
+const uint VELOCITY_IDX = 2;
+const uint NORMAL_IDX = 3;
+const uint HISTORY_0_IDX = 4;
+const uint HISTORY_1_IDX = 5;
+
+layout(push_constant) uniform Constants {
+    uint frameIndex;  
+    float screenWidth; 
+    float screenHeight;
+} pc;
+
+// Настройки FXAA
+#define FXAA_EDGE_THRESHOLD      0.0833   // Порог активации (чем меньше, тем больше краев сгладится)
+#define FXAA_EDGE_THRESHOLD_MIN  0.0312  // Минимальный порог для темных участков
+#define FXAA_SUBPIX_TRIM         0.0     // Подрезка субпиксельного сглаживания
+#define FXAA_SUBPIX_CAP          0.35    // Максимум субпиксельного сглаживания
+
+// Функция расчета яркости (Luma) по стандарту ITU-R BT.709
+float getLuma(vec3 rgb) {
+    return dot(rgb, vec3(0.2126, 0.7152, 0.0722));
+}
+
+void main() {
+    ivec2 size = ivec2(int(pc.screenWidth), int(pc.screenHeight));
+    ivec2 pos  = ivec2(gl_GlobalInvocationID.xy);
+
+    if (pos.x >= size.x || pos.y >= size.y) return;
+
+    vec3 rgbM = imageLoad(globalScreenImages[CURRENT_COLOR_IDX], pos).rgb;
+    
+    vec3 rgbN = imageLoad(globalScreenImages[CURRENT_COLOR_IDX], clamp(pos + ivec2( 0, -1), ivec2(0), size - 1)).rgb;
+    vec3 rgbW = imageLoad(globalScreenImages[CURRENT_COLOR_IDX], clamp(pos + ivec2(-1,  0), ivec2(0), size - 1)).rgb;
+    vec3 rgbE = imageLoad(globalScreenImages[CURRENT_COLOR_IDX], clamp(pos + ivec2( 1,  0), ivec2(0), size - 1)).rgb;
+    vec3 rgbS = imageLoad(globalScreenImages[CURRENT_COLOR_IDX], clamp(pos + ivec2( 0,  1), ivec2(0), size - 1)).rgb;
+
+    float lumaM = getLuma(rgbM);
+    float lumaN = getLuma(rgbN);
+    float lumaW = getLuma(rgbW);
+    float lumaE = getLuma(rgbE);
+    float lumaS = getLuma(rgbS);
+
+    float lumaMin = min(lumaM, min(min(lumaN, lumaW), min(lumaE, lumaS)));
+    float lumaMax = max(lumaM, max(max(lumaN, lumaW), max(lumaE, lumaS)));
+    float lumaRange = lumaMax - lumaMin;
+
+    if (lumaRange < max(FXAA_EDGE_THRESHOLD_MIN, lumaMax * FXAA_EDGE_THRESHOLD)) {
+        return; 
+    }
+
+    vec3 rgbNW = imageLoad(globalScreenImages[CURRENT_COLOR_IDX], clamp(pos + ivec2(-1, -1), ivec2(0), size - 1)).rgb;
+    vec3 rgbNE = imageLoad(globalScreenImages[CURRENT_COLOR_IDX], clamp(pos + ivec2( 1, -1), ivec2(0), size - 1)).rgb;
+    vec3 rgbSW = imageLoad(globalScreenImages[CURRENT_COLOR_IDX], clamp(pos + ivec2(-1,  1), ivec2(0), size - 1)).rgb;
+    vec3 rgbSE = imageLoad(globalScreenImages[CURRENT_COLOR_IDX], clamp(pos + ivec2( 1,  1), ivec2(0), size - 1)).rgb;
+
+    float lumaNW = getLuma(rgbNW);
+    float lumaNE = getLuma(rgbNE);
+    float lumaSW = getLuma(rgbSW);
+    float lumaSE = getLuma(rgbSE);
+
+    float lumaL = (lumaN + lumaW + lumaE + lumaS) * 0.25;
+    float subpixBlend = clamp(abs(lumaL - lumaM) / lumaRange, 0.0, 1.0);
+    subpixBlend = smoothstep(0.0, 1.0, subpixBlend);
+    subpixBlend = subpixBlend * subpixBlend * FXAA_SUBPIX_CAP; 
+
+    float edgeVert = 
+        abs((lumaNW + lumaN + lumaNE) - (lumaM * 2.0)) * 2.0 +
+        abs((lumaW  + lumaM + lumaE ) - (lumaM * 2.0)) * 1.0 +
+        abs((lumaSW + lumaS + lumaSE) - (lumaM * 2.0)) * 2.0;
+
+    float edgeHorz = 
+        abs((lumaNW + lumaW + lumaSW) - (lumaM * 2.0)) * 2.0 +
+        abs((lumaN  + lumaM + lumaS ) - (lumaM * 2.0)) * 1.0 +
+        abs((lumaNE + lumaE + lumaSE) - (lumaM * 2.0)) * 2.0;
+
+    bool isHorizontal = edgeHorz >= edgeVert;
+
+    float luma1 = isHorizontal ? lumaN : lumaW;
+    float luma2 = isHorizontal ? lumaS : lumaE;
+    
+    float gradient1 = abs(luma1 - lumaM);
+    float gradient2 = abs(luma2 - lumaM);
+
+    ivec2 stepDir = isHorizontal ? ivec2(0, 1) : ivec2(1, 0);
+    if (gradient1 > gradient2) {
+        stepDir = -stepDir;
+    }
+
+    vec3 rgbNeighbor = imageLoad(globalScreenImages[CURRENT_COLOR_IDX], clamp(pos + stepDir, ivec2(0), size - 1)).rgb;
+
+    float finalBlend = max(subpixBlend, 0.5);
+    vec3 finalColor = mix(rgbM, rgbNeighbor, finalBlend);
+
+    imageStore(globalScreenImages[CURRENT_COLOR_IDX], pos, vec4(finalColor, 1.0));
 }

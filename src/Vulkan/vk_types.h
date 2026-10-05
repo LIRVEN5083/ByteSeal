@@ -193,8 +193,6 @@ enum class ComputePassType : uint8_t{
     TAA,
     FXAA,
     CASS,
-    GTAO,
-    BLOOM,
 };
 
 static constexpr std::string_view RENDER_PASS_NAMES[] = {
@@ -211,8 +209,8 @@ static constexpr std::string_view COMPUTE_PASS_NAMES[] = {
     "TonMapping",
     "ColorCorrection",
     "TAA",
-    "GTAO",
-    "BLOOM"
+    "FXAA",
+    "CASS"
 };
 
 enum class PipelineOpacity{

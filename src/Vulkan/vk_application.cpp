@@ -747,6 +747,8 @@ void VK_APPLICATION::VulkanApplication::init_render(){
 
     _computeSystem->AddPass(std::move(iblPass));
     _postProcessSystem.AddPass(std::make_unique<TAAComputePass>(_init, TAAInfo.name));
+    _postProcessSystem.AddPass(std::make_unique<CASComputePass>(_init, CASInfo.name));
+    _postProcessSystem.AddPass(std::make_unique<FXAAComputePass>(_init, FXAAInfo.name));
     _postProcessSystem.AddPass(std::make_unique<ColorCorrectionComputePass>(_init, colorCorrectionInfo.name));
     _postProcessSystem.AddPass(std::make_unique<TonemapComputePass>(_init, tonMapInfo.name));
 
@@ -802,7 +804,14 @@ VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& 
     sceneData.proj[1][1] *= -1.0f;
 
     // proj * view
-    _TAA.Update(sceneData, _frameNumber);
+    if (_postProcessSystem.IsEnabled(ComputePassType::TAA)){
+        _TAA.Update(sceneData, _frameNumber);
+    }
+    else{
+        sceneData.viewproj = sceneData.proj * sceneData.view;
+        sceneData.viewProjNonJittered = sceneData.viewproj;
+        sceneData.prevViewProjJittered = sceneData.viewproj;
+    }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // КАСКАДЫ ТЕНЕЙ
     _lightManager->UpdateCascades(sceneData.view, fov, aspect, cNear, cFar, sceneData.sunlightDirection);

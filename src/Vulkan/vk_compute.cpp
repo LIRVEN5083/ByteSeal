@@ -50,33 +50,74 @@ void TonemapComputePass::Execute(const ComputeContext& ctx){
 }
 
 void TAAComputePass::Execute(const ComputeContext& ctx){
-     RealPipeline* activePipeline = ctx.pipelineManager->GetPipelineByName(_pipelineName);
+    RealPipeline* activePipeline = ctx.pipelineManager->GetPipelineByName(_pipelineName);
     if (!activePipeline) return;
 
     vkCmdBindPipeline(ctx.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, activePipeline->pipeline);
     vkCmdBindDescriptorSets(ctx.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, activePipeline->layout,
                             1, 1, &ctx.bindlessSet, 0, nullptr);
 
-    struct TAAPushConstants {
-        uint32_t frameIndex;
-        float screenWidth;
-        float screenHeight;
-        float padding;
-    } push;
-
+    PostProcessPushConstants push;
     push.frameIndex   = static_cast<uint32_t>(ctx.frameNumber % 2);
     push.screenWidth  = static_cast<float>(_init._windowExtent.width);
     push.screenHeight = static_cast<float>(_init._windowExtent.height);
 
     vkCmdPushConstants(ctx.cmd, activePipeline->layout,
                        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT,
-                       0, sizeof(TAAPushConstants), &push);
+                       0, sizeof(PostProcessPushConstants), &push);
 
     uint32_t groupCountX = (_init._windowExtent.width + 15) / 16;
     uint32_t groupCountY = (_init._windowExtent.height + 15) / 16;
 
     vkCmdDispatch(ctx.cmd, groupCountX, groupCountY, 1);
 }
+
+void FXAAComputePass::Execute(const ComputeContext& ctx){
+    RealPipeline* activePipeline = ctx.pipelineManager->GetPipelineByName(_pipelineName);
+    if (!activePipeline) return;
+
+    vkCmdBindPipeline(ctx.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, activePipeline->pipeline);
+    vkCmdBindDescriptorSets(ctx.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, activePipeline->layout,
+                            1, 1, &ctx.bindlessSet, 0, nullptr);
+
+    PostProcessPushConstants push;
+    push.frameIndex   = static_cast<uint32_t>(ctx.frameNumber % 2);
+    push.screenWidth  = static_cast<float>(_init._windowExtent.width);
+    push.screenHeight = static_cast<float>(_init._windowExtent.height);
+
+    vkCmdPushConstants(ctx.cmd, activePipeline->layout,
+                       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT,
+                       0, sizeof(PostProcessPushConstants), &push);
+
+    uint32_t groupCountX = (_init._windowExtent.width + 15) / 16;
+    uint32_t groupCountY = (_init._windowExtent.height + 15) / 16;
+
+    vkCmdDispatch(ctx.cmd, groupCountX, groupCountY, 1);
+}
+
+void CASComputePass::Execute(const ComputeContext& ctx){
+    RealPipeline* activePipeline = ctx.pipelineManager->GetPipelineByName(_pipelineName);
+    if (!activePipeline) return;
+
+    vkCmdBindPipeline(ctx.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, activePipeline->pipeline);
+    vkCmdBindDescriptorSets(ctx.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, activePipeline->layout,
+                            1, 1, &ctx.bindlessSet, 0, nullptr);
+
+    CASPushConstants push;
+    push.Sharpness   = Sharpness;
+    push.screenWidth  = static_cast<float>(_init._windowExtent.width);
+    push.screenHeight = static_cast<float>(_init._windowExtent.height);
+
+    vkCmdPushConstants(ctx.cmd, activePipeline->layout,
+                       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT,
+                       0, sizeof(CASPushConstants), &push);
+
+    uint32_t groupCountX = (_init._windowExtent.width + 15) / 16;
+    uint32_t groupCountY = (_init._windowExtent.height + 15) / 16;
+
+    vkCmdDispatch(ctx.cmd, groupCountX, groupCountY, 1);
+}
+
 
 void IBLProcessorComputePass::Execute(const ComputeContext& ctx){
     VkCommandBuffer cmd = ctx.cmd;
@@ -421,6 +462,14 @@ void PostProcessComputeSystem::SetPassEnabled(ComputePassType type, bool enabled
         if (pass->GetType() == type) {
             pass->SetEnabled(enabled);
             return;
+        }
+    }
+}
+
+bool PostProcessComputeSystem::IsEnabled(ComputePassType type){
+    for (auto& pass : _passes) {
+        if (pass->GetType() == type) {
+            return pass->IsEnabled();
         }
     }
 }

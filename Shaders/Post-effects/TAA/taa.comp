@@ -145,7 +145,7 @@ void main() {
 
     float forwardBackBias = mix(1.0, 0.3, radialComponent * clamp(speed / 5.0, 0.0, 1.0));
 
-    float feedback = mix(0.97, 0.15, clamp(speed / 12.0, 0.0, 1.0)) * forwardBackBias;
+    float feedback = mix(0.97, 0.15, clamp(speed / 12.0, 0.0, 1.0)) * forwardBackBias; // ТУТ БАГ СО СМЕШИВАНИЕМ которое создает шлейфы
     
     if (historyUV.x < 0.0 || historyUV.x > 1.0 || historyUV.y < 0.0 || historyUV.y > 1.0) { 
         feedback = 0.0; 
