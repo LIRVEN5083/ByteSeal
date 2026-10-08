@@ -32,6 +32,20 @@ public:
     virtual void Execute(const ComputeContext& ctx) = 0;
 };
 
+struct PostProcessPushConstants {
+    uint32_t frameIndex;
+    float screenWidth;
+    float screenHeight;
+    float padding;
+};
+
+struct CASPushConstants{
+    float Sharpness;
+    float screenWidth;
+    float screenHeight;
+    float padding;
+};
+
 enum class TonemapOperator : uint32_t {
     Linear = 0,
     Reinhard = 1,
@@ -102,6 +116,35 @@ private:
     std::string _pipelineName;
 
     uint32_t _frameCounter{ 0 };
+};
+
+class FXAAComputePass : public ComputePass {
+public:
+    FXAAComputePass(VK_INIT_ENGINE::_inited_engine& init, std::string pipelineName)
+        : ComputePass(init, ComputePassType::FXAA), _pipelineName(pipelineName) {}
+
+    ~FXAAComputePass() override = default;
+
+    void Execute(const ComputeContext& ctx) override;
+
+private:
+    std::string _pipelineName;
+};
+
+class CASComputePass : public ComputePass {
+public:
+    CASComputePass(VK_INIT_ENGINE::_inited_engine& init, std::string pipelineName)
+        : ComputePass(init, ComputePassType::CAS), _pipelineName(pipelineName) {}
+
+    ~CASComputePass() override = default;
+
+    void Execute(const ComputeContext& ctx) override;
+
+    void SetSharpness(float sharpness){this->Sharpness = sharpness;};
+
+private:
+    float Sharpness{1.0};
+    std::string _pipelineName;
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -193,6 +236,8 @@ public:
     void Execute(VkCommandBuffer mainCmd, VkDescriptorSet bindlessSet, PipelineManager& pipelineManager, int _frameNumber);
 
     void SetPassEnabled(ComputePassType type, bool enabled);
+
+    bool IsEnabled(ComputePassType type);
 
     std::vector<std::unique_ptr<ComputePass>>& GetPasses() { return _passes; }
 

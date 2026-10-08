@@ -1,0 +1,64 @@
+#version 460
+#extension GL_EXT_nonuniform_qualifier : require
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+// Bindless массив картинок
+layout(set = 1, binding = 4, rgba16f) uniform image2D globalScreenImages[];
+
+const uint CURRENT_COLOR_IDX = 0;
+const uint DEPTH_IDX         = 1;
+const uint VELOCITY_IDX      = 2;
+const uint NORMAL_IDX        = 3;
+const uint HISTORY_0_IDX     = 4;
+const uint HISTORY_1_IDX     = 5;
+
+layout(push_constant) uniform Constants {
+    float Sharpness;
+    float screenWidth; 
+    float screenHeight;
+} pc;
+
+void main() {
+    ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = ivec2(int(pc.screenWidth), int(pc.screenHeight));
+
+    if (pos.x >= size.x || pos.y >= size.y) {
+        return;
+    }
+
+    ivec2 posTop   = ivec2(pos.x, max(pos.y - 1, 0));
+    ivec2 posLeft  = ivec2(max(pos.x - 1, 0), pos.y);
+    ivec2 posRight = ivec2(min(pos.x + 1, size.x - 1), pos.y);
+    ivec2 posBottom= ivec2(pos.x, min(pos.y + 1, size.y - 1));
+
+    vec3 c = imageLoad(globalScreenImages[CURRENT_COLOR_IDX], pos).rgb;
+    vec3 t = imageLoad(globalScreenImages[CURRENT_COLOR_IDX], posTop).rgb;
+    vec3 l = imageLoad(globalScreenImages[CURRENT_COLOR_IDX], posLeft).rgb;
+    vec3 r = imageLoad(globalScreenImages[CURRENT_COLOR_IDX], posRight).rgb;
+    vec3 b = imageLoad(globalScreenImages[CURRENT_COLOR_IDX], posBottom).rgb;
+
+    float g_c = c.g;
+    float g_t = t.g;
+    float g_l = l.g;
+    float g_r = r.g;
+    float g_b = b.g;
+
+    float mn = min(g_c, min(min(g_t, g_l), min(g_r, g_b)));
+    float mx = max(g_c, max(max(g_t, g_l), max(g_r, g_b)));
+
+    float rcpMX = 1.0 / max(mx, 0.0001);
+    float amp = clamp(min(mn, 1.0 - mx) * rcpMX, 0.0, 1.0);
+    float w = sqrt(amp);
+
+    float peak = mix(-0.125, -0.2, clamp(pc.Sharpness, 0.0, 1.0));
+    float weight = w * peak;
+
+    float totalWeight = 1.0 + 4.0 * weight;
+
+    vec3 sharpenedColor = (t * weight + l * weight + r * weight + b * weight + c) / totalWeight;
+
+    sharpenedColor = max(vec3(0.0), sharpenedColor);
+
+    imageStore(globalScreenImages[CURRENT_COLOR_IDX], pos, vec4(sharpenedColor, 1.0));
+}

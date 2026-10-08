@@ -485,7 +485,7 @@ void RenderSystem::RefreshPasses(PipelineManager& pipelineManager){
     for (auto& pass : _renderPasses) {
         pass->Init(pipelineManager);
     }
-    std::cout << "[RenderSystem]: All render passes successfully re-linked to new pipelines.\n";
+    std::cout << "\n[RenderSystem]: All render passes successfully re-linked to new pipelines.\n";
 }
 
 void RenderSystem::SetPassEnabled(RenderPassType type, bool enabled) {
@@ -513,7 +513,7 @@ void RenderSystem::UpdateSkyBoxTexture(GPUTexture& newTex, TextureManager& textu
 
                 //vkDeviceWaitIdle(_init._device);
 
-                fmt::print("[RenderSystem] Skybox and IBL system successfully notified about new texture.\n");
+                fmt::print("\n[RenderSystem] Skybox and IBL system successfully notified about new texture.\n");
                 return;
             }
         }
@@ -527,10 +527,10 @@ void RenderSystem::ToggleSkyBox(){
 
             if (skyboxPass->GetSkyboxType() == SkyBoxType::Panoramic) {
                 skyboxPass->SetSkyboxType(SkyBoxType::Procedural);
-                fmt::print("[RenderSystem]: Skybox switched to Procedural (Hosek-Wilkie).\n");
+                fmt::print("\n[RenderSystem]: Skybox switched to Procedural (Hosek-Wilkie).\n");
             } else {
                 skyboxPass->SetSkyboxType(SkyBoxType::Panoramic);
-                fmt::print("[RenderSystem]: Skybox switched to Panoramic (HDR).\n");
+                fmt::print("\n[RenderSystem]: Skybox switched to Panoramic (HDR).\n");
             }
 
             return;

@@ -624,7 +624,7 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     if (skyboxPipeline) {
         fmt::print("[PipelineManager] Pipeline 'SkyBox' successfully loaded and built.\n");
     }
-                            // TODO: --ВЫЧЕСЛИТЕЛЬНЫЕ КОНВЕЕРЫ И ШЕЙДЕРЫ!--
+                            // TODO: ВЫЧЕСЛИТЕЛЬНЫЕ КОНВЕЕРЫ И ШЕЙДЕРЫ!
     //TODO: IBL
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Конвеер для ETC (На входе .hdr понарама)
@@ -676,7 +676,7 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     PipelineCreateInfo colorCorrectionInfo{};
     colorCorrectionInfo.name = "ColorCorrection";
     colorCorrectionInfo.passType = RenderPassType::Compute;
-    colorCorrectionInfo.computeShaderPath = "../Shaders/ColorCorrection/Color.comp";
+    colorCorrectionInfo.computeShaderPath = "../Shaders/Post-effects/ColorCorrection/Color.comp";
 
     RealPipeline* colorCorrectionPipeline = _pipelineManager->CreateComputePipeline(colorCorrectionInfo);
     if (colorCorrectionPipeline) {
@@ -687,7 +687,7 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     PipelineCreateInfo tonMapInfo{};
     tonMapInfo.name = "Tonemap";
     tonMapInfo.passType = RenderPassType::Compute;
-    tonMapInfo.computeShaderPath = "../Shaders/Tonemap/Ton.comp";
+    tonMapInfo.computeShaderPath = "../Shaders/Post-effects/Tonemap/Ton.comp";
 
     RealPipeline* tonMapPipeline = _pipelineManager->CreateComputePipeline(tonMapInfo);
     if (tonMapPipeline) {
@@ -698,11 +698,35 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     PipelineCreateInfo TAAInfo{};
     TAAInfo.name = "TAA";
     TAAInfo.passType = RenderPassType::Compute;
-    TAAInfo.computeShaderPath = "../Shaders/TAA/taa.comp";
+    TAAInfo.computeShaderPath = "../Shaders/Post-effects/TAA/taa.comp";
 
     RealPipeline* TAAPipeline = _pipelineManager->CreateComputePipeline(TAAInfo);
     if (TAAPipeline){
         fmt::print("[PipelineManager] Compute Pipeline 'TAA' successfully loaded and built.\n");
+    }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Конвеер для FXAA
+    PipelineCreateInfo FXAAInfo{};
+    FXAAInfo.name = "FXAA";
+    FXAAInfo.passType = RenderPassType::Compute;
+    FXAAInfo.computeShaderPath = "../Shaders/Post-effects/FXAA/fxaa.comp";
+
+    RealPipeline* FXAAPipeline = _pipelineManager->CreateComputePipeline(FXAAInfo);
+    if (FXAAPipeline){
+        fmt::print("[PipelineManager] Compute Pipeline 'FXAA' successfully loaded and built.\n");
+    }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Конвеер для CAS
+    PipelineCreateInfo CASInfo{};
+    CASInfo.name = "CAS";
+    CASInfo.passType = RenderPassType::Compute;
+    CASInfo.computeShaderPath = "../Shaders/Post-effects/CAS/cas.comp";
+
+    RealPipeline* CASPipeline = _pipelineManager->CreateComputePipeline(CASInfo);
+    if (CASPipeline){
+        fmt::print("[PipelineManager] Compute Pipeline 'CAS' successfully loaded and built.\n");
     }
 
     // Проходы рендера
@@ -723,6 +747,8 @@ void VK_APPLICATION::VulkanApplication::init_render(){
 
     _computeSystem->AddPass(std::move(iblPass));
     _postProcessSystem.AddPass(std::make_unique<TAAComputePass>(_init, TAAInfo.name));
+    _postProcessSystem.AddPass(std::make_unique<CASComputePass>(_init, CASInfo.name));
+    _postProcessSystem.AddPass(std::make_unique<FXAAComputePass>(_init, FXAAInfo.name));
     _postProcessSystem.AddPass(std::make_unique<ColorCorrectionComputePass>(_init, colorCorrectionInfo.name));
     _postProcessSystem.AddPass(std::make_unique<TonemapComputePass>(_init, tonMapInfo.name));
 
@@ -732,6 +758,17 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     if (loadedTextureOpt.has_value()){
         _renderSystem.UpdateSkyBoxTexture(loadedTextureOpt.value(), _textureManager, *_computeSystem);
     }
+
+    //TODO: DEBUG
+    /*
+    _postProcessSystem.SetPassEnabled(ComputePassType::TonMapping, false);
+    _postProcessSystem.SetPassEnabled(ComputePassType::ColorCorrection, false);
+    _postProcessSystem.SetPassEnabled(ComputePassType::FXAA, false);
+    _postProcessSystem.SetPassEnabled(ComputePassType::CAS, false);
+    _renderSystem.SetPassEnabled(RenderPassType::Skybox, false);
+    _renderSystem.SetPassEnabled(RenderPassType::Grid, false);
+    _modelManager.LoadModel("../Data/Model/genshin_impact_-_furina.glb", _confStatic.lifetime, _confStatic.useArena);
+    */
 }
 
 void VK_APPLICATION::VulkanApplication::init_commands(){
@@ -778,7 +815,14 @@ VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& 
     sceneData.proj[1][1] *= -1.0f;
 
     // proj * view
-    _TAA.Update(sceneData, _frameNumber);
+    if (_postProcessSystem.IsEnabled(ComputePassType::TAA)){
+        _TAA.Update(sceneData, _frameNumber);
+    }
+    else{
+        sceneData.viewproj = sceneData.proj * sceneData.view;
+        sceneData.viewProjNonJittered = sceneData.viewproj;
+        sceneData.prevViewProjJittered = sceneData.viewproj;
+    }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // КАСКАДЫ ТЕНЕЙ
     _lightManager->UpdateCascades(sceneData.view, fov, aspect, cNear, cFar, sceneData.sunlightDirection);
