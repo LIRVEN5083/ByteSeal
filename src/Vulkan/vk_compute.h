@@ -134,7 +134,7 @@ private:
 class CASComputePass : public ComputePass {
 public:
     CASComputePass(VK_INIT_ENGINE::_inited_engine& init, std::string pipelineName)
-        : ComputePass(init, ComputePassType::CASS), _pipelineName(pipelineName) {}
+        : ComputePass(init, ComputePassType::CAS), _pipelineName(pipelineName) {}
 
     ~CASComputePass() override = default;
 
