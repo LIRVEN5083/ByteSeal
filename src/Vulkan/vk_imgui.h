@@ -77,7 +77,7 @@ namespace VK_GUI{
 
         // TODO:: Для SkyBox
         static inline bool showSkyBoxWindow = false;
-        static inline int skyboxType = 0;
+        static inline int skyboxType = 1;
 
         //  TODO:: Параметры скайбокса
         static inline float skyboxTime = 12.0f;

@@ -169,7 +169,6 @@ void main() {
         }
     }
     
-    
     vec3 currentCurrTM = ToneMap(currentRGB.rgb);
     vec3 historyHistTM = YCoCgtoRGB(historyYCoCg);
     vec3 blendedTM = mix(currentCurrTM, historyHistTM, feedback);

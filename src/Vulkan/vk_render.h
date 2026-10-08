@@ -150,7 +150,7 @@ public:
 private:
     RealPipeline* _procPipeline{ nullptr };
     RealPipeline* _panoramicPipeline{ nullptr };
-    SkyBoxType _currentType{ SkyBoxType::Procedural };
+    SkyBoxType _currentType{ SkyBoxType::Panoramic };
 
     GPUTexture _panoramicTexture{};
     bool _hasTexture{ false };

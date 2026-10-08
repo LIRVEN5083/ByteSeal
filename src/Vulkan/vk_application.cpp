@@ -760,6 +760,7 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     }
 
     //TODO: DEBUG
+    /*
     _postProcessSystem.SetPassEnabled(ComputePassType::TonMapping, false);
     _postProcessSystem.SetPassEnabled(ComputePassType::ColorCorrection, false);
     _postProcessSystem.SetPassEnabled(ComputePassType::FXAA, false);
@@ -767,6 +768,7 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     _renderSystem.SetPassEnabled(RenderPassType::Skybox, false);
     _renderSystem.SetPassEnabled(RenderPassType::Grid, false);
     _modelManager.LoadModel("../Data/Model/genshin_impact_-_furina.glb", _confStatic.lifetime, _confStatic.useArena);
+    */
 }
 
 void VK_APPLICATION::VulkanApplication::init_commands(){
