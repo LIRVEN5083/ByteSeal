@@ -375,6 +375,7 @@ VK_INIT_ENGINE::_inited_engine& VK_INIT_ENGINE::VulkanInitEngine::Get(){
 }
 
 VK_INIT_ENGINE::VulkanInitEngine::VulkanInitEngine(bool Validation_layers){
+    EnableVirtualTerminalProcessing();
     this->ready_init._windowExtent = applicationSize;
     SDL_Init(SDL_INIT_VIDEO);
     SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
@@ -421,8 +422,9 @@ VK_INIT_ENGINE::VulkanInitEngine::VulkanInitEngine(bool Validation_layers){
     baseFeatures.independentBlend = VK_TRUE;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-     // Привирка видеокарточик на апартную паддержкУ движка
-    fmt::print("\n[Engine]: Physical Device Diagnostics\n");
+    // Привирка видеокарточик на апартную паддержкУ движка
+    fmt::print(fmt::emphasis::bold, "\n{} : Physical Device Diagnostics\n", fmt::format(fmt::fg(fmt::color::cyan), "[Engine]"));
+    fmt::print(fmt::fg(fmt::color::gray), "========================================================================\n");
     vkb::PhysicalDeviceSelector debug_selector{ vkb_inst };
 
     // В vk-bootstrap список всех видеокарт запрашивается через select_devices()
@@ -434,7 +436,9 @@ VK_INIT_ENGINE::VulkanInitEngine::VulkanInitEngine(bool Validation_layers){
             VkPhysicalDeviceProperties props;
             vkGetPhysicalDeviceProperties(dev, &props);
 
-            fmt::print("Checking device: {} (Vendor ID: 0x{:X})\n", props.deviceName, props.vendorID);
+            fmt::print(fmt::emphasis::bold, "\nChecking device: {} ", props.deviceName);
+            fmt::print(fmt::fg(fmt::color::gray), "(Vendor ID: 0x{:X})\n", props.vendorID);
+            fmt::print(fmt::fg(fmt::color::gray), "------------------------------------------------------------------------\n");
             bool device_is_valid = true;
 
             // Vulkan base features 1.0
@@ -443,8 +447,8 @@ VK_INIT_ENGINE::VulkanInitEngine::VulkanInitEngine(bool Validation_layers){
 
             #define EVAL_BASE(feat) \
                 if (baseFeatures.feat) { \
-                    if (availBase.feat) { fmt::print("  [ OK ] Base Feature: {}\n", #feat); } \
-                    else { fmt::print(stderr, "  [MISSING] Base Feature: {}\n", #feat); device_is_valid = false; } \
+                    if (availBase.feat) { fmt::print(fmt::emphasis::bold, "  {} Base Feature          : {}\n", fmt::format(fmt::fg(fmt::color::green), "  OK   "), #feat); } \
+                    else { fmt::print(stderr, fmt::emphasis::bold, "  {} Base Feature          : {}\n", fmt::format(fmt::fg(fmt::color::red), "MISSING"), #feat); device_is_valid = false; } \
                 }
             EVAL_BASE(samplerAnisotropy);
             EVAL_BASE(geometryShader);
@@ -461,8 +465,8 @@ VK_INIT_ENGINE::VulkanInitEngine::VulkanInitEngine(bool Validation_layers){
             // Vulkan features 1.2
             #define EVAL_12(feat) \
                 if (features12.feat) { \
-                    if (avail12.feat) { fmt::print("  [ OK ] Vulkan 1.2 Feature: {}\n", #feat); } \
-                    else { fmt::print(stderr, "  [MISSING] Vulkan 1.2 Feature: {}\n", #feat); device_is_valid = false; } \
+                    if (avail12.feat) { fmt::print(fmt::emphasis::bold, "  {} Vulkan 1.2 Feature    : {}\n", fmt::format(fmt::fg(fmt::color::green), "  OK   "), #feat); } \
+                    else { fmt::print(stderr, fmt::emphasis::bold, "  {} Vulkan 1.2 Feature    : {}\n", fmt::format(fmt::fg(fmt::color::red), "MISSING"), #feat); device_is_valid = false; } \
                 }
             EVAL_12(descriptorBindingSampledImageUpdateAfterBind);
             EVAL_12(descriptorBindingPartiallyBound);
@@ -477,8 +481,8 @@ VK_INIT_ENGINE::VulkanInitEngine::VulkanInitEngine(bool Validation_layers){
             // Vulkan features 1.3
             #define EVAL_13(feat) \
                 if (features.feat) { \
-                    if (avail13.feat) { fmt::print("  [ OK ] Vulkan 1.3 Feature: {}\n", #feat); } \
-                    else { fmt::print(stderr, "  [MISSING] Vulkan 1.3 Feature: {}\n", #feat); device_is_valid = false; } \
+                    if (avail13.feat) { fmt::print(fmt::emphasis::bold, "  {} Vulkan 1.3 Feature    : {}\n", fmt::format(fmt::fg(fmt::color::green), "  OK   "), #feat); } \
+                    else { fmt::print(stderr, fmt::emphasis::bold, "  {} Vulkan 1.3 Feature    : {}\n", fmt::format(fmt::fg(fmt::color::red), "MISSING"), #feat); device_is_valid = false; } \
                 }
             EVAL_13(dynamicRendering);
             EVAL_13(synchronization2);
@@ -499,22 +503,23 @@ VK_INIT_ENGINE::VulkanInitEngine::VulkanInitEngine(bool Validation_layers){
                 }
             }
             if (has_viewport_ext) {
-                fmt::print("  [ OK ] Extension: {}\n", VK_EXT_SHADER_VIEWPORT_INDEX_LAYER_EXTENSION_NAME);
+                fmt::print(fmt::emphasis::bold, "  {} Required Extension    : {}\n", fmt::format(fmt::fg(fmt::color::green), "  OK   "), VK_EXT_SHADER_VIEWPORT_INDEX_LAYER_EXTENSION_NAME);
             } else {
-                fmt::print(stderr, "  [MISSING] Extension: {}\n", VK_EXT_SHADER_VIEWPORT_INDEX_LAYER_EXTENSION_NAME);
+                fmt::print(stderr, fmt::emphasis::bold, "  {} Required Extension    : {}\n", fmt::format(fmt::fg(fmt::color::red), "MISSING"), VK_EXT_SHADER_VIEWPORT_INDEX_LAYER_EXTENSION_NAME);
                 device_is_valid = false;
             }
 
+            fmt::print(fmt::fg(fmt::color::gray), "------------------------------------------------------------------------\n");
             if (device_is_valid) {
-                fmt::print("-> STATUS: Device is fully [COMPATIBLE] with the engine requirements.\n\n");
+                fmt::print(fmt::emphasis::bold, "Result: Device is fully {} with the engine requirements.\n", fmt::format(fmt::fg(fmt::color::green), "[COMPATIBLE]"));
             } else {
-                fmt::print(stderr, "-> STATUS: Device is [INCOMPATIBLE] due to missing required features.\n\n");
+                fmt::print(stderr, fmt::emphasis::bold, "Result: Device is {} due to missing required features.\n", fmt::format(fmt::fg(fmt::color::red), "[INCOMPATIBLE]"));
             }
+            fmt::print(fmt::fg(fmt::color::gray), "========================================================================\n");
         }
     } else {
-        fmt::print(stderr, "[CRITICAL ENGINE ERROR]: vk-bootstrap failed to enumerate devices: {}\n", all_devices_res.error().message());
+        fmt::print(stderr, fmt::emphasis::bold, "{} vkb failed to enumerate devices: {}\n", fmt::format(fmt::fg(fmt::color::red), "[CRITICAL ERROR]"), all_devices_res.error().message());
     }
-    fmt::print("\n\n");
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     vkb::PhysicalDeviceSelector selector{ vkb_inst };
@@ -564,10 +569,13 @@ VK_INIT_ENGINE::VulkanInitEngine::VulkanInitEngine(bool Validation_layers){
             nullptr,                                       // 7. resolveMarkerCb
             nullptr                                        // 8. pUserData
         );
-        std::cout << "[InitEngine] NVIDIA Graphics detected. Nsight Aftermath initialized successfully." << std::endl;
+        fmt::print(fmt::emphasis::bold, "\n{} : NVIDIA Graphics detected. Nsight Aftermath initialized successfully.\n\n",
+           fmt::format(fmt::fg(fmt::color::cyan), "[Engine]"));
+
     }
     else if (Validation_layers) {
-        std::cout << "[Engine] Non-NVIDIA Graphics detected. Skipping Nsight Aftermath initialization." << std::endl;
+        fmt::print(fmt::emphasis::bold, "\n{} : Non-NVIDIA Graphics detected. Skipping Nsight Aftermath initialization.\n\n",
+           fmt::format(fmt::fg(fmt::color::cyan), "[Engine]"));
     }
 
     vkb::DeviceBuilder deviceBuilder{ physicalDevice };
@@ -619,4 +627,19 @@ VK_INIT_ENGINE::VulkanInitEngine::VulkanInitEngine(bool Validation_layers){
     this->ready_init._isInitialized = true;
 
     ready_init._useAftermath = use_aftermath;
+}
+
+void EnableVirtualTerminalProcessing() {
+#ifdef _WIN32
+    // Получаем хендл стандартного вывода (stdout)
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (hOut == INVALID_HANDLE_VALUE) return;
+
+    DWORD dwMode = 0;
+    if (!GetConsoleMode(hOut, &dwMode)) return;
+
+    // Включаем флаг ENABLE_VIRTUAL_TERMINAL_PROCESSING
+    dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+    SetConsoleMode(hOut, dwMode);
+#endif
 }

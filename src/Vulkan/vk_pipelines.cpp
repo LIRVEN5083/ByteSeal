@@ -696,7 +696,8 @@ void PipelineManager::DestroyAllPipelines(){
 }
 
 bool PipelineManager:: ReloadAllPipelines(){
-    std::cout << "\n[PipelineManager] Initiating full runtime pipeline rebuild\n";
+    fmt::print(fmt::emphasis::bold, "\n{} : Initiating full runtime pipeline rebuild.\n",
+           fmt::format(fmt::fg(fmt::color::magenta), "[ShaderReload]"));
 
     std::unordered_map<std::string, std::vector<uint32_t>> newVertCodes;
     std::unordered_map<std::string, std::vector<uint32_t>> newFragCodes;
@@ -707,7 +708,7 @@ bool PipelineManager:: ReloadAllPipelines(){
         if (realPipeline.isCompute) {
             auto compCode = UTILS::CompileGLSLToSPIRV(realPipeline.computeShaderPath, _debugAftermath);
             if (compCode.empty()) {
-                std::cerr << "[PipelineManager] Hot-reload aborted due to Compute shader compiler errors in " << name << ".\n";
+                fmt::print(stderr, "[ShaderReload] Hot-reload aborted due to Compute shader compiler errors in {}.\n", name);
                 return false;
             }
             newCompCodes[name] = compCode;
@@ -716,7 +717,7 @@ bool PipelineManager:: ReloadAllPipelines(){
         // Вершинный шейдер компилируем всегда
         auto vertCode = UTILS::CompileGLSLToSPIRV(realPipeline.vertexShaderPath, _debugAftermath);
         if (vertCode.empty()) {
-            std::cerr << "[PipelineManager] Hot-reload aborted due to Vertex shader compiler errors in " << name << ".\n";
+            fmt::print(stderr, "[ShaderReload] Hot-reload aborted due to Vertex shader compiler errors in {}.\n", name);
             return false;
         }
         newVertCodes[name] = vertCode;
@@ -726,7 +727,7 @@ bool PipelineManager:: ReloadAllPipelines(){
         if (!realPipeline.fragmentShaderPath.empty()) {
             fragCode = UTILS::CompileGLSLToSPIRV(realPipeline.fragmentShaderPath, _debugAftermath);
             if (fragCode.empty()) {
-                std::cerr << "[PipelineManager] Hot-reload aborted due to Fragment shader compiler errors in " << name << ".\n";
+                fmt::print(stderr, "[ShaderReload] Hot-reload aborted due to Fragment shader compiler errors in {}.\n", name);
                 return false;
             }
         }
@@ -818,12 +819,16 @@ bool PipelineManager:: ReloadAllPipelines(){
             rebuilt->id = pipeline.oldID; // Просто возвращаем старый ID на место
         }
         else {
-            std::cerr << "[CRITICAL ENGINE ERROR]: Failed to recreate pipeline '" << pipeline.name << "' during crude rebuild!\n";
+            fmt::print(stderr, fmt::emphasis::bold, "{} Failed to recreate pipeline '{}' during crude rebuild!\n",
+                       fmt::format(fmt::fg(fmt::color::red), "[CRITICAL ENGINE ERROR]:"), pipeline.name);
             std::abort();
             return false;
         }
     }
-    std::cout << "[PipelineManager] Success!\n";
+    fmt::print(fmt::emphasis::bold, "{} : {}\n",
+           fmt::format(fmt::fg(fmt::color::magenta), "[ShaderReload]"),
+           fmt::format(fmt::fg(fmt::color::green), "Success!"));
+
     return true;
 }
 

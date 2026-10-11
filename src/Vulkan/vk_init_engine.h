@@ -8,6 +8,8 @@
 #include <chrono>
 #include <thread>
 
+void EnableVirtualTerminalProcessing();
+
 constexpr unsigned int FRAME_OVERLAP = 2;
 
 namespace VK_GUI{

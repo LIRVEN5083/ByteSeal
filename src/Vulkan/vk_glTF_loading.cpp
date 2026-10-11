@@ -464,8 +464,6 @@ void TextureManager::create_default_white_texture(VK_INIT_ENGINE::_inited_engine
 
     // Очищаем временный буфер
     vmaDestroyBuffer(_init._allocator, stagingBuffer.buffer, stagingBuffer.allocation);
-
-    std::cout << "[TextureManager] Default white texture generated under Bindless ID = 0\n";
 }
 
 void TextureManager::create_ibl_textures(VK_INIT_ENGINE::_inited_engine& _init) {
@@ -877,7 +875,8 @@ std::optional<GPUTexture> SkyBoxUpload(const std::string& filePath, VK_INIT_ENGI
 
     vkDeviceWaitIdle(_init._device);
 
-    fmt::print("[Engine] Loading HDR Panorama: {} ({}x{})\n", filePath, width, height);
+    fmt::print(fmt::emphasis::bold, "\n{} Loading HDR Panorama: {} ({}x{})\n",
+           fmt::format(fmt::fg(fmt::color::cyan), "[Engine]"), filePath, width, height);
 
     auto panoramicTex = load_panoramic_hdr(_init, textureManager, pixelData, width, height);
     stbi_image_free(pixelData);
@@ -1359,18 +1358,21 @@ Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init,
     Model loadedModel;
     loadedModel.lifetime = lifetime;
     loadedModel.bIsValid = true;
-    std::cout << "\nLoading GLTF: " << filePath << std::endl;
-    std::cout<< "Model type: ";
-    if (lifetime == ModelLifetime::Dynamic){
-        std::cout<<"Dynamic\n";
-    }
-    else if (lifetime == ModelLifetime::Static){
-        std::cout<<"Static\n";
-    }
+
+    fmt::print("\n{} Loading GLTF: {}\n",
+               fmt::format(fmt::fg(fmt::color::yellow) | fmt::emphasis::bold, "[GLTF]"),
+               filePath.string());
+
+    fmt::print("{} Model type: {}\n",
+               fmt::format(fmt::fg(fmt::color::yellow) | fmt::emphasis::bold, "[GLTF]"),
+               (lifetime == ModelLifetime::Dynamic) ? "Dynamic" : "Static");
+
     // Чтение данных
     auto data = fastgltf::GltfDataBuffer::FromPath(filePath.string());
     if (!data) {
-        fmt::print("Failed to open glTF file path: {}\n", filePath.string());
+        fmt::print(stderr, "{} Failed to open glTF file path: {}\n",
+                   fmt::format(fmt::fg(fmt::color::red) | fmt::emphasis::bold, "[CRITICAL ERROR]"),
+                   filePath.string());
         return loadedModel; // Возвращаем пустую модель
     }
 
@@ -1379,17 +1381,20 @@ Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init,
 
     auto load = parser.loadGltf(data.get(), filePath.parent_path(), gltfOptions);
     if (!load) {
-        fmt::print("Failed to parse glTF JSON: {} \n", fastgltf::to_underlying(load.error()));
+        fmt::print(stderr, "{} Failed to parse glTF JSON: {}\n",
+                   fmt::format(fmt::fg(fmt::color::red) | fmt::emphasis::bold, "[CRITICAL ERROR]"),
+                   fastgltf::to_underlying(load.error()));
         return loadedModel;
     }
 
     fastgltf::Asset& gltf = load.get();
 
-    std::cout << "GLTF Asset Parsed Info:" << std::endl;
-    std::cout << "  - Images: " << gltf.images.size() << std::endl;
-    std::cout << "  - Textures: " << gltf.textures.size() << std::endl;
-    std::cout << "  - Materials: " << gltf.materials.size() << std::endl;
-    std::cout << "  - Meshes: " << gltf.meshes.size() << std::endl;
+    fmt::print(fmt::emphasis::bold, "{} GLTF Asset Parsed Info:\n",
+               fmt::format(fmt::fg(fmt::color::yellow), "[GLTF]"));
+    fmt::print(fmt::fg(fmt::color::gray), "  - Images:    {}\n", gltf.images.size());
+    fmt::print(fmt::fg(fmt::color::gray), "  - Textures:  {}\n", gltf.textures.size());
+    fmt::print(fmt::fg(fmt::color::gray), "  - Materials: {}\n", gltf.materials.size());
+    fmt::print(fmt::fg(fmt::color::gray), "  - Meshes:    {}\n", gltf.meshes.size());
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Загрузка изображений
@@ -1466,7 +1471,8 @@ Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init,
             }
         }
         else {
-            std::cout << "[ENGINE CRITICAL ERROR]: fastgltf/stbi failed to load image data for one of the textures!\n";
+            fmt::print(stderr, "{} fastgltf/stbi failed to load image data for one of the textures!\n",
+                       fmt::format(fmt::fg(fmt::color::red) | fmt::emphasis::bold, "[ENGINE CRITICAL ERROR]"));
         }
         GPUTexture dummyTex{};
         dummyTex.globalIndex = 0;
@@ -1552,7 +1558,9 @@ Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init,
     if (meshesOpt.has_value()) {
         loadedModel.Meshes = std::move(meshesOpt.value());
     } else {
-        fmt::print("Failed to process meshes for file: {}\n", filePath.string());
+        fmt::print(stderr, "{} Failed to process meshes for file: {}\n",
+                   fmt::format(fmt::fg(fmt::color::red) | fmt::emphasis::bold, "[ENGINE ERROR]"),
+                   filePath.string());
         return loadedModel;
     }
 
@@ -1564,8 +1572,9 @@ Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init,
 
     // Жесткий отстрел многокорневых файлов
     if (defaultScene.nodeIndices.size() > 1) {
-        fmt::print("[ENGINE CRITICAL ERROR]: Fuck you, we don't use multiple root nodes in the same model!\n",
-            filePath.string(), defaultScene.nodeIndices.size());
+        fmt::print(stderr, "{} Multiple root nodes detected in model: {}\n",
+                   fmt::format(fmt::fg(fmt::color::red) | fmt::emphasis::bold, "[ENGINE CRITICAL ERROR]"),
+                   filePath.string());
         loadedModel.destroy(_init, meshManager, textureManager);
         loadedModel.bIsValid = false;
         return loadedModel;
@@ -1659,9 +1668,10 @@ Model load_glTF(VK_INIT_ENGINE::_inited_engine& _init,
     // Финальный локальный апдейт модели в чистом Z-Up пространстве движка
     loadedModel.rootNode->UpdateMatrices(glm::mat4(1.0f), glm::mat4(1.0f));
 
-
     loadedModel.bIsValid = true;
-    std::cout << "Model successfully isolated & baked into native Z-Up!\n";
+    fmt::print("{} Model successfully isolated & baked into native Z-Up!\n",
+               fmt::format(fmt::fg(fmt::color::yellow) | fmt::emphasis::bold, "[GLTF]"));
+
     return loadedModel;
 
 }
@@ -1688,6 +1698,7 @@ uint32_t ModelManager::LoadModel(const std::filesystem::path& filePath, ModelLif
     Model newModel = load_glTF(_init, _meshManager, _textureManager, filePath, lifetime,useArena);
     newModel.lifetime = lifetime;
     newModel.bIsValid = true;
+    newModel.filePath = filePath;
 
     uint32_t externalId = 0;
     if (targetIndex == uint32_t(-1)) {

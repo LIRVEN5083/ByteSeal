@@ -53,7 +53,6 @@ void main() {
 
 	outCurrentPos = clipCurrent;
 	outPrevPos = clipPrev;
-
     WorldPos = vPos3;
 }
 
