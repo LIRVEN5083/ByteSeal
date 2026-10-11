@@ -1698,6 +1698,7 @@ uint32_t ModelManager::LoadModel(const std::filesystem::path& filePath, ModelLif
     Model newModel = load_glTF(_init, _meshManager, _textureManager, filePath, lifetime,useArena);
     newModel.lifetime = lifetime;
     newModel.bIsValid = true;
+    newModel.filePath = filePath;
 
     uint32_t externalId = 0;
     if (targetIndex == uint32_t(-1)) {

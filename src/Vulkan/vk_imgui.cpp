@@ -212,7 +212,19 @@ void VK_GUI::GUI::draw_model_list_overlay(VK_INIT_ENGINE::_inited_engine& _init,
                     ImGui::PushID(i);
 
                     std::string lifetimeStr = (model.lifetime == ModelLifetime::Static) ? "Static" : "Dynamic";
-                    std::string label = "Model [" + std::to_string(i) + "] (" + lifetimeStr + ")";
+
+                    std::string fileName = std::filesystem::path(model.filePath).stem().string();
+                    if (fileName.empty()) {
+                        fileName = "Model";
+                    }
+
+                    constexpr size_t maxCurrentLength = 30;
+
+                    if (fileName.length() > maxCurrentLength) {
+                        fileName = fileName.substr(0, maxCurrentLength) + "..";
+                    }
+
+                    std::string label = fmt::format("{} ({})", fileName, lifetimeStr);
 
                     bool isSelected = (selectedModelId == static_cast<int>(i));
                     if (ImGui::Selectable(label.c_str(), isSelected, ImGuiSelectableFlags_AllowOverlap)) {

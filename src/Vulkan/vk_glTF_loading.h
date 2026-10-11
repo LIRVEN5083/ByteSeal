@@ -304,6 +304,8 @@ public:
 class TransformBufferManager;
 
 struct Model{
+    std::filesystem::path filePath;
+
     std::vector<std::shared_ptr<MeshAsset>> Meshes;
 
     std::shared_ptr<Node> rootNode;
