@@ -121,7 +121,9 @@ void CASComputePass::Execute(const ComputeContext& ctx){
 
 void IBLProcessorComputePass::Execute(const ComputeContext& ctx){
     VkCommandBuffer cmd = ctx.cmd;
-    fmt::print("[IBL Processor] Starting full asynchronous PBR-IBL generation...\n");
+
+    fmt::print(fmt::emphasis::bold, "\n{} : Starting full asynchronous PBR-IBL generation...\n",
+           fmt::format(fmt::fg(fmt::color::magenta), "[IBL Processor]"));
 
     _brdfPipeline     = _pipelineManager.GetPipelineByName("IBL_BrdfLUT");
     _panoramaPipeline = _pipelineManager.GetPipelineByName("IBL_EquirectToCubemap");
@@ -221,7 +223,8 @@ void IBLProcessorComputePass::Execute(const ComputeContext& ctx){
     }
 
     SetEnabled(false);
-    fmt::print("[IBL Processor] All 4 pipelines finished successfully. Pass disabled self.\n");
+    fmt::print(fmt::emphasis::bold, "{} : All 4 pipelines finished successfully. Pass disabled self.\n",
+           fmt::format(fmt::fg(fmt::color::magenta), "[IBL Processor]"));
 }
 
 void IBLProcessorComputePass::InsertImageBarrier(VkCommandBuffer cmd, VkImage image, VkAccessFlags srcAccess,

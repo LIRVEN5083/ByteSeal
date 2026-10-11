@@ -176,6 +176,13 @@ struct CSMConfig {
     float splitLambda = 0.85f;
 };
 
+class ProceduralPonarama{
+public:
+    SkyCoefficients ComputeSkyModel(const glm::vec3& lightDir, float turbidity = 2.0f, const glm::vec3& groundAlbedo = glm::vec3(0.3f));
+private:
+    SkyCoefficients ComputeHosekWilkieParams(float turbidity, const glm::vec3& albedo, float sunElevation);
+};
+
 // Реализация SCM (Cascad map) и множественного освещения
 class LightManager{
 public:
@@ -186,8 +193,6 @@ public:
     void init();
 
     void UpdateCascades(const glm::mat4& viewMatrix, float fovY, float aspect, float cameraNear, float cameraFar, const glm::vec3& lightDir);
-
-    SkyCoefficients ComputeSkyModel(const glm::vec3& lightDir, float turbidity = 2.0f, const glm::vec3& groundAlbedo = glm::vec3(0.3f));
 
     // Геттеры
     uint32_t GetShadowTextureIndex() const;
@@ -200,8 +205,6 @@ public:
     void cleanup();
 
 private:
-    SkyCoefficients ComputeHosekWilkieParams(float turbidity, const glm::vec3& albedo, float sunElevation);
-
     VkDevice m_device;
     TextureManager& m_textureManager;
     CSMConfig m_config;

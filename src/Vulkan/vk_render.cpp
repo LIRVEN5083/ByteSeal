@@ -485,7 +485,6 @@ void RenderSystem::RefreshPasses(PipelineManager& pipelineManager){
     for (auto& pass : _renderPasses) {
         pass->Init(pipelineManager);
     }
-    std::cout << "\n[RenderSystem]: All render passes successfully re-linked to new pipelines.\n";
 }
 
 void RenderSystem::SetPassEnabled(RenderPassType type, bool enabled) {
@@ -507,13 +506,11 @@ void RenderSystem::UpdateSkyBoxTexture(GPUTexture& newTex, TextureManager& textu
             if (skyboxPass) {
                 skyboxPass->SetPanoramicTexture(newTex);
 
-                //textureManager.UpdateIBLDescriptorSets();
-
                 computeSystem.RefreshIBL(newTex);
 
-                //vkDeviceWaitIdle(_init._device);
+                fmt::print(fmt::emphasis::bold, "\n{} : Skybox and IBL system successfully notified about new texture.\n",
+           fmt::format(fmt::fg(fmt::color::magenta), "[RenderSystem]"));
 
-                fmt::print("\n[RenderSystem] Skybox and IBL system successfully notified about new texture.\n");
                 return;
             }
         }

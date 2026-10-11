@@ -30,15 +30,15 @@ namespace VK_APPLICATION {
 
     class VulkanApplication{
 
-        public:
+    public:
         int _frameNumber {0};
         bool stop_rendering{ false };
         VulkanApplication(VK_INIT_ENGINE::_inited_engine& inited_engine);
 
-        void cleanup();
         void run();
+        void cleanup();
 
-        private:
+    private:
         VK_INIT_ENGINE::_inited_engine& _init;
         FrameData _frames[FRAME_OVERLAP];
 
@@ -68,17 +68,19 @@ namespace VK_APPLICATION {
 
         std::unique_ptr<Scene> _activeScene;
         std::unique_ptr<LightManager> _lightManager;
+        ProceduralPonarama _proceduralPonarama;
         TAA _TAA{_init};
         VK_GUI::GUI _gui;
 
         void renderLoop();
+
         void resize_swapchain();
         void destroy_swapchain();
 
-        void init_descriptors();
-        void init_render();
         void init_commands();
+        void init_descriptors();
         void init_scene();
+        void init_render();
 
         VkDescriptorSet update_scene_data(FrameData& currentFrame);
     };

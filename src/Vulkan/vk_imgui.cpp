@@ -356,8 +356,10 @@ void VK_GUI::GUI::draw_model_list_overlay(VK_INIT_ENGINE::_inited_engine& _init,
         GameEntity* newEntity = _scene->CreateEntity(entityName, droppedModelIdToSpawn);
 
         if (newEntity) {
-            fmt::print("\n[Safe Spawn] Success! Created entity: {} at pos ({:.2f}, {:.2f}, {:.2f})\n",
-                entityName, spawnPosition.x, spawnPosition.y, spawnPosition.z);
+            fmt::print("\n{} Success! Created entity: {} at pos ({:.2f}, {:.2f}, {:.2f})\n",
+           fmt::format(fmt::fg(fmt::color::purple), "[Scene]"),
+           entityName, spawnPosition.x, spawnPosition.y, spawnPosition.z);
+
 
             newEntity->position = spawnPosition;
             newEntity->rotation = glm::vec3(0.0f, 0.0f, 0.0f);

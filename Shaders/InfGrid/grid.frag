@@ -8,24 +8,14 @@ layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec2 OutVelocity;
 layout(location = 2) out vec4 OutNormal;
 
-// Добавляем UBO сцены для получения матрицы камеры
 layout(set = 0, binding = 0) uniform SceneData {
 	mat4 view;
 	mat4 proj;
 	mat4 viewproj;
 
 	// Для TAA
-	mat4 viewProjNonJittered; 		// Текущая чистая камера
-	mat4 prevViewProjJittered;      // Прошлая камера
-
-	// Направленный источник света
-	vec4 ambientColor;
-	vec4 sunlightDirection;
-	vec4 sunlightColor;
-
-	// Тени
-	mat4 cascadeMatrices[4]; // Матрицы света для 4 каскадов
-	vec4 cascadeSplits;      // Дистанции разделения каскадов упакованы в vec4 (x, y, z, w)
+	mat4 viewProjNonJittered;
+	mat4 prevViewProjJittered;
 } scene;
 
 float gGridSize = 1000.0;
@@ -46,13 +36,11 @@ vec2 satv(vec2 x) {
     return clamp(x, vec2(0.0), vec2(1.0));
 }
 
-// Исправлено: заменено v.z на v.y для vec2
 float max2(vec2 v) {
     return max(v.x, v.y);
 }
 
 void main() {
-    // Получаем позицию камеры из матрицы view прямо на GPU
     vec3 gCameraWorldPos = inverse(scene.view)[3].xyz;
 
     vec2 dvx = vec2(dFdx(WorldPos.x), dFdy(WorldPos.x));
@@ -72,7 +60,6 @@ void main() {
 
     dudv *= 4.0;
 
-    // Исправлен синтаксис vec2(...)
     vec2 mod_div_dudv = mod(WorldPos.xy, GridCellSizeLod0) / dudv;
     float Lod0a = max2(vec2(1.0) - abs(satv(mod_div_dudv) * 2.0 - vec2(1.0)));
 
@@ -102,7 +89,6 @@ void main() {
     float OpacityFalloff = pow(satf(1.0 - (dist / gGridSize)), 2.0);
     Color.a *= OpacityFalloff;
 
-    // Хак оптимизации: отбрасываем полностью прозрачные пиксели, чтобы не забивать филлрейт
     if (Color.a < 0.01) {
         discard;
     }
@@ -115,10 +101,8 @@ void main() {
 	vec2 currentNDC = inCurrentPos.xy / safeWCurrent;
 	vec2 prevNDC    = inPrevPos.xy / safeWPrev;
 
-	// Считаем чистую скорость пикселя на экране
 	vec2 ndcVelocity = currentNDC - prevNDC;
 	
-	// Переводим в UV
 	vec2 uvVelocity = vec2(ndcVelocity.x, ndcVelocity.y) * 0.5;
 
 	float maxVelocityLength = 0.1;
@@ -128,5 +112,5 @@ void main() {
 
 	OutVelocity = uvVelocity;
 
-    OutNormal = vec4(0.5, 0.5, 1.0, 1.0); 
+    OutNormal = vec4(0.5, 0.5, 1.0, 1.0);
 }

@@ -1,5 +1,9 @@
 #pragma once
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 #include <memory>
 #include <optional>
 #include <string>
@@ -15,6 +19,7 @@
 #include <vk_mem_alloc.h>
 
 #include <fmt/core.h>
+#include <fmt/color.h>
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE

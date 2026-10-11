@@ -538,7 +538,8 @@ void VK_APPLICATION::VulkanApplication::init_render(){
 
     RealPipeline* basePipeline = _pipelineManager->CreatePipeline(baseMeshInfo, colorFormat, depthFormat);
     if (basePipeline) {
-        fmt::print("[PipelineManager] Pipeline 'BaseMesh' successfully loaded and built.\n");
+        fmt::print(fmt::emphasis::bold, "{} : Pipeline 'BaseMesh' successfully loaded and built.\n",
+           fmt::format(fmt::fg(fmt::color::midnight_blue), "[PipelineManager]"));
     }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -552,7 +553,8 @@ void VK_APPLICATION::VulkanApplication::init_render(){
 
     RealPipeline* transPipeline = _pipelineManager->CreatePipeline(transparentMeshInfo, colorFormat, depthFormat);
     if (transPipeline) {
-        fmt::print("[PipelineManager] Pipeline 'TransparentMesh' successfully loaded and built.\n");
+        fmt::print(fmt::emphasis::bold, "{} : Pipeline 'TransparentMesh' successfully loaded and built.\n",
+           fmt::format(fmt::fg(fmt::color::midnight_blue), "[PipelineManager]"));
     }
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Конвеер для базовых моделей (AlphaTested)
@@ -565,7 +567,8 @@ void VK_APPLICATION::VulkanApplication::init_render(){
 
     RealPipeline* alphaPipeline = _pipelineManager->CreatePipeline(alphaTestedMeshInfo, colorFormat, depthFormat);
     if (alphaPipeline) {
-        fmt::print("[PipelineManager] Pipeline 'AlphaTestedMesh' successfully loaded and built.\n");
+        fmt::print(fmt::emphasis::bold, "{} : Pipeline 'AlphaTestedMesh' successfully loaded and built.\n",
+           fmt::format(fmt::fg(fmt::color::midnight_blue), "[PipelineManager]"));
     }
  ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Конвеер для сетки
@@ -578,7 +581,8 @@ void VK_APPLICATION::VulkanApplication::init_render(){
 
     RealPipeline* gridPipeline = _pipelineManager->CreatePipeline(gridInfo, colorFormat, depthFormat);
     if (gridPipeline) {
-        fmt::print("[PipelineManager] Pipeline 'Grid' successfully loaded and built.\n");
+        fmt::print(fmt::emphasis::bold, "{} : Pipeline 'Grid' successfully loaded and built.\n",
+           fmt::format(fmt::fg(fmt::color::midnight_blue), "[PipelineManager]"));
     }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -594,7 +598,8 @@ void VK_APPLICATION::VulkanApplication::init_render(){
 
     RealPipeline* shadowPipeline = _pipelineManager->CreatePipeline(shadowInfo, VK_FORMAT_UNDEFINED, shadowDepthFormat);
     if (shadowPipeline) {
-        fmt::print("[PipelineManager] Pipeline 'ShadowCSM' successfully loaded and built for Layered Rendering.\n");
+        fmt::print(fmt::emphasis::bold, "{} : Pipeline 'Shadow' successfully loaded and built.\n",
+           fmt::format(fmt::fg(fmt::color::midnight_blue), "[PipelineManager]"));
     }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -608,7 +613,8 @@ void VK_APPLICATION::VulkanApplication::init_render(){
 
     RealPipeline* skybox_procPipeline = _pipelineManager->CreatePipeline(skyboxProcInfo, colorFormat, depthFormat);
     if (skybox_procPipeline) {
-        fmt::print("[PipelineManager] Pipeline 'SkyBox_proc' successfully loaded and built.\n");
+        fmt::print(fmt::emphasis::bold, "{} : Pipeline 'SkyBox_proc' successfully loaded and built.\n",
+           fmt::format(fmt::fg(fmt::color::midnight_blue), "[PipelineManager]"));
     }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -622,7 +628,8 @@ void VK_APPLICATION::VulkanApplication::init_render(){
 
     RealPipeline* skyboxPipeline = _pipelineManager->CreatePipeline(skyboxInfo, colorFormat, depthFormat);
     if (skyboxPipeline) {
-        fmt::print("[PipelineManager] Pipeline 'SkyBox' successfully loaded and built.\n");
+        fmt::print(fmt::emphasis::bold, "{} : Pipeline 'SkyBox' successfully loaded and built.\n",
+           fmt::format(fmt::fg(fmt::color::midnight_blue), "[PipelineManager]"));
     }
                             // TODO: ВЫЧЕСЛИТЕЛЬНЫЕ КОНВЕЕРЫ И ШЕЙДЕРЫ!
     //TODO: IBL
@@ -635,7 +642,8 @@ void VK_APPLICATION::VulkanApplication::init_render(){
 
     RealPipeline* iblEquirectPipeline = _pipelineManager->CreateComputePipeline(iblEquirectInfo);
     if (iblEquirectPipeline) {
-        fmt::print("[PipelineManager] Compute Pipeline 'IBL_EquirectToCubemap' successfully loaded and built.\n");
+        fmt::print(fmt::emphasis::bold, "{} : Compute Pipeline 'IBL_EquirectToCubemap' successfully loaded and built.\n",
+           fmt::format(fmt::fg(fmt::color::midnight_blue), "[PipelineManager]"));
     }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Конвеер для IC (Делает дифузную свертку)
@@ -646,7 +654,8 @@ void VK_APPLICATION::VulkanApplication::init_render(){
 
     RealPipeline* iblIrradiancePipeline = _pipelineManager->CreateComputePipeline(iblIrradianceInfo);
     if (iblIrradiancePipeline) {
-        fmt::print("[PipelineManager] Compute Pipeline 'IBL_DiffuseIrradiance' successfully loaded and built.\n");
+        fmt::print(fmt::emphasis::bold, "{} : Compute Pipeline 'IBL_DiffuseIrradiance' successfully loaded and built.\n",
+           fmt::format(fmt::fg(fmt::color::midnight_blue), "[PipelineManager]"));
     }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Конвеер для Specular (Генерирует мип уровни для зеркального отражения)
@@ -657,7 +666,8 @@ void VK_APPLICATION::VulkanApplication::init_render(){
 
     RealPipeline* iblSpecularPipeline = _pipelineManager->CreateComputePipeline(iblSpecularInfo);
     if (iblSpecularPipeline) {
-        fmt::print("[PipelineManager] Compute Pipeline 'IBL_SpecularPreFilter' successfully loaded and built.\n");
+        fmt::print(fmt::emphasis::bold, "{} : Compute Pipeline 'IBL_SpecularPreFilter' successfully loaded and built.\n",
+           fmt::format(fmt::fg(fmt::color::midnight_blue), "[PipelineManager]"));
     }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Конвеер для BRDF LUT (Для генерации таблицы углов при старте движка)
@@ -668,7 +678,8 @@ void VK_APPLICATION::VulkanApplication::init_render(){
 
     RealPipeline* iblBrdfLUTPipeline = _pipelineManager->CreateComputePipeline(iblBrdfLUTInfo);
     if (iblBrdfLUTPipeline) {
-        fmt::print("[PipelineManager] Compute Pipeline 'IBL_BrdfLUT' successfully loaded and built.\n");
+        fmt::print(fmt::emphasis::bold, "{} : Compute Pipeline 'IBL_BrdfLUT' successfully loaded and built.\n",
+           fmt::format(fmt::fg(fmt::color::midnight_blue), "[PipelineManager]"));
     }
     //TODO: Post-processing
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -680,7 +691,8 @@ void VK_APPLICATION::VulkanApplication::init_render(){
 
     RealPipeline* colorCorrectionPipeline = _pipelineManager->CreateComputePipeline(colorCorrectionInfo);
     if (colorCorrectionPipeline) {
-        fmt::print("[PipelineManager] Compute Pipeline 'ColorCorrection' successfully loaded and built.\n");
+        fmt::print(fmt::emphasis::bold, "{} : Compute Pipeline 'ColorCorrection' successfully loaded and built.\n",
+           fmt::format(fmt::fg(fmt::color::midnight_blue), "[PipelineManager]"));
     }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Конвеер для Tonmap
@@ -691,7 +703,8 @@ void VK_APPLICATION::VulkanApplication::init_render(){
 
     RealPipeline* tonMapPipeline = _pipelineManager->CreateComputePipeline(tonMapInfo);
     if (tonMapPipeline) {
-        fmt::print("[PipelineManager] Compute Pipeline 'Tonemap' successfully loaded and built.\n");
+        fmt::print(fmt::emphasis::bold, "{} : Compute Pipeline 'Tonemap' successfully loaded and built.\n",
+           fmt::format(fmt::fg(fmt::color::midnight_blue), "[PipelineManager]"));
     }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Конвеер для TAA
@@ -702,7 +715,8 @@ void VK_APPLICATION::VulkanApplication::init_render(){
 
     RealPipeline* TAAPipeline = _pipelineManager->CreateComputePipeline(TAAInfo);
     if (TAAPipeline){
-        fmt::print("[PipelineManager] Compute Pipeline 'TAA' successfully loaded and built.\n");
+        fmt::print(fmt::emphasis::bold, "{} : Compute Pipeline 'TAA' successfully loaded and built.\n",
+           fmt::format(fmt::fg(fmt::color::midnight_blue), "[PipelineManager]"));
     }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -714,7 +728,8 @@ void VK_APPLICATION::VulkanApplication::init_render(){
 
     RealPipeline* FXAAPipeline = _pipelineManager->CreateComputePipeline(FXAAInfo);
     if (FXAAPipeline){
-        fmt::print("[PipelineManager] Compute Pipeline 'FXAA' successfully loaded and built.\n");
+        fmt::print(fmt::emphasis::bold, "{} : Compute Pipeline 'FXAA' successfully loaded and built.\n",
+           fmt::format(fmt::fg(fmt::color::midnight_blue), "[PipelineManager]"));
     }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -726,7 +741,8 @@ void VK_APPLICATION::VulkanApplication::init_render(){
 
     RealPipeline* CASPipeline = _pipelineManager->CreateComputePipeline(CASInfo);
     if (CASPipeline){
-        fmt::print("[PipelineManager] Compute Pipeline 'CAS' successfully loaded and built.\n");
+        fmt::print(fmt::emphasis::bold, "{} : Compute Pipeline 'CAS' successfully loaded and built.\n",
+           fmt::format(fmt::fg(fmt::color::midnight_blue), "[PipelineManager]"));
     }
 
     // Проходы рендера
@@ -758,6 +774,10 @@ void VK_APPLICATION::VulkanApplication::init_render(){
     if (loadedTextureOpt.has_value()){
         _renderSystem.UpdateSkyBoxTexture(loadedTextureOpt.value(), _textureManager, *_computeSystem);
     }
+
+    _postProcessSystem.SetPassEnabled(ComputePassType::TAA, false);
+    _postProcessSystem.SetPassEnabled(ComputePassType::FXAA, false);
+    _postProcessSystem.SetPassEnabled(ComputePassType::CAS, false);
 
     //TODO: DEBUG
     /*
@@ -839,7 +859,7 @@ VkDescriptorSet VK_APPLICATION::VulkanApplication::update_scene_data(FrameData& 
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // SkyBox
-    SkyCoefficients sky = _lightManager->ComputeSkyModel(sceneData.sunlightDirection, 3.0f, glm::vec3(0.2f));
+    SkyCoefficients sky = _proceduralPonarama.ComputeSkyModel(sceneData.sunlightDirection, 3.0f, glm::vec3(0.2f));
     sceneData.skyA = sky.skyA;
     sceneData.skyB = sky.skyB;
     sceneData.skyC = sky.skyC;
