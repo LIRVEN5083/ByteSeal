@@ -359,13 +359,15 @@ void Scene::CullingAndSubmit(RenderSystem& renderSystem, PipelineManager& pipeli
                 uint64_t key = 0;
                 key |= (opacitySection & 0x3ULL) << 62;
                 key |= (static_cast<uint64_t>(pipeline->id) & 0x3FFFULL) << 48;
-                key |= (static_cast<uint64_t>(ro.colorTextureID) & 0xFFFFULL) << 32;
 
                 if (opacitySection == 2) {
                     float safeDist = (distanceToCamera < 0.01f) ? 0.01f : distanceToCamera;
                     float invDist = 1.0f / safeDist;
                     uint32_t quantizedDist = static_cast<uint32_t>(invDist * 1000000.0f);
                     key |= (quantizedDist & 0xFFFFFFFFULL);
+                } else {
+                    uint64_t bufferHash = reinterpret_cast<uint64_t>(ro.indexBuffer) >> 4;
+                    key |= (bufferHash & 0xFFFFFFFFULL);
                 }
 
                 ro.sortKey = key;

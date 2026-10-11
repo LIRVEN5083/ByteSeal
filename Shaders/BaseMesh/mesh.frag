@@ -159,8 +159,7 @@ vec3 ACESFilm(vec3 x) {
 
 
 
-void main()
-{
+void main(){
 	// Получение Альбедо
 	uint texID = nonuniformEXT(PushConstants.colorTextureID);
 

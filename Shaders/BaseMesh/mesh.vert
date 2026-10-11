@@ -64,8 +64,7 @@ layout( push_constant ) uniform constants{
 	vec4 materialFactors; // x: roughness, y: metallic, z: emissive, w: padding
 } PushConstants;
 
-void main()
-{
+void main(){
 	//load vertex data from device adress
 	Vertex v = PushConstants.vertexBuffer.vertices[gl_VertexIndex];
 

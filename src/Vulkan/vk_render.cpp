@@ -69,13 +69,23 @@ void ForwardRenderPass::Execute(const RenderContext& ctx, const std::vector<Rend
     VkRect2D scissor = { {0, 0}, ctx.drawExtent };
     vkCmdSetScissor(ctx.cmd, 0, 1, &scissor);
 
-    VkDescriptorSet setsToBind[] = { ctx.globalDescriptor, ctx.bindlessTextureSet };
+    DrawFilteredObjects(ctx, queue, 0); // 0 - Opaque
+    DrawFilteredObjects(ctx, queue, 1); // 1 - AlphaTested
+    DrawFilteredObjects(ctx, queue, 2); // 2 - Transparent
+
+    vkCmdEndRendering(ctx.cmd);
+}
+
+void ForwardRenderPass::DrawFilteredObjects(const RenderContext& ctx, const std::vector<RenderObject>& queue,
+    uint64_t targetOpacitySection) {
 
     VkPipeline currentPipeline = VK_NULL_HANDLE;
     VkBuffer currentIndexBuffer = VK_NULL_HANDLE;
+    VkDescriptorSet setsToBind[] = { ctx.globalDescriptor, ctx.bindlessTextureSet };
 
     for (const auto& object : queue) {
-
+        uint64_t objectOpacitySection = (object.sortKey >> 62) & 0x3ULL;
+        if (objectOpacitySection != targetOpacitySection) continue;
         if (object.pipeline != currentPipeline) {
             vkCmdBindPipeline(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.pipeline);
             vkCmdBindDescriptorSets(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.pipelineLayout, 0, 2, setsToBind, 0, nullptr);
@@ -102,44 +112,6 @@ void ForwardRenderPass::Execute(const RenderContext& ctx, const std::vector<Rend
         vkCmdPushConstants(ctx.cmd, object.pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT,
             0, sizeof(GPUDrawPushConstants), &push_constants);
 
-        if (object.indexBuffer != VK_NULL_HANDLE) {
-            vkCmdDrawIndexed(ctx.cmd, object.indexCount, 1, object.firstIndex, 0, 0);
-        } else {
-            vkCmdDraw(ctx.cmd, object.indexCount, 1, 0, 0);
-        }
-    }
-
-    vkCmdEndRendering(ctx.cmd);
-}
-
-void ForwardRenderPass::DrawFilteredObjects(const RenderContext& ctx, const std::vector<RenderObject>& queue,
-    PipelineOpacity opacityFilter){
-    VkBuffer currentIndexBuffer = VK_NULL_HANDLE;
-
-    for (const auto& object : queue) {
-        if (object.opacity != opacityFilter) continue; // Фильтруем объекты для текущего под-этапа
-
-        if (object.indexBuffer != VK_NULL_HANDLE) {
-            if (object.indexBuffer != currentIndexBuffer) {
-                vkCmdBindIndexBuffer(ctx.cmd, object.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
-                currentIndexBuffer = object.indexBuffer;
-            }
-        }
-
-        GPUDrawPushConstants push_constants;
-        push_constants.matrixAddress = object.matrixBufferAddress;
-        push_constants.vertexBuffer = object.vertexBufferAddress;
-
-        push_constants.colorTextureID = object.colorTextureID;
-        push_constants.metallicRoughnessTextureID = object.metallicRoughnessTextureID;
-        push_constants.normalTextureID = object.normalTextureID;
-        push_constants.occlusionTextureID = object.occlusionTextureID;
-
-        push_constants.baseColorFactor = object.baseColorFactor;
-        push_constants.materialFactors = object.materialFactors;
-
-        vkCmdPushConstants(ctx.cmd, ctx.pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT,
-            0, sizeof(GPUDrawPushConstants), &push_constants);
         if (object.indexBuffer != VK_NULL_HANDLE) {
             vkCmdDrawIndexed(ctx.cmd, object.indexCount, 1, object.firstIndex, 0, 0);
         } else {
@@ -455,7 +427,7 @@ void RenderSystem::PrepareFrame(){
     if (_mainDrawQueue.empty()) return;
 
     std::sort(_mainDrawQueue.begin(), _mainDrawQueue.end(), [](const RenderObject& a, const RenderObject& b) {
-        return a.indexBuffer < b.indexBuffer;
+        return a.sortKey < b.sortKey;
     });
 }
 

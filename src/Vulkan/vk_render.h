@@ -86,7 +86,8 @@ public:
     void Execute(const RenderContext& ctx, const std::vector<RenderObject>& queue) override;
 
 private:
-    void DrawFilteredObjects(const RenderContext& ctx, const std::vector<RenderObject>& queue, PipelineOpacity opacityFilter);
+    void DrawFilteredObjects(const RenderContext& ctx, const std::vector<RenderObject>& queue,
+    uint64_t targetOpacitySection);
 
     RealPipeline* _opaquePipeline{ nullptr };
     RealPipeline* _alphaTestedPipeline{ nullptr };
