@@ -283,10 +283,9 @@ void PipelineBuilder::set_multisampling_alpha(VkSampleCountFlagBits samples){
     _multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
     _multisampling.pNext = nullptr;
     _multisampling.rasterizationSamples = samples;
-
-    // магия Alpha-to-Coverage
+    
     _multisampling.sampleShadingEnable = VK_FALSE;
-    _multisampling.alphaToCoverageEnable = VK_TRUE;
+    _multisampling.alphaToCoverageEnable = VK_FALSE; // ДИЗЕРИНГ
     _multisampling.alphaToOneEnable = VK_FALSE;
     _multisampling.pSampleMask = nullptr;
 }
@@ -587,19 +586,16 @@ RealPipeline* PipelineManager::CreatePipelineFromMemory(const PipelineCreateInfo
         pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
 
         if (info.opacity == PipelineOpacity::Transparent) {
-            // Конфигурация для сетки (Grid)
             pipelineBuilder.set_multisampling_alpha(samplesToUse);
             pipelineBuilder.enable_blending_alphablend();
             pipelineBuilder.enable_depthtest(VK_TRUE, VK_COMPARE_OP_GREATER_OR_EQUAL);
         }
         else if (info.opacity == PipelineOpacity::AlphaTested) {
-            // Конфигурация для листвы/масок (Alpha-test)
             pipelineBuilder.set_multisampling(samplesToUse);
             pipelineBuilder.disable_blending();
             pipelineBuilder.enable_depthtest(VK_TRUE, VK_COMPARE_OP_GREATER_OR_EQUAL);  // Reversed-Z, запись вкл
         }
         else {
-            // Конфигурация для обычных моделей (BaseMesh)
             pipelineBuilder.set_multisampling(samplesToUse);
             pipelineBuilder.disable_blending();
             pipelineBuilder.enable_depthtest(VK_TRUE, VK_COMPARE_OP_GREATER_OR_EQUAL);   // Reversed-Z, запись вкл
