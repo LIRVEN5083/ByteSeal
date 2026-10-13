@@ -17,14 +17,14 @@ layout (location = 0) out vec4 outFragColor; // _drawImage
 layout (location = 1) out vec2 outVelocity;  // Векторы движения пикселя (_velocityImage)
 layout (location = 2) out vec4 outNormal;    // Закодированные нормали экрана (_normalImage)
 
-layout(set = 0, binding = 0) uniform SceneData {
+layout(std430, set = 0, binding = 0) readonly buffer SceneData{
 	mat4 view;
 	mat4 proj;
 	mat4 viewproj;
 
 	// Для TAA
-	mat4 viewProjNonJittered; 		// Текущая чистая камера
-	mat4 prevViewProjJittered;      // Прошлая камера
+	mat4 viewProjNonJittered; // Текущая чистая камера
+	mat4 prevViewProj;        // Прошлая чистая камера
 
 	// Направленный источник света
 	vec4 ambientColor;
@@ -34,6 +34,10 @@ layout(set = 0, binding = 0) uniform SceneData {
 	// Тени
 	mat4 cascadeMatrices[4]; // Матрицы света для 4 каскадов
 	vec4 cascadeSplits;      // Дистанции разделения каскадов упакованы в vec4 (x, y, z, w)
+
+    // Коэффициенты Хошека-Вилки
+    vec4 skyA; vec4 skyB; vec4 skyC; vec4 skyD; vec4 skyE;
+    vec4 skyF; vec4 skyG; vec4 skyH; vec4 skyI; vec4 skyZ; 
 } scene;
 
 layout(set = 1, binding = 0) uniform sampler2D globalTextures[];
@@ -159,8 +163,7 @@ vec3 ACESFilm(vec3 x) {
 
 
 
-void main()
-{
+void main(){
 	// Получение Альбедо
 	uint texID = nonuniformEXT(PushConstants.colorTextureID);
 

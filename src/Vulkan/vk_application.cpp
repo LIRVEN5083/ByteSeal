@@ -477,35 +477,31 @@ void VK_APPLICATION::VulkanApplication::init_descriptors(){
     // Для данных о сцене
     {
         DescriptorLayoutBuilder builder;
-        builder.add_binding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+        builder.add_binding(0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
         _gpuSceneDataDescriptorLayout = builder.build(_init._device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
     }
 
-    VkDescriptorPoolSize poolSize{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, (uint32_t)FRAME_OVERLAP };
+    VkDescriptorPoolSize poolSize{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, (uint32_t)FRAME_OVERLAP };
     VkDescriptorPoolCreateInfo poolInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
     poolInfo.maxSets = FRAME_OVERLAP;
     poolInfo.poolSizeCount = 1;
     poolInfo.pPoolSizes = &poolSize;
-    // Создаем _sceneDescriptorPool (добавь это поле типа VkDescriptorPool в VulkanApplication.h)
     vkCreateDescriptorPool(_init._device, &poolInfo, nullptr, &_sceneDescriptorPool);
 
     for (int i = 0; i < FRAME_OVERLAP; i++) {
-        // Выделяем память под UBO (твой код)
         _frames[i].gpuSceneDataBuffer = vkinit::create_buffer(
             sizeof(GPUSceneData), _init._allocator,
-            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU
         );
 
-        // Аллоцируем постоянный сет для кадра напрямую из нашего пула сцены!
         VkDescriptorSetAllocateInfo allocInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
         allocInfo.descriptorPool = _sceneDescriptorPool;
         allocInfo.descriptorSetCount = 1;
         allocInfo.pSetLayouts = &_gpuSceneDataDescriptorLayout;
         vkAllocateDescriptorSets(_init._device, &allocInfo, &_frames[i].sceneDescriptorSet);
 
-        // Привязываем буфер к этому дескриптору намертво прямо на старте
         DescriptorWriter writer;
-        writer.write_buffer(0, _frames[i].gpuSceneDataBuffer.buffer, sizeof(GPUSceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+        writer.write_buffer(0, _frames[i].gpuSceneDataBuffer.buffer, sizeof(GPUSceneData), 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
         writer.update_set(_init._device, _frames[i].sceneDescriptorSet);
     }
 }
