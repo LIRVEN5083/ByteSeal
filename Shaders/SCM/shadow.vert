@@ -4,7 +4,7 @@
 #extension GL_ARB_shader_viewport_layer_array : require
 #extension GL_ARB_gpu_shader_int64 : require
 
-layout(set = 0, binding = 0) uniform SceneData {
+layout(std430, set = 0, binding = 0) readonly buffer SceneData{
 	mat4 view;
 	mat4 proj;
 	mat4 viewproj;
@@ -21,6 +21,10 @@ layout(set = 0, binding = 0) uniform SceneData {
 	// Тени
 	mat4 cascadeMatrices[4]; // Матрицы света для 4 каскадов
 	vec4 cascadeSplits;      // Дистанции разделения каскадов упакованы в vec4 (x, y, z, w)
+
+    // Коэффициенты Хошека-Вилки
+    vec4 skyA; vec4 skyB; vec4 skyC; vec4 skyD; vec4 skyE;
+    vec4 skyF; vec4 skyG; vec4 skyH; vec4 skyI; vec4 skyZ; 
 } scene;
 
 layout(buffer_reference, std430) readonly buffer ModelMatricesRef {

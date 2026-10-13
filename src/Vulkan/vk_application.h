@@ -35,7 +35,9 @@ namespace VK_APPLICATION {
         bool stop_rendering{ false };
         VulkanApplication(VK_INIT_ENGINE::_inited_engine& inited_engine);
 
+        //TODO: Основной цикл выполнения программы
         void run();
+        // Очистка ресурсов выполнения программы
         void cleanup();
 
     private:
@@ -72,16 +74,23 @@ namespace VK_APPLICATION {
         TAA _TAA{_init};
         VK_GUI::GUI _gui;
 
+        // Основной цикл рендера
         void renderLoop();
 
+        // Пересоздания свапчейна
         void resize_swapchain();
         void destroy_swapchain();
 
+        // Создание коммандных буферов и дескриптор пулов для SceneData
         void init_commands();
+        // Дескрипторы для SceneData
         void init_descriptors();
+        // Инициация систем
         void init_scene();
+        // Инициация систем рендера, проходов рендера, шейдеров
         void init_render();
 
+        // Обновления каждый кадр данных о сцене
         VkDescriptorSet update_scene_data(FrameData& currentFrame);
     };
 }
