@@ -325,8 +325,7 @@ void VK_APPLICATION::VulkanApplication::resize_swapchain(){
     _init._depthImage.imageExtent = drawImageExtent;
 
     VkImageUsageFlags depthImageUsages = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
-                                         VK_IMAGE_USAGE_SAMPLED_BIT |
-                                         VK_IMAGE_USAGE_STORAGE_BIT;
+                                         VK_IMAGE_USAGE_SAMPLED_BIT;
 
     VkImageCreateInfo dimg_info = vkinit::image_create_info(_init._depthImage.imageFormat, depthImageUsages, drawImageExtent);
     dimg_info.samples = VK_SAMPLE_COUNT_1_BIT;

@@ -225,8 +225,8 @@ void TextureManager::UpdatePostProcessDescriptorSets(){
     imageInfos[0].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
     imageInfos[0].sampler = VK_NULL_HANDLE;
 
-    // Depth
-    imageInfos[1].imageView = _frameImages._depthImage->imageView;
+    // Depth(Затычка временная)
+    imageInfos[1].imageView = _frameImages._drawImage->imageView; 
     imageInfos[1].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
     imageInfos[1].sampler = VK_NULL_HANDLE;
 
