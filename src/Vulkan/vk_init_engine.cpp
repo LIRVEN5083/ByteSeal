@@ -193,7 +193,6 @@ void VK_INIT_ENGINE::VulkanInitEngine::init_swapchain(){
     VkImageUsageFlags depthImageUsages{};
     depthImageUsages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
     depthImageUsages |= VK_IMAGE_USAGE_SAMPLED_BIT;
-    depthImageUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
 
     VkImageCreateInfo dimg_info = vkinit::image_create_info(ready_init._depthImage.imageFormat, depthImageUsages, drawImageExtent);
     dimg_info.samples = VK_SAMPLE_COUNT_1_BIT;
